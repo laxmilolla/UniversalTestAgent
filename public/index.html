@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Playwright Chatbot</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            <h1>🤖 Playwright Automation Chatbot</h1>
+            <p>Ask me to automate web browsers using Playwright!</p>
+        </div>
+        
+        <div class="chat-messages" id="chatMessages">
+            <div class="message system">
+                <div class="message-content">
+                    <p>Hello! I can help you automate web browsers using Playwright. Try asking me to:</p>
+                    <ul>
+                        <li>Navigate to a website</li>
+                        <li>Take screenshots</li>
+                        <li>Fill out forms</li>
+                        <li>Click buttons</li>
+                        <li>Extract data from web pages</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+        <div class="chat-input-container">
+            <div class="input-group">
+                <input type="text" id="messageInput" placeholder="Type your message here..." autocomplete="off">
+                <button id="sendButton">Send</button>
+            </div>
+            <div class="input-actions">
+                <button id="clearButton">Clear History</button>
+                <button id="toolsButton">Show Available Tools</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="toolsModal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Available Playwright Tools</h2>
+            <div id="toolsList"></div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
