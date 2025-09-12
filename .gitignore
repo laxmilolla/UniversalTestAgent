@@ -46,3 +46,4 @@ Thumbs.db
 
 # PM2 files
 .pm2/
+mcp-playwright-key-final.pem
