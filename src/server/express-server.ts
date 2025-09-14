@@ -103,7 +103,7 @@ app.get('/api/tools', (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || 'localhost';
 
 // Start server
@@ -111,8 +111,8 @@ async function startServer() {
   await initializeMCP();
 
   server.listen(PORT, HOST, () => {
-    logger.info(`ï¿½ï¿½ï¿½ Chatbot server running on http://${HOST}:${PORT}`);
-    logger.info(`ï¿½ï¿½ï¿½ WebSocket server ready for connections`);
+    logger.info(`íº€ Chatbot server running on http://${HOST}:${PORT}`);
+    logger.info(`í³± WebSocket server ready for connections`);
   });
 }
 
