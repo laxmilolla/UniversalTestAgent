@@ -15,6 +15,12 @@ export interface TestCase {
   testData: any;                // Test data based on TSV fields
   expectedResults: string[];    // Expected outcomes
   
+  // TSV Validation fields
+  dataField?: string;           // TSV field being tested
+  testValues?: string[];        // Values to test
+  type?: string;                // Test type (filter_test, search_test, etc.)
+  websiteUrl?: string;          // Target website URL
+  
   // Metadata
   createdAt: Date;
   updatedAt: Date;
@@ -29,6 +35,15 @@ export interface TestResult {
   duration: number;
   screenshots: string[];
   error?: string;
+  
+  // TSV Validation results
+  validation?: {
+    passed: boolean;
+    expectedCount: number;
+    actualCount: number;
+    validationChecks: any;
+    message: string;
+  };
 }
 
 export interface TestData {

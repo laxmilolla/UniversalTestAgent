@@ -4,6 +4,7 @@ export class SimpleRAGClient {
     private bedrockClient: BedrockClient;
     private tsvData: any[] = [];
     private fieldNames: string[] = [];
+    private fieldIndexes: Map<string, Map<any, any[]>> = new Map();
 
     constructor(bedrockClient: BedrockClient) {
         this.bedrockClient = bedrockClient;
@@ -40,6 +41,198 @@ export class SimpleRAGClient {
         this.fieldNames = [...new Set(this.fieldNames)];
         
         console.log(`✅ Stored ${this.tsvData.length} records with ${this.fieldNames.length} unique fields`);
+        
+        // Build field indexes for fast queries
+        this.buildFieldIndexes();
+    }
+
+    // Build field indexes for O(1) lookups
+    private buildFieldIndexes(): void {
+        console.log('🔨 Building field indexes for gold standard validation...');
+        
+        this.fieldNames.forEach(field => {
+            const index = new Map<any, any[]>();
+            
+            this.tsvData.forEach(record => {
+                const value = record[field];
+                if (!index.has(value)) {
+                    index.set(value, []);
+                }
+                index.get(value)!.push(record);
+            });
+            
+            this.fieldIndexes.set(field, index);
+            console.log(`  📇 Indexed ${field}: ${index.size} unique values`);
+        });
+    }
+
+    // Fast query by field for validation
+    async queryByField(field: string, value: any): Promise<any[]> {
+        const index = this.fieldIndexes.get(field);
+        if (index) {
+            const records = index.get(value) || [];
+            console.log(`⚡ Fast query: ${field}=${value} → ${records.length} records`);
+            return records;
+        }
+        
+        // Fallback to linear search if field not indexed
+        console.log(`⚠️ Slow query: ${field}=${value} (field not indexed)`);
+        return this.tsvData.filter(record => record[field] === value);
+    }
+
+    // Generate expected results from TSV gold standard
+    async generateExpectedResults(testCase: any): Promise<any> {
+        const field = testCase.dataField;
+        const value = testCase.testValues[0];
+        
+        console.log(`📊 Generating expected results from TSV: ${field}=${value}`);
+        
+        const expectedRecords = await this.queryByField(field, value);
+        
+        return {
+            testCaseId: testCase.id,
+            filterCriteria: `${field} = ${value}`,
+            expectedCount: expectedRecords.length,
+            expectedRecords: expectedRecords,
+            expectedFieldValues: [...new Set(expectedRecords.map(r => r[field]))],
+            dataField: field,
+            filterValue: value,
+            sourceData: 'TSV Gold Standard',
+            timestamp: new Date()
+        };
+    }
+
+    // Validate UI results against TSV gold standard
+    async validateResults(actualRecords: any[], expectedResults: any): Promise<any> {
+        console.log('🔍 Validating TSV Gold Standard vs UI Results...');
+        
+        const validation = {
+            countMatch: this.validateCount(actualRecords.length, expectedResults.expectedCount),
+            fieldValuesMatch: this.validateFieldValues(actualRecords, expectedResults),
+            recordsMatch: this.validateRecordIds(actualRecords, expectedResults.expectedRecords)
+        };
+        
+        const allPassed = validation.countMatch.passed && 
+                         validation.fieldValuesMatch.passed && 
+                         validation.recordsMatch.passed;
+        
+        return {
+            passed: allPassed,
+            status: allPassed ? 'passed' : 'failed',
+            expectedCount: expectedResults.expectedCount,
+            actualCount: actualRecords.length,
+            validationChecks: validation,
+            message: this.generateValidationMessage(validation, expectedResults, actualRecords)
+        };
+    }
+
+    private validateCount(actualCount: number, expectedCount: number): any {
+        const passed = actualCount === expectedCount;
+        return {
+            checkType: 'count',
+            passed: passed,
+            message: passed ? 
+                `Count matches TSV: ${actualCount} records` : 
+                `Count mismatch: Expected ${expectedCount} from TSV, got ${actualCount} from UI`,
+            expectedCount,
+            actualCount,
+            difference: actualCount - expectedCount
+        };
+    }
+
+    private validateFieldValues(actualRecords: any[], expectedResults: any): any {
+        const actualValues = actualRecords.map(r => r[expectedResults.dataField]);
+        const invalidValues = actualValues.filter(v => !expectedResults.expectedFieldValues.includes(v));
+        
+        const passed = invalidValues.length === 0;
+        return {
+            checkType: 'field_values',
+            passed: passed,
+            message: passed ? 
+                `All ${expectedResults.dataField} values match TSV` : 
+                `Found ${invalidValues.length} invalid ${expectedResults.dataField} values`,
+            invalidValues,
+            fieldName: expectedResults.dataField
+        };
+    }
+
+    private validateRecordIds(actualRecords: any[], expectedRecords: any[]): any {
+        const idField = this.findIdField(expectedRecords);
+        if (!idField) {
+            return { checkType: 'records', passed: true, message: 'No ID field found, skipping record validation' };
+        }
+        
+        const expectedIds = expectedRecords.map(r => r[idField]).sort();
+        const actualIds = actualRecords.map(r => r[idField]).sort();
+        
+        const missingIds = expectedIds.filter(id => !actualIds.includes(id));
+        const extraIds = actualIds.filter(id => !expectedIds.includes(id));
+        
+        const passed = missingIds.length === 0 && extraIds.length === 0;
+        return {
+            checkType: 'records',
+            passed: passed,
+            message: passed ? 
+                'All record IDs match TSV' : 
+                `Record ID mismatch: Missing ${missingIds.length}, Extra ${extraIds.length}`,
+            missingIds,
+            extraIds,
+            idField
+        };
+    }
+
+    private findIdField(records: any[]): string | null {
+        if (records.length === 0) return null;
+        const fields = Object.keys(records[0]);
+        return fields.find(f => f.toLowerCase().includes('id') || f.toLowerCase().includes('case')) || null;
+    }
+
+    private generateValidationMessage(validation: any, expectedResults: any, actualRecords: any[]): string {
+        const messages = [];
+        
+        if (!validation.countMatch.passed) {
+            messages.push(validation.countMatch.message);
+        }
+        if (!validation.fieldValuesMatch.passed) {
+            messages.push(validation.fieldValuesMatch.message);
+        }
+        if (!validation.recordsMatch.passed) {
+            messages.push(validation.recordsMatch.message);
+        }
+        
+        if (messages.length === 0) {
+            return `✅ All validations passed: UI results match TSV gold standard (${actualRecords.length} records)`;
+        }
+        
+        return `❌ Validation failed:\n${messages.join('\n')}`;
+    }
+
+    // Create stratified sample for large TSV files
+    async createStratifiedSample(maxRecords: number = 100): Promise<any[]> {
+        console.log(`📊 Creating stratified sample (max ${maxRecords} records from ${this.tsvData.length} total)...`);
+        
+        if (this.tsvData.length <= maxRecords) {
+            console.log('  → Dataset small enough, using all records');
+            return this.tsvData;
+        }
+        
+        // Use first categorical field for stratification
+        const categoricalField = this.fieldNames[0];
+        const uniqueValues = [...new Set(this.tsvData.map(r => r[categoricalField]))];
+        
+        console.log(`  → Stratifying by ${categoricalField}: ${uniqueValues.length} unique values`);
+        
+        const recordsPerValue = Math.ceil(maxRecords / uniqueValues.length);
+        const sample: any[] = [];
+        
+        uniqueValues.forEach(value => {
+            const records = this.tsvData.filter(r => r[categoricalField] === value);
+            sample.push(...records.slice(0, recordsPerValue));
+        });
+        
+        const finalSample = sample.slice(0, maxRecords);
+        console.log(`  ✅ Created sample: ${finalSample.length} records`);
+        return finalSample;
     }
 
     // Step 2: Query specific data based on UI filters

@@ -913,10 +913,21 @@ class TestGenerationUI {
     updateGenerateButton() {
         // Enable generate button if we have learning results
         const hasLearningResults = window.learningResults && window.learningResults.success;
+        const hasExistingTestCases = hasLearningResults && 
+            window.learningResults.analysis?.mapping?.testCases?.length > 0;
+        
         console.log('Learning results available:', hasLearningResults, window.learningResults);
+        console.log('Existing test cases available:', hasExistingTestCases);
         
         if (this.generateBtn) {
             this.generateBtn.disabled = !hasLearningResults;
+            
+            // Update button text based on whether test cases exist
+            if (hasExistingTestCases) {
+                this.generateBtn.innerHTML = '<span class="btn-icon">📋</span><span class="btn-text">Display Test Cases</span>';
+            } else {
+                this.generateBtn.innerHTML = '<span class="btn-icon">🧪</span><span class="btn-text">Generate Test Cases</span>';
+            }
         }
     }
 
@@ -929,6 +940,41 @@ class TestGenerationUI {
                 throw new Error('No learning results found. Please complete Phase 1 first.');
             }
 
+            // Check if test cases already exist from Phase 1
+            const existingTestCases = learningResults.analysis?.mapping?.testCases || [];
+            
+            if (existingTestCases.length > 0) {
+                console.log(`🔄 Found ${existingTestCases.length} existing test cases from Phase 1`);
+                
+                // Update UI to show we're displaying existing test cases
+                this.generateBtn.disabled = true;
+                this.generateBtn.innerHTML = '<span class="btn-icon">📋</span><span class="btn-text">Loading Test Cases...</span>';
+                this.generationStatus.style.display = 'block';
+                this.generationStatus.textContent = `Displaying ${existingTestCases.length} existing test cases...`;
+
+                // Convert Phase 1 test cases to Phase 2 format
+                this.generatedTests = this.convertPhase1TestCases(existingTestCases);
+                
+                // Store test cases globally for debugging
+                window.testCases = this.generatedTests;
+                
+                // Display the test cases
+                this.displayTestCases();
+                this.showTestCasesSection();
+                this.updateTestStatistics();
+                
+                console.log(`✅ Displayed ${this.generatedTests.length} existing test cases`);
+                
+                // Update button text to reflect that test cases are now displayed
+                this.generateBtn.innerHTML = '<span class="btn-icon">✅</span><span class="btn-text">Test Cases Loaded</span>';
+                this.generationStatus.textContent = `Successfully loaded ${this.generatedTests.length} test cases from Phase 1`;
+                
+                return;
+            }
+
+            // If no existing test cases, generate new ones (fallback)
+            console.log('🔄 No existing test cases found, generating new ones...');
+            
             // Update UI
             this.generateBtn.disabled = true;
             this.generateBtn.innerHTML = '<span class="btn-icon">⏳</span><span class="btn-text">Generating...</span>';
@@ -955,7 +1001,7 @@ class TestGenerationUI {
                 this.displayTestCases();
                 this.showTestCasesSection();
                 this.updateTestStatistics();
-                console.log(`✅ Generated ${result.testCases.length} test cases`);
+                console.log(`✅ Generated ${result.testCases.length} new test cases`);
             } else {
                 throw new Error(result.error || 'Test generation failed');
             }
@@ -986,6 +1032,24 @@ class TestGenerationUI {
                 performance: this.performanceCheck ? this.performanceCheck.checked : false
             }
         };
+    }
+
+    convertPhase1TestCases(phase1TestCases) {
+        console.log('🔄 Converting Phase 1 test cases to Phase 2 format:', phase1TestCases);
+        
+        return phase1TestCases.map((testCase, index) => ({
+            id: `test-${index + 1}`,
+            name: testCase.name || `Test Case ${index + 1}`,
+            description: testCase.description || 'No description provided',
+            steps: typeof testCase.steps === 'string' 
+                ? testCase.steps.split(' ').filter(step => step.length > 0)
+                : testCase.steps || [],
+            selectors: testCase.selectors || 'No selectors provided',
+            category: testCase.category?.toLowerCase().replace(/\s+/g, '_') || 'general',
+            priority: testCase.priority?.toLowerCase() || 'medium',
+            type: testCase.type || 'functional',
+            status: 'pending'
+        }));
     }
 
     displayTestCases() {
@@ -1188,27 +1252,67 @@ class TestGenerationUI {
         `;
 
         // Display detailed results
-        this.detailedResults.innerHTML = results.map(result => `
-            <div class="test-result-card ${result.status}">
-                <div class="result-header">
-                    <h4>${result.testCaseName || 'Unknown Test'}</h4>
-                    <span class="result-status ${result.status}">${result.status}</span>
-                </div>
-                <div class="result-details">
-                    <p><strong>Duration:</strong> ${result.duration || 0}ms</p>
-                    <p><strong>Start Time:</strong> ${new Date(result.startTime).toLocaleString()}</p>
-                    ${result.error ? `<p><strong>Error:</strong> ${result.error}</p>` : ''}
-                    ${result.screenshots && result.screenshots.length > 0 ? `
-                        <div class="result-screenshots">
-                            <h5>Screenshots:</h5>
-                            ${result.screenshots.map(screenshot => 
-                                `<img src="${screenshot}" alt="Test screenshot" class="result-screenshot">`
-                            ).join('')}
+        this.detailedResults.innerHTML = results.map(result => {
+            let validationHTML = '';
+            if (result.validation) {
+                validationHTML = `
+                    <div class="validation-details">
+                        <h5>🔍 TSV Gold Standard Validation</h5>
+                        <div class="validation-summary">
+                            <p><strong>Expected Count:</strong> ${result.validation.expectedCount}</p>
+                            <p><strong>Actual Count:</strong> ${result.validation.actualCount}</p>
+                            <p><strong>Validation Status:</strong> 
+                                <span class="${result.validation.passed ? 'validation-passed' : 'validation-failed'}">
+                                    ${result.validation.passed ? '✅ Passed' : '❌ Failed'}
+                                </span>
+                            </p>
                         </div>
-                    ` : ''}
+                        <div class="validation-message">
+                            <strong>Message:</strong> ${result.validation.message}
+                        </div>
+                        ${result.validation.validationChecks ? `
+                            <div class="validation-checks">
+                                <h6>Validation Checks:</h6>
+                                <ul>
+                                    <li class="${result.validation.validationChecks.countMatch?.passed ? 'check-passed' : 'check-failed'}">
+                                        Count Match: ${result.validation.validationChecks.countMatch?.message || 'N/A'}
+                                    </li>
+                                    <li class="${result.validation.validationChecks.fieldValuesMatch?.passed ? 'check-passed' : 'check-failed'}">
+                                        Field Values: ${result.validation.validationChecks.fieldValuesMatch?.message || 'N/A'}
+                                    </li>
+                                    <li class="${result.validation.validationChecks.recordsMatch?.passed ? 'check-passed' : 'check-failed'}">
+                                        Record IDs: ${result.validation.validationChecks.recordsMatch?.message || 'N/A'}
+                                    </li>
+                                </ul>
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            }
+
+            return `
+                <div class="test-result-card ${result.status}">
+                    <div class="result-header">
+                        <h4>${result.testCaseName || 'Unknown Test'}</h4>
+                        <span class="result-status ${result.status}">${result.status}</span>
+                    </div>
+                    <div class="result-details">
+                        <p><strong>Duration:</strong> ${result.duration || 0}ms</p>
+                        <p><strong>Start Time:</strong> ${new Date(result.startTime).toLocaleString()}</p>
+                        ${result.error ? `<p><strong>Error:</strong> ${result.error}</p>` : ''}
+                        ${validationHTML}
+                        ${result.screenshots && result.screenshots.length > 0 ? `
+                            <div class="result-screenshots">
+                                <h5>Screenshots:</h5>
+                                ${result.screenshots.map(screenshot => 
+                                    `<img src="${screenshot}" alt="Test screenshot" class="result-screenshot">`
+                                ).join('')}
+                            </div>
+                        ` : ''}
+                    </div>
                 </div>
-            </div>
-        `).join('');
+            `;
+        }).join('');
     }
 
     showTestResultsSection() {
@@ -1738,6 +1842,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize Learning Phase UI
     window.learningUI = new LearningPhaseUI();
     
+    // Initialize Test Generation UI
+    window.testGenerationUI = new TestGenerationUI();
+    
     // Initialize LLM Inspector
     llmInspector = new LLMBandwidthInspector();
     
@@ -1746,6 +1853,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     console.log('🚀 LLM Bandwidth Inspector ready!');
     console.log('📚 Learning Phase UI ready!');
+    console.log('🧪 Test Generation UI ready!');
 });
 
 // Make it globally accessible

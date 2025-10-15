@@ -25,6 +25,11 @@ export class PlaywrightLearningOrchestrator {
         this.executionTrace = []; // Initialize trace
     }
 
+    // Expose RAG client for test orchestrator
+    getRagClient(): SimpleRAGClient {
+        return this.ragClient;
+    }
+
     // Add this method to log each step
     private logStep(step: string, actor: string, action: string, input: any, output: any, duration?: number) {
         const traceEntry = {

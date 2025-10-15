@@ -62,7 +62,7 @@ const playwrightLearningOrchestrator = new PlaywrightLearningOrchestrator(bedroc
 
 // Initialize Phase 2 components
 const testStorage = new TestStorage();
-const testGenerationOrchestrator = new TestGenerationOrchestrator(bedrockClient, mcpClient, testStorage);
+const testGenerationOrchestrator = new TestGenerationOrchestrator(bedrockClient, mcpClient, testStorage, playwrightLearningOrchestrator.getRagClient());
 
 // Middleware
 app.use(express.json());

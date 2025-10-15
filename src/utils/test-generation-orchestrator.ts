@@ -10,7 +10,8 @@ export class TestGenerationOrchestrator {
   constructor(
     private bedrockClient: BedrockClient,
     private mcpClient: MCPPlaywrightClient,
-    private storage: TestStorage
+    private storage: TestStorage,
+    private ragClient?: any  // Add optional RAG client
   ) {}
 
   // Main test generation method
@@ -264,7 +265,7 @@ Return JSON in this format:
         }
         
         const testStartTime = Date.now();
-        const testResult = await this.simulateTestExecution(testCase);
+        const testResult = await this.executeTestWithValidation(testCase);
         const testEndTime = Date.now();
         
         results.push({
@@ -312,6 +313,42 @@ Return JSON in this format:
     }
   }
 
+  private async executeTestWithValidation(testCase: TestCase): Promise<{status: 'passed' | 'failed' | 'skipped' | 'error', screenshots?: string[], error?: string, validation?: any}> {
+    console.log(`🧪 Executing test: ${testCase.name}`);
+    
+    try {
+      // 1. Get expected results from TSV gold standard
+      if (!this.ragClient) {
+        console.warn('⚠️ No RAG client available, using simulated execution');
+        return this.simulateTestExecution(testCase);
+      }
+      
+      const expectedResults = await this.ragClient.generateExpectedResults(testCase);
+      console.log(`📊 Expected from TSV: ${expectedResults.expectedCount} records`);
+      
+      // 2. Execute test on UI with Playwright
+      const actualRecords = await this.executeTestOnUI(testCase);
+      console.log(`🌐 Actual from UI: ${actualRecords.length} records`);
+      
+      // 3. Validate using TSV as gold standard
+      const validation = await this.ragClient.validateResults(actualRecords, expectedResults);
+      
+      return {
+        status: validation.status,
+        screenshots: [],
+        error: validation.passed ? undefined : validation.message,
+        validation: validation
+      };
+      
+    } catch (error) {
+      console.error('Test execution error:', error);
+      return {
+        status: 'error',
+        error: error.message
+      };
+    }
+  }
+
   private async simulateTestExecution(testCase: TestCase): Promise<{status: 'passed' | 'failed' | 'skipped' | 'error', screenshots?: string[], error?: string}> {
     const random = Math.random();
     
@@ -331,7 +368,69 @@ Return JSON in this format:
             screenshots: ['screenshot1.png', 'screenshot2.png']
         };
     }
-}
+  }
+
+  // Execute test on UI with Playwright
+  private async executeTestOnUI(testCase: TestCase): Promise<any[]> {
+    console.log(`🌐 Executing test on UI: ${testCase.name}`);
+    
+    // Navigate to website
+    await this.mcpClient.callTools([{
+      name: 'playwright_navigate',
+      parameters: { url: testCase.websiteUrl || 'https://www.cancer.gov/ccg/research/genome-sequencing/tcga' }
+    }]);
+    
+    // Wait for page to load
+    await this.mcpClient.callTools([{
+      name: 'playwright_wait_for',
+      parameters: { selector: 'body', timeout: 5000 }
+    }]);
+    
+    // Apply filter based on test case
+    if (testCase.type === 'filter_test') {
+      // Click filter dropdown
+      await this.mcpClient.callTools([{
+        name: 'playwright_click',
+        parameters: { selector: testCase.selectors[0] }
+      }]);
+      
+      // Select filter value
+      await this.mcpClient.callTools([{
+        name: 'playwright_fill',
+        parameters: { 
+          selector: testCase.selectors[0],
+          value: testCase.testValues[0]
+        }
+      }]);
+      
+      // Wait for results
+      await this.mcpClient.callTools([{
+        name: 'playwright_wait_for',
+        parameters: { selector: '[data-screenshot-table] tr', timeout: 5000 }
+      }]);
+    }
+    
+    // Extract actual results from UI
+    const results = await this.mcpClient.callTools([{
+      name: 'playwright_evaluate',
+      parameters: {
+        expression: `
+          const tableRows = document.querySelectorAll('[data-screenshot-table] tr:not(:first-child)');
+          Array.from(tableRows).map(row => {
+            const cells = Array.from(row.querySelectorAll('td'));
+            return {
+              case_id: cells[0]?.textContent?.trim(),
+              breed: cells[1]?.textContent?.trim(),
+              diagnosis: cells[2]?.textContent?.trim(),
+              stage: cells[3]?.textContent?.trim()
+            };
+          });
+        `
+      }
+    }]);
+    
+    return results[0]?.result[0]?.value || [];
+  }
 
   private groupBy(array: any[], key: string): Record<string, number> {
     return array.reduce((groups, item) => {
