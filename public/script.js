@@ -1090,8 +1090,32 @@ class TestGenerationUI {
                         </ol>
                     </div>
                     <div class="test-data">
-                        <h5>Test Data:</h5>
-                        <pre>${JSON.stringify(testCase.testData, null, 2)}</pre>
+                        <h5>TSV Validation Fields:</h5>
+                        <div class="tsv-validation-fields">
+                            <div class="field-row">
+                                <strong>Data Field:</strong> ${testCase.dataField || 'Not specified'}
+                            </div>
+                            <div class="field-row">
+                                <strong>Test Values:</strong> ${Array.isArray(testCase.testValues) ? testCase.testValues.join(', ') : (testCase.testValues || 'Not specified')}
+                            </div>
+                            <div class="field-row">
+                                <strong>Test Type:</strong> ${testCase.type || 'Not specified'}
+                            </div>
+                            <div class="field-row">
+                                <strong>Website URL:</strong> ${testCase.websiteUrl || 'Not specified'}
+                            </div>
+                            ${testCase.expectedResults ? `
+                            <div class="field-row">
+                                <strong>Expected Results:</strong>
+                                <ul>
+                                    ${Array.isArray(testCase.expectedResults) ? 
+                                        testCase.expectedResults.map(result => `<li>${result}</li>`).join('') : 
+                                        `<li>${testCase.expectedResults}</li>`
+                                    }
+                                </ul>
+                            </div>
+                            ` : ''}
+                        </div>
                     </div>
                     <div class="test-selectors">
                         <h5>Selectors:</h5>
