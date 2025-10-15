@@ -1,0 +1,933 @@
+# Phase 2: Test Generation - LLM-First Simplified Approach
+
+## Document Information
+| Field | Value |
+|-------|-------|
+| **Document Title** | Phase 2: Test Generation - LLM-First Simplified Approach |
+| **Version** | 2.0 |
+| **Date** | September 17, 2025 |
+| **Author** | AI Development Team |
+| **Status** | Ready for Implementation |
+
+---
+
+## Phase 2 Overview
+
+### What We're Building
+Phase 2 adds intelligent test generation using LLM to create practical test cases from discovered UI elements and database fields. The system uses Claude 3.5 Sonnet to generate realistic test scenarios based on real website analysis.
+
+### Key Objectives
+- **LLM-Powered Generation**: Use Claude 3.5 Sonnet to generate test cases
+- **Real Data Integration**: Use actual TSV field names and types
+- **Simple Storage**: Basic in-memory storage for test cases
+- **Practical Tests**: Focus on real-world test scenarios
+
+---
+
+## Simplified File Structure for Phase 2
+
+### 1. NEW FILES TO CREATE (Only 3 files)
+
+#### A. Simple Data Models
+```
+src/models/index.ts              # All data models in one file
+```
+
+#### B. Test Generation Orchestrator
+```
+src/utils/test-generation-orchestrator.ts    # Main test generation logic
+```
+
+#### C. Simple Storage
+```
+src/utils/storage.ts                         # In-memory storage for test cases
+```
+
+### 2. FILES TO UPDATE
+
+#### A. Backend Updates
+```
+src/server/express-server.ts   # Add Phase 2 API endpoints
+```
+
+#### B. Frontend Updates
+```
+public/index.html              # Add Phase 2 UI section
+public/script.js               # Add Phase 2 UI functionality
+public/styles.css              # Add Phase 2 styling
+```
+
+**This updated Phase2_status.txt document:**
+- ✅ **Simplified to 3 files** instead of 15+
+- ✅ **LLM-first approach** - Claude generates everything
+- ✅ **Real data integration** - Uses actual TSV field names
+- ✅ **Practical focus** - Real-world test scenarios
+- ✅ **Fast implementation** - Less code, more AI intelligence
+
+**Ready to start implementing the simplified Phase 2?**
+
+---
+
+## Detailed File Specifications
+
+### 1. Simple Data Models (src/models/index.ts)
+
+```typescript
+// Simple data structures - LLM handles complexity
+export interface TestCase {
+  id: string;
+  name: string;
+  description: string;
+  category: 'data_validation' | 'functionality' | 'performance' | 'ui_validation';
+  priority: 'high' | 'medium' | 'low';
+  status: 'draft' | 'ready' | 'executed' | 'failed';
+  
+  // Test Structure (LLM generates these)
+  steps: string[];              // Step-by-step instructions
+  selectors: string[];          // CSS selectors for UI elements
+  testData: any;                // Test data based on TSV fields
+  expectedResults: string[];    // Expected outcomes
+  
+  // Metadata
+  createdAt: Date;
+  updatedAt: Date;
+  tags: string[];
+}
+
+export interface TestResult {
+  testCaseId: string;
+  status: 'passed' | 'failed' | 'skipped' | 'error';
+  startTime: Date;
+  endTime?: Date;
+  duration: number;
+  screenshots: string[];
+  error?: string;
+}
+
+export interface TestData {
+  id: string;
+  testCaseId: string;
+  name: string;
+  description: string;
+  
+  // Input Data (based on TSV fields)
+  inputs: Record<string, any>;
+  
+  // Expected Outputs
+  expectedOutputs: Record<string, any>;
+  
+  // Metadata
+  createdAt: Date;
+  isTemplate: boolean;
+  tags: string[];
+}
+
+// Learning results from Phase 1
+export interface LearningResults {
+  success: boolean;
+  results: {
+    uiElements: number;
+    dbFields: number;
+    testCases: number;
+    relationships: number;
+  };
+  analysis: {
+    database: DatabaseAnalysis;
+    ui: UIAnalysis;
+    mapping: MappingAnalysis;
+  };
+}
+
+export interface DatabaseAnalysis {
+  totalFields: number;
+  fieldNames: string[];
+  fieldTypes: Record<string, string>;
+  relationships: string[];
+  businessRules: string[];
+}
+
+export interface UIAnalysis {
+  totalElements: number;
+  interactiveElements: string[];
+  dataComponents: string[];
+  navigationElements: string[];
+  formFields: string[];
+  tableColumns: string[];
+  interactionPatterns: string[];
+  dataFlows: string[];
+}
+
+export interface MappingAnalysis {
+  mappings: Array<{
+    dbField: string;
+    uiElement: string;
+    type: string;
+    selector: string;
+  }>;
+  testCases: Array<{
+    name: string;
+    description: string;
+    steps: string[];
+    selectors: string[];
+  }>;
+  validationRules: string[];
+  missingMappings: string[];
+  dataRelationships: string[];
+}
+```
+
+### 2. Test Generation Orchestrator (src/utils/test-generation-orchestrator.ts)
+
+```typescript
+import { BedrockClient } from '../chatbot/bedrock-client';
+import { MCPPlaywrightClient } from '../chatbot/mcp-client';
+import { TestStorage } from './storage';
+import { TestCase, TestData, LearningResults } from '../models';
+
+export class TestGenerationOrchestrator {
+  constructor(
+    private bedrockClient: BedrockClient,
+    private mcpClient: MCPPlaywrightClient,
+    private storage: TestStorage
+  ) {}
+
+  // Main test generation method
+  async generateTestCases(learningResults: LearningResults): Promise<TestCase[]> {
+    try {
+      console.log('Starting test case generation...');
+      
+      // Generate test cases using LLM
+      const testCases = await this.generateTestCasesWithLLM(learningResults);
+      
+      // Generate test data for each test case
+      const testCasesWithData = await this.generateTestDataForTestCases(testCases, learningResults);
+      
+      // Save test cases to storage
+      await this.storage.saveTestCases(testCasesWithData);
+      
+      console.log(`Generated ${testCasesWithData.length} test cases`);
+      return testCasesWithData;
+      
+    } catch (error) {
+      console.error('Test generation failed:', error);
+      throw error;
+    }
+  }
+
+  // LLM-powered test case generation
+  private async generateTestCasesWithLLM(learningResults: LearningResults): Promise<TestCase[]> {
+    const prompt = `Generate comprehensive test cases for a website based on the following analysis:
+
+UI Elements Discovered: ${learningResults.analysis.ui.totalElements}
+- Interactive Elements: ${learningResults.analysis.ui.interactiveElements.join(', ')}
+- Data Components: ${learningResults.analysis.ui.dataComponents.join(', ')}
+- Form Fields: ${learningResults.analysis.ui.formFields.join(', ')}
+- Table Columns: ${learningResults.analysis.ui.tableColumns.join(', ')}
+
+Database Fields: ${learningResults.analysis.database.totalFields}
+- Field Names: ${learningResults.analysis.database.fieldNames.join(', ')}
+- Field Types: ${JSON.stringify(learningResults.analysis.database.fieldTypes)}
+
+Mappings Found: ${learningResults.analysis.mapping.mappings.length}
+- Database to UI mappings: ${JSON.stringify(learningResults.analysis.mapping.mappings)}
+
+Generate practical test cases that:
+1. Test data validation using the database field names and types
+2. Test functionality of discovered UI elements
+3. Test form interactions and validation
+4. Test table operations (sorting, filtering, pagination)
+5. Test navigation and user workflows
+
+Return JSON array of test cases in this format:
+[
+  {
+    "name": "Test Case Name",
+    "description": "What this test validates",
+    "category": "data_validation|functionality|performance|ui_validation",
+    "priority": "high|medium|low",
+    "steps": ["Step 1", "Step 2", "Step 3"],
+    "selectors": ["#element1", ".class2", "input[name='field']"],
+    "testData": {"field1": "value1", "field2": "value2"},
+    "expectedResults": ["Expected outcome 1", "Expected outcome 2"],
+    "tags": ["tag1", "tag2"]
+  }
+]`;
+
+    const response = await this.bedrockClient.generateResponse([{ role: 'user', content: prompt }], []);
+    return this.parseJSONResponse(response.content);
+  }
+
+  // Generate test data based on TSV fields
+  private async generateTestDataForTestCases(testCases: TestCase[], learningResults: LearningResults): Promise<TestCase[]> {
+    const testCasesWithData = [];
+    
+    for (const testCase of testCases) {
+      // Generate test data based on database fields
+      const testData = await this.generateTestDataFromTSVFields(testCase, learningResults.analysis.database);
+      
+      testCasesWithData.push({
+        ...testCase,
+        testData: testData,
+        id: this.generateId(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        status: 'draft' as const
+      });
+    }
+    
+    return testCasesWithData;
+  }
+
+  // Generate test data from TSV field information
+  private async generateTestDataFromTSVFields(testCase: TestCase, dbAnalysis: DatabaseAnalysis): Promise<TestData> {
+    const prompt = `Generate realistic test data for this test case based on the database fields:
+
+Test Case: ${testCase.name}
+Description: ${testCase.description}
+Steps: ${testCase.steps.join(', ')}
+
+Database Fields Available:
+${dbAnalysis.fieldNames.map(field => `- ${field} (${dbAnalysis.fieldTypes[field]})`).join('\n')}
+
+Generate test data that:
+1. Uses actual field names from the database
+2. Provides realistic values based on field types
+3. Includes both valid and invalid test data
+4. Covers edge cases and boundary conditions
+
+Return JSON in this format:
+{
+  "name": "Test Data for ${testCase.name}",
+  "description": "Generated test data",
+  "inputs": {
+    "field1": "valid_value",
+    "field2": "invalid_value"
+  },
+  "expectedOutputs": {
+    "field1": "expected_result",
+    "field2": "error_message"
+  },
+  "isTemplate": true,
+  "tags": ["generated", "test_data"]
+}`;
+
+    const response = await this.bedrockClient.generateResponse([{ role: 'user', content: prompt }], []);
+    const testData = this.parseJSONResponse(response.content);
+    
+    return {
+      ...testData,
+      id: this.generateId(),
+      testCaseId: testCase.id,
+      createdAt: new Date()
+    };
+  }
+
+  // Parse JSON response from LLM
+  private parseJSONResponse(response: string): any {
+    try {
+      const startIndex = response.indexOf('[');
+      const endIndex = response.lastIndexOf(']');
+      
+      if (startIndex !== -1 && endIndex !== -1 && endIndex > startIndex) {
+        const jsonString = response.substring(startIndex, endIndex + 1);
+        return JSON.parse(jsonString);
+      }
+      
+      throw new Error('No JSON array found in response');
+    } catch (error) {
+      console.error('Failed to parse LLM response:', error);
+      return [];
+    }
+  }
+
+  // Generate unique ID
+  private generateId(): string {
+    return Date.now().toString(36) + Math.random().toString(36).substr(2);
+  }
+
+  // Get test cases from storage
+  async getTestCases(): Promise<TestCase[]> {
+    return await this.storage.getAllTestCases();
+  }
+
+  // Get test case by ID
+  async getTestCase(testCaseId: string): Promise<TestCase | null> {
+    return await this.storage.getTestCase(testCaseId);
+  }
+
+  // Update test case
+  async updateTestCase(testCase: TestCase): Promise<void> {
+    testCase.updatedAt = new Date();
+    await this.storage.updateTestCase(testCase);
+  }
+
+  // Delete test case
+  async deleteTestCase(testCaseId: string): Promise<void> {
+    await this.storage.deleteTestCase(testCaseId);
+  }
+
+  // Get test statistics
+  async getTestStatistics(): Promise<any> {
+    const testCases = await this.storage.getAllTestCases();
+    
+    return {
+      total: testCases.length,
+      byCategory: this.groupBy(testCases, 'category'),
+      byPriority: this.groupBy(testCases, 'priority'),
+      byStatus: this.groupBy(testCases, 'status'),
+      recentlyCreated: testCases.filter(tc => 
+        new Date(tc.createdAt) > new Date(Date.now() - 24 * 60 * 60 * 1000)
+      ).length
+    };
+  }
+
+  private groupBy(array: any[], key: string): Record<string, number> {
+    return array.reduce((groups, item) => {
+      const value = item[key];
+      groups[value] = (groups[value] || 0) + 1;
+      return groups;
+    }, {});
+  }
+}
+```
+
+### 3. Simple Storage (src/utils/storage.ts)
+
+```typescript
+import { TestCase, TestResult, TestData } from '../models';
+
+export class TestStorage {
+  private testCases: Map<string, TestCase> = new Map();
+  private testResults: Map<string, TestResult> = new Map();
+  private testData: Map<string, TestData> = new Map();
+
+  // Test Case Management
+  async saveTestCase(testCase: TestCase): Promise<void> {
+    this.testCases.set(testCase.id, testCase);
+  }
+
+  async saveTestCases(testCases: TestCase[]): Promise<void> {
+    testCases.forEach(testCase => {
+      this.testCases.set(testCase.id, testCase);
+    });
+  }
+
+  async getTestCase(testCaseId: string): Promise<TestCase | null> {
+    return this.testCases.get(testCaseId) || null;
+  }
+
+  async getAllTestCases(): Promise<TestCase[]> {
+    return Array.from(this.testCases.values());
+  }
+
+  async updateTestCase(testCase: TestCase): Promise<void> {
+    this.testCases.set(testCase.id, testCase);
+  }
+
+  async deleteTestCase(testCaseId: string): Promise<void> {
+    this.testCases.delete(testCaseId);
+  }
+
+  // Test Result Management
+  async saveTestResult(testResult: TestResult): Promise<void> {
+    this.testResults.set(testResult.testCaseId, testResult);
+  }
+
+  async getTestResult(testCaseId: string): Promise<TestResult | null> {
+    return this.testResults.get(testCaseId) || null;
+  }
+
+  async getAllTestResults(): Promise<TestResult[]> {
+    return Array.from(this.testResults.values());
+  }
+
+  // Test Data Management
+  async saveTestData(testData: TestData): Promise<void> {
+    this.testData.set(testData.id, testData);
+  }
+
+  async getTestData(testDataId: string): Promise<TestData | null> {
+    return this.testData.get(testDataId) || null;
+  }
+
+  async getTestDataByTestCase(testCaseId: string): Promise<TestData[]> {
+    return Array.from(this.testData.values()).filter(td => td.testCaseId === testCaseId);
+  }
+
+  // Search and Filter
+  async searchTestCases(query: string): Promise<TestCase[]> {
+    const testCases = Array.from(this.testCases.values());
+    return testCases.filter(tc => 
+      tc.name.toLowerCase().includes(query.toLowerCase()) ||
+      tc.description.toLowerCase().includes(query.toLowerCase()) ||
+      tc.tags.some(tag => tag.toLowerCase().includes(query.toLowerCase()))
+    );
+  }
+
+  async filterTestCases(filters: {
+    category?: string;
+    priority?: string;
+    status?: string;
+  }): Promise<TestCase[]> {
+    let testCases = Array.from(this.testCases.values());
+    
+    if (filters.category) {
+      testCases = testCases.filter(tc => tc.category === filters.category);
+    }
+    
+    if (filters.priority) {
+      testCases = testCases.filter(tc => tc.priority === filters.priority);
+    }
+    
+    if (filters.status) {
+      testCases = testCases.filter(tc => tc.status === filters.status);
+    }
+    
+    return testCases;
+  }
+
+  // Statistics
+  async getTestStatistics(): Promise<any> {
+    const testCases = Array.from(this.testCases.values());
+    const testResults = Array.from(this.testResults.values());
+    
+    return {
+      totalTestCases: testCases.length,
+      totalTestResults: testResults.length,
+      byCategory: this.groupBy(testCases, 'category'),
+      byPriority: this.groupBy(testCases, 'priority'),
+      byStatus: this.groupBy(testCases, 'status'),
+      passedTests: testResults.filter(tr => tr.status === 'passed').length,
+      failedTests: testResults.filter(tr => tr.status === 'failed').length,
+      averageDuration: testResults.reduce((sum, tr) => sum + tr.duration, 0) / testResults.length || 0
+    };
+  }
+
+  private groupBy(array: any[], key: string): Record<string, number> {
+    return array.reduce((groups, item) => {
+      const value = item[key];
+      groups[value] = (groups[value] || 0) + 1;
+      return groups;
+    }, {});
+  }
+
+  // Export/Import
+  async exportTestCases(): Promise<TestCase[]> {
+    return Array.from(this.testCases.values());
+  }
+
+  async importTestCases(testCases: TestCase[]): Promise<void> {
+    testCases.forEach(testCase => {
+      this.testCases.set(testCase.id, testCase);
+    });
+  }
+}
+```
+
+---
+
+## API Endpoints (express-server.ts updates)
+
+```typescript
+// Test Generation Endpoints
+app.post('/api/test/generate', async (req, res) => {
+  try {
+    const { learningResults } = req.body;
+    
+    const testGenerationOrchestrator = new TestGenerationOrchestrator(
+      bedrockClient, 
+      mcpClient, 
+      new TestStorage()
+    );
+    
+    const testCases = await testGenerationOrchestrator.generateTestCases(learningResults);
+    
+    res.json({
+      success: true,
+      testCases,
+      count: testCases.length
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/test/cases', async (req, res) => {
+  try {
+    const testGenerationOrchestrator = new TestGenerationOrchestrator(
+      bedrockClient, 
+      mcpClient, 
+      new TestStorage()
+    );
+    
+    const testCases = await testGenerationOrchestrator.getTestCases();
+    
+    res.json({
+      success: true,
+      testCases,
+      count: testCases.length
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/test/cases/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const testGenerationOrchestrator = new TestGenerationOrchestrator(
+      bedrockClient, 
+      mcpClient, 
+      new TestStorage()
+    );
+    
+    const testCase = await testGenerationOrchestrator.getTestCase(id);
+    
+    if (!testCase) {
+      return res.status(404).json({ success: false, error: 'Test case not found' });
+    }
+    
+    res.json({
+      success: true,
+      testCase
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.put('/api/test/cases/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const testCase = req.body;
+    
+    const testGenerationOrchestrator = new TestGenerationOrchestrator(
+      bedrockClient, 
+      mcpClient, 
+      new TestStorage()
+    );
+    
+    await testGenerationOrchestrator.updateTestCase(testCase);
+    
+    res.json({
+      success: true,
+      message: 'Test case updated successfully'
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.delete('/api/test/cases/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const testGenerationOrchestrator = new TestGenerationOrchestrator(
+      bedrockClient, 
+      mcpClient, 
+      new TestStorage()
+    );
+    
+    await testGenerationOrchestrator.deleteTestCase(id);
+    
+    res.json({
+      success: true,
+      message: 'Test case deleted successfully'
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/test/stats', async (req, res) => {
+  try {
+    const testGenerationOrchestrator = new TestGenerationOrchestrator(
+      bedrockClient, 
+      mcpClient, 
+      new TestStorage()
+    );
+    
+    const stats = await testGenerationOrchestrator.getTestStatistics();
+    
+    res.json({
+      success: true,
+      stats
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+```
+
+---
+
+## Frontend UI (index.html updates)
+
+```html
+<!-- Phase 2: Test Generation -->
+<div class="phase-section" id="test-generation-phase">
+    <h2>🧪 Phase 2: Generate Tests</h2>
+    
+    <!-- Test Generation Controls -->
+    <div class="test-controls">
+        <button id="generate-tests-btn" class="generate-btn">
+            <span class="btn-icon">🧪</span>
+            <span class="btn-text">Generate Test Cases</span>
+        </button>
+        <button id="refresh-tests-btn" class="refresh-btn">
+            <span class="btn-icon">🔄</span>
+            <span class="btn-text">Refresh Tests</span>
+        </button>
+    </div>
+    
+    <!-- Generated Tests Display -->
+    <div class="generated-tests" id="generated-tests" style="display: none;">
+        <h3>📋 Generated Test Cases</h3>
+        
+        <!-- Test Statistics -->
+        <div class="test-stats">
+            <div class="stat-card">
+                <h4>Total Tests</h4>
+                <div class="stat-value" id="total-tests">0</div>
+            </div>
+            <div class="stat-card">
+                <h4>Data Validation</h4>
+                <div class="stat-value" id="data-validation-tests">0</div>
+            </div>
+            <div class="stat-card">
+                <h4>Functionality</h4>
+                <div class="stat-value" id="functionality-tests">0</div>
+            </div>
+            <div class="stat-card">
+                <h4>Performance</h4>
+                <div class="stat-value" id="performance-tests">0</div>
+            </div>
+        </div>
+        
+        <!-- Test List -->
+        <div class="test-list" id="test-list">
+            <!-- Test cases will be displayed here -->
+        </div>
+    </div>
+</div>
+```
+
+---
+
+## Frontend JavaScript (script.js updates)
+
+```javascript
+class TestGenerationUI {
+    constructor() {
+        this.generatedTests = [];
+        this.setupEventListeners();
+    }
+
+    setupEventListeners() {
+        const generateBtn = document.getElementById('generate-tests-btn');
+        const refreshBtn = document.getElementById('refresh-tests-btn');
+        
+        if (generateBtn) {
+            generateBtn.addEventListener('click', () => this.generateTestCases());
+        }
+        
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', () => this.refreshTestCases());
+        }
+    }
+
+    async generateTestCases() {
+        try {
+            const generateBtn = document.getElementById('generate-tests-btn');
+            if (generateBtn) {
+                generateBtn.disabled = true;
+                generateBtn.innerHTML = '<span class="btn-icon">⏳</span><span class="btn-text">Generating...</span>';
+            }
+
+            // Get learning results from Phase 1
+            const learningResults = this.getLearningResults();
+            
+            if (!learningResults) {
+                throw new Error('No learning results found. Please complete Phase 1 first.');
+            }
+
+            // Call backend to generate test cases
+            const response = await fetch('/api/test/generate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ learningResults })
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                this.generatedTests = result.testCases;
+                this.displayTestCases();
+                this.showTestResults();
+                console.log(`✅ Generated ${result.count} test cases`);
+            } else {
+                throw new Error(result.error || 'Test generation failed');
+            }
+
+        } catch (error) {
+            console.error('❌ Test generation failed:', error);
+            this.showError(error.message);
+        } finally {
+            const generateBtn = document.getElementById('generate-tests-btn');
+            if (generateBtn) {
+                generateBtn.disabled = false;
+                generateBtn.innerHTML = '<span class="btn-icon">🧪</span><span class="btn-text">Generate Test Cases</span>';
+            }
+        }
+    }
+
+    async refreshTestCases() {
+        try {
+            const response = await fetch('/api/test/cases');
+            const result = await response.json();
+
+            if (result.success) {
+                this.generatedTests = result.testCases;
+                this.displayTestCases();
+                this.updateTestStatistics();
+                console.log(`✅ Loaded ${result.count} test cases`);
+            } else {
+                throw new Error(result.error || 'Failed to load test cases');
+            }
+
+        } catch (error) {
+            console.error('❌ Failed to refresh test cases:', error);
+            this.showError(error.message);
+        }
+    }
+
+    displayTestCases() {
+        const testList = document.getElementById('test-list');
+        if (!testList) return;
+
+        if (this.generatedTests.length === 0) {
+            testList.innerHTML = '<p>No test cases generated yet. Click "Generate Test Cases" to start.</p>';
+            return;
+        }
+
+        testList.innerHTML = this.generatedTests.map(testCase => `
+            <div class="test-case-card" data-test-id="${testCase.id}">
+                <div class="test-case-header">
+                    <h4>${testCase.name}</h4>
+                    <div class="test-case-meta">
+                        <span class="category ${testCase.category}">${testCase.category}</span>
+                        <span class="priority ${testCase.priority}">${testCase.priority}</span>
+                        <span class="status ${testCase.status}">${testCase.status}</span>
+                    </div>
+                </div>
+                <div class="test-case-body">
+                    <p class="description">${testCase.description}</p>
+                    <div class="test-steps">
+                        <h5>Steps:</h5>
+                        <ol>
+                            ${testCase.steps.map(step => `<li>${step}</li>`).join('')}
+                        </ol>
+                    </div>
+                    <div class="test-data">
+                        <h5>Test Data:</h5>
+                        <pre>${JSON.stringify(testCase.testData, null, 2)}</pre>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    updateTestStatistics() {
+        const stats = this.calculateStatistics();
+        
+        document.getElementById('total-tests').textContent = stats.total;
+        document.getElementById('data-validation-tests').textContent = stats.dataValidation;
+        document.getElementById('functionality-tests').textContent = stats.functionality;
+        document.getElementById('performance-tests').textContent = stats.performance;
+    }
+
+    calculateStatistics() {
+        return {
+            total: this.generatedTests.length,
+            dataValidation: this.generatedTests.filter(tc => tc.category === 'data_validation').length,
+            functionality: this.generatedTests.filter(tc => tc.category === 'functionality').length,
+            performance: this.generatedTests.filter(tc => tc.category === 'performance').length
+        };
+    }
+
+    showTestResults() {
+        const resultsDiv = document.getElementById('generated-tests');
+        if (resultsDiv) {
+            resultsDiv.style.display = 'block';
+        }
+        this.updateTestStatistics();
+    }
+
+    getLearningResults() {
+        // Get learning results from Phase 1
+        // This would be stored in the learning phase UI
+        return window.learningResults || null;
+    }
+
+    showError(message) {
+        // Show error message to user
+        console.error('Error:', message);
+        // You can implement a toast notification or modal here
+    }
+}
+
+// Initialize Test Generation UI
+let testGenerationUI;
+document.addEventListener('DOMContentLoaded', () => {
+    testGenerationUI = new TestGenerationUI();
+});
+```
+
+---
+
+## Implementation Order
+
+### Week 1: Core Implementation
+1. **Create src/models/index.ts** - Simple data models
+2. **Create src/utils/test-generation-orchestrator.ts** - Main orchestrator
+3. **Create src/utils/storage.ts** - Simple storage
+4. **Update src/server/express-server.ts** - Add Phase 2 API endpoints
+
+### Week 1: Frontend Implementation
+5. **Update public/index.html** - Add Phase 2 UI section
+6. **Update public/script.js** - Add Phase 2 functionality
+7. **Update public/styles.css** - Add Phase 2 styling
+8. **Integration Testing** - Test complete Phase 2 flow
+
+---
+
+## Success Criteria
+
+### Technical Metrics
+- Generate 20-50 practical test cases from learning results
+- Use real TSV field names and types in test data
+- Create realistic test scenarios based on discovered UI elements
+- Provide simple UI for test case management
+
+### User Experience
+- One-click test generation from Phase 1 results
+- Clear display of generated test cases
+- Simple test case management (view, edit, delete)
+- Real-time statistics and progress
+
+---
+
+## Notes
+
+- **LLM-First Approach**: Claude 3.5 Sonnet generates all test cases and data
+- **Simple Data Models**: Basic interfaces, no complex validation
+- **Real Data Integration**: Uses actual TSV field names and types
+- **Minimal Code**: Only 3 new files, focus on LLM intelligence
+- **Fast Development**: Leverage AI instead of complex coding
+
+---
+
+*This simplified approach focuses on LLM intelligence and practical test generation, making Phase 2 much faster to implement and maintain.*

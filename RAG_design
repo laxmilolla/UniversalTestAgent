@@ -1,0 +1,210 @@
+## **🎯 How Bedrock RAG Solves Mapping Timeouts**
+
+### **Current Problem (Why Timeouts Happen):**
+
+#### **What Happens Now:**
+1. **User uploads TSV** → **Learning orchestrator gets full TSV data**
+2. **LLM receives** entire TSV content (1000+ cases, all fields)
+3. **LLM tries to map** all UI elements to all TSV fields at once
+4. **LLM gets overwhelmed** → **TIMEOUT**
+
+#### **The Mapping Process That Times Out:**
+```
+TSV Data (1000+ cases) + UI Elements (20+ filters) → LLM → "Map everything" → TIMEOUT
+```
+
+### **How Bedrock RAG Solves This:**
+
+#### **What Happens with Bedrock:**
+1. **User uploads TSV** → **Converted to Bedrock Knowledge Base**
+2. **UI Analysis** → **Extract specific filter values** (e.g., "Golden Retriever", "Osteosarcoma")
+3. **Bedrock Query** → **"Find cases matching these specific filters"**
+4. **Bedrock returns** only relevant cases (maybe 10-20 instead of 1000+)
+5. **LLM gets** small, targeted dataset → **No timeout**
+
+#### **The New Mapping Process:**
+```
+UI Filter: "Golden Retriever" → Bedrock Query → 15 relevant cases → LLM → "Map these 15 cases" → SUCCESS
+```
+
+## **🎯 Specific Timeout Improvements:**
+
+### **1. Data Volume Reduction**
+- **Before:** LLM processes 1000+ cases
+- **After:** LLM processes 10-20 relevant cases
+- **Result:** 50x less data = no timeout
+
+### **2. Targeted Queries**
+- **Before:** "Map all UI elements to all TSV fields"
+- **After:** "Map specific UI filters to specific matching data"
+- **Result:** Focused task = faster processing
+
+### **3. Pre-filtered Data**
+- **Before:** LLM has to figure out relationships
+- **After:** Bedrock already found relevant matches
+- **Result:** LLM just maps what's already relevant
+
+### **4. Chunked Processing**
+- **Before:** One massive mapping operation
+- **After:** Multiple small, targeted queries
+- **Result:** Each query is fast and manageable
+
+## **🎯 Example of How It Works:**
+
+### **Scenario: User wants to filter by "Golden Retriever + Osteosarcoma"**
+
+#### **Current Approach (Times Out):**
+```
+1. LLM gets: All 1000+ cases with all fields
+2. LLM tries to: Map every UI element to every TSV field
+3. LLM processes: Massive dataset with complex relationships
+4. Result: TIMEOUT after 120 seconds
+```
+
+#### **Bedrock RAG Approach (No Timeout):**
+```
+1. UI Analysis: "User wants Golden Retriever + Osteosarcoma"
+2. Bedrock Query: "Find cases with breed=Golden Retriever AND diagnosis=Osteosarcoma"
+3. Bedrock Returns: 15 matching cases
+4. LLM gets: Only these 15 cases with relevant fields
+5. LLM maps: UI filters to these 15 specific cases
+6. Result: SUCCESS in 10-15 seconds
+```
+
+## **🎯 Why This Solves the Timeout Problem:**
+
+### **1. Massive Data Reduction**
+- **1000+ cases** → **10-20 relevant cases**
+- **All fields** → **Only relevant fields**
+- **Complex relationships** → **Simple mappings**
+
+### **2. Pre-computed Filtering**
+- **Bedrock does** the heavy lifting of finding matches
+- **LLM just maps** what's already relevant
+- **No complex analysis** needed
+
+### **3. Targeted Processing**
+- **Each query** is focused and specific
+- **No overwhelming** the LLM with everything
+- **Fast, reliable** processing
+
+### **4. Scalable Approach**
+- **Works with 1000 cases** or **10,000 cases**
+- **Performance stays** consistent
+- **No timeouts** regardless of dataset size
+
+## **🎯 The Key Insight:**
+
+**The timeout happens because the LLM tries to do too much at once. Bedrock RAG breaks this into small, manageable pieces:**
+
+1. **Bedrock finds** the relevant data (fast)
+2. **LLM maps** only the relevant data (fast)
+3. **No overwhelming** the LLM (no timeout)
+
+## **🎯 Bottom Line:**
+
+**Bedrock RAG solves timeouts by giving the LLM only the data it needs to map, not everything. Instead of mapping 1000+ cases to 20+ UI elements, it maps 10-20 relevant cases to specific UI filters.**
+
+**This is why RAG is the solution to your timeout problem.**
+
+**Does this clarify how Bedrock RAG solves the mapping timeouts?**
+
+## **🎯 Yes, You Will Create Duplicates - Here's How to Handle It**
+
+### **The Duplicate Problem:**
+
+#### **Scenario 1: Same File Name**
+- **Today:** Upload `OSA04_case.tsv` → Creates `OSA04_case.json` in S3
+- **Next Week:** Upload `OSA04_case.tsv` again → **Overwrites** `OSA04_case.json`
+- **Result:** No duplicates, but data gets replaced
+
+#### **Scenario 2: Different File Name**
+- **Today:** Upload `OSA04_case.tsv` → Creates `OSA04_case.json`
+- **Next Week:** Upload `OSA04_case_v2.tsv` → Creates `OSA04_case_v2.json`
+- **Result:** **Duplicates** in Bedrock Knowledge Base
+
+### **How Bedrock Handles Duplicates:**
+
+#### **1. Document ID Collision**
+- If same document ID exists, **overwrites** the old one
+- If different document ID, **creates new** document
+- **Result:** Can have multiple versions of same data
+
+#### **2. Vector Search Impact**
+- **Semantic search** might return both versions
+- **Exact filtering** might return both versions
+- **Result:** Confusing results, data inconsistency
+
+### **Solutions to Prevent Duplicates:**
+
+#### **Option 1: Timestamp-Based IDs (Recommended)**
+```typescript
+// Generate unique IDs with timestamps
+const documentId = `${fileName}-${Date.now()}-${index}`;
+// Example: "OSA04_case-1703123456789-1"
+```
+
+#### **Option 2: Version-Based IDs**
+```typescript
+// Include version in document ID
+const documentId = `${fileName}-v${version}-${index}`;
+// Example: "OSA04_case-v1-1", "OSA04_case-v2-1"
+```
+
+#### **Option 3: Hash-Based IDs**
+```typescript
+// Generate hash from content
+const contentHash = crypto.createHash('md5').update(tsvContent).digest('hex');
+const documentId = `${fileName}-${contentHash}-${index}`;
+// Example: "OSA04_case-abc123def-1"
+```
+
+### **My Recommended Approach:**
+
+#### **1. Use Timestamp-Based IDs**
+- **Unique every time** - no duplicates
+- **Easy to identify** - can see when data was uploaded
+- **Simple to implement** - just add timestamp
+
+#### **2. Add Data Cleanup**
+- **Before upload:** Check if data already exists
+- **If exists:** Ask user if they want to replace or create new version
+- **If new:** Upload with timestamp ID
+
+#### **3. Query Optimization**
+- **Filter by upload date** - only query recent data
+- **Filter by version** - only query specific version
+- **Default behavior** - query all versions, let user choose
+
+### **Implementation Strategy:**
+
+#### **Step 1: Modify Document ID Generation**
+```typescript
+const documentId = `${fileName}-${Date.now()}-${index}`;
+```
+
+#### **Step 2: Add Data Management**
+```typescript
+// Check if data exists before upload
+const existingData = await checkExistingData(fileName);
+if (existingData) {
+  // Ask user: Replace or create new version?
+}
+```
+
+#### **Step 3: Add Query Filtering**
+```typescript
+<code_block_to_apply_changes_from>
+```
+
+### **The Bottom Line:**
+
+**Yes, you will create duplicates if you upload the same data multiple times. But we can handle this by:**
+
+1. **Using unique IDs** (timestamp-based)
+2. **Adding data management** (check before upload)
+3. **Optimizing queries** (filter by date/version)
+
+**This way, you can test multiple times without losing data, and you can choose which version to query.**
+
+**Does this clarify the duplicate handling strategy?**

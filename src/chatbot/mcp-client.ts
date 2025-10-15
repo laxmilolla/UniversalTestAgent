@@ -22,7 +22,9 @@ export class MCPPlaywrightClient {
         },
         {
           capabilities: {
-            tools: {}
+            tools: {
+              listChanged: true
+            }
           }
         }
       );
@@ -35,10 +37,15 @@ export class MCPPlaywrightClient {
       this.tools = toolsResponse.tools.map(tool => ({
         name: tool.name,
         description: tool.description,
-        inputSchema: tool.inputSchema
+        inputSchema: {
+          type: 'object',
+          properties: tool.inputSchema?.properties || {},
+          required: Array.isArray(tool.inputSchema?.required) ? tool.inputSchema.required : []
+        }
       }));
 
       console.log('DEBUG: Got tools from MCP server:', this.tools.length);
+      console.log('DEBUG: Available tools:', this.tools.map(t => t.name));
 
     } catch (error) {
       console.error('Failed to connect to MCP server:', error);
@@ -59,12 +66,14 @@ export class MCPPlaywrightClient {
 
     for (const toolCall of toolCalls) {
       try {
-        console.log(`Calling tool: ${toolCall.name} with params:`, toolCall.parameters);
+        console.log(`DEBUG: Calling tool: ${toolCall.name} with params:`, toolCall.parameters);
         
         const result = await this.client.callTool({
           name: toolCall.name,
           arguments: toolCall.parameters
         });
+
+        console.log(`DEBUG: Tool ${toolCall.name} result:`, result);
 
         results.push({
           callId: toolCall.id,

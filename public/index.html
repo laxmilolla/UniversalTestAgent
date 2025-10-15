@@ -3,49 +3,340 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Playwright Chatbot</title>
+    <title>Universal Web Testing Agent</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div class="chat-container">
-        <div class="chat-header">
-            <h1>🤖 Playwright Automation Chatbot</h1>
-            <p>Ask me to automate web browsers using Playwright!</p>
-        </div>
-        
-        <div class="chat-messages" id="chatMessages">
-            <div class="message system">
-                <div class="message-content">
-                    <p>Hello! I can help you automate web browsers using Playwright. Try asking me to:</p>
-                    <ul>
-                        <li>Navigate to a website</li>
-                        <li>Take screenshots</li>
-                        <li>Fill out forms</li>
-                        <li>Click buttons</li>
-                        <li>Extract data from web pages</li>
-                    </ul>
+    <!-- Phase Navigation Tabs -->
+    <div class="phase-tabs">
+        <button class="tab-btn active" data-phase="learning">Learning Phase</button>
+        <button class="tab-btn" data-phase="test-generation">Test Generation</button>
+        <button class="tab-btn" data-phase="chatbot">Chatbot</button>
+    </div>
+
+    <!-- Learning Phase Content -->
+    <div class="phase-content active" id="learning-phase">
+        <div class="container">
+            <header class="header">
+                <h1>🧠 Universal Web Testing Agent</h1>
+                <p>AI-Powered Website Testing & Analysis</p>
+            </header>
+
+            <div class="main-content">
+                <!-- Phase 1: Learning Phase -->
+                <div class="phase-section" id="learning-phase-content">
+                    <h2>📚 Phase 1: Learn The System</h2>
+                    
+                    <!-- Add this before the file upload section -->
+                    <div class="website-url-section">
+                        <h3>🌐 Website to Analyze</h3>
+                        <input type="url" id="website-url" placeholder="Enter website URL (e.g., https://caninecommons.cancer.gov/#/explore)" class="website-url-input" />
+                    </div>
+
+                    <!-- File Upload Section -->
+                    <div class="upload-section">
+                        <h3>📁 Upload Files for Analysis</h3>
+                        
+                        <!-- TSV Files Upload -->
+                        <div class="upload-group">
+                            <label class="upload-label">
+                                <span class="upload-icon">📊</span>
+                                <span class="upload-text">TSV Database Files</span>
+                                <input type="file" id="tsv-files" multiple accept=".tsv" class="file-input">
+                            </label>
+                            <div class="upload-preview" id="tsv-preview"></div>
+                        </div>
+
+                        <!-- Screenshot Upload -->
+                        <div class="upload-group">
+                            <label class="upload-label">
+                                <span class="upload-icon">🖼️</span>
+                                <span class="upload-text">UI Screenshots</span>
+                                <input type="file" id="screenshot-files" multiple accept="image/*" class="file-input">
+                            </label>
+                            <div class="upload-preview" id="screenshot-preview"></div>
+                        </div>
+
+                        <!-- Schema Upload -->
+                        <div class="upload-group">
+                            <label class="upload-label">
+                                <span class="upload-icon">📋</span>
+                                <span class="upload-text">Schema Files (YAML)</span>
+                                <input type="file" id="schema-files" multiple accept=".yaml,.yml" class="file-input">
+                            </label>
+                            <div class="upload-preview" id="schema-preview"></div>
+                        </div>
+                    </div>
+
+                    <!-- Learning Controls -->
+                    <div class="learning-controls">
+                        <button id="learn-system-btn" class="learn-btn" disabled>
+                            <span class="btn-icon">🧠</span>
+                            <span class="btn-text">Learn The System</span>
+                        </button>
+                        <div class="learning-status" id="learning-status" style="display: none;">
+                            <div class="status-indicator">
+                                <div class="spinner"></div>
+                                <span class="status-text">Learning in progress...</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Learning Results -->
+                    <div class="learning-results" id="learning-results" style="display: none;">
+                        <h3>🎯 Learning Results</h3>
+                        <div class="results-grid">
+                            <div class="result-card">
+                                <h4>UI Elements Discovered</h4>
+                                <div class="result-value" id="ui-elements-count">0</div>
+                            </div>
+                            <div class="result-card">
+                                <h4>Database Fields Mapped</h4>
+                                <div class="result-value" id="db-fields-count">0</div>
+                            </div>
+                            <div class="result-card">
+                                <h4>Test Cases Generated</h4>
+                                <div class="result-value" id="test-cases-count">0</div>
+                            </div>
+                            <div class="result-card">
+                                <h4>Data Relationships Found</h4>
+                                <div class="result-value" id="relationships-count">0</div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-            </div>
-        </div>
-        
-        <div class="chat-input-container">
-            <div class="input-group">
-                <input type="text" id="messageInput" placeholder="Type your message here..." autocomplete="off">
-                <button id="sendButton">Send</button>
-            </div>
-            <div class="input-actions">
-                <button id="clearButton">Clear History</button>
-                <button id="toolsButton">Show Available Tools</button>
             </div>
         </div>
     </div>
 
-    <div class="modal" id="toolsModal">
-        <div class="modal-content">
-            <span class="close">&times;</span>
-            <h2>Available Playwright Tools</h2>
-            <div id="toolsList"></div>
+    <!-- Test Generation Phase Content -->
+    <div class="phase-content" id="test-generation-phase">
+        <div class="container">
+            <header class="header">
+                <h1>🧪 Universal Web Testing Agent</h1>
+                <p>AI-Powered Test Generation & Execution</p>
+            </header>
+            <div class="main-content">
+                <div class="phase-section">
+                    <h2>🧪 Phase 2: Generate Tests</h2>
+                    
+                    <!-- Test Generation Controls -->
+                    <div class="test-generation-controls">
+                        <div class="control-group">
+                            <h3>⚙️ Test Generation Options</h3>
+                            <div class="options-grid">
+                                <div class="option-item">
+                                    <label>
+                                        <input type="checkbox" id="data-validation-tests" checked>
+                                        Data Validation Tests
+                                    </label>
+                                </div>
+                                <div class="option-item">
+                                    <label>
+                                        <input type="checkbox" id="functionality-tests" checked>
+                                        Functionality Tests
+                                    </label>
+                                </div>
+                                <div class="option-item">
+                                    <label>
+                                        <input type="checkbox" id="ui-validation-tests" checked>
+                                        UI Validation Tests
+                                    </label>
+                                </div>
+                                <div class="option-item">
+                                    <label>
+                                        <input type="checkbox" id="performance-tests">
+                                        Performance Tests
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="control-group">
+                            <h3>📊 Test Configuration</h3>
+                            <div class="config-row">
+                                <label for="test-priority">Priority Level:</label>
+                                <select id="test-priority">
+                                    <option value="high">High Priority</option>
+                                    <option value="medium" selected>Medium Priority</option>
+                                    <option value="low">Low Priority</option>
+                                </select>
+                            </div>
+                            <div class="config-row">
+                                <label for="test-count">Number of Tests:</label>
+                                <input type="number" id="test-count" value="10" min="1" max="50">
+                            </div>
+                        </div>
+                        
+                        <button id="generate-tests-btn" class="generate-btn" disabled>
+                            <span class="btn-icon">🧪</span>
+                            <span class="btn-text">Generate Test Cases</span>
+                        </button>
+                        
+                        <div class="generation-status" id="generation-status" style="display: none;">
+                            <div class="status-indicator">
+                                <div class="spinner"></div>
+                                <span class="status-text">Generating test cases...</span>
+                            </div>
+                        </div>
+                        
+                        <!-- Add these buttons next to the generate button -->
+                        <div class="debug-controls">
+                            <button id="show-logs" class="debug-btn">Show Debug Logs</button>
+                            <button id="show-llm-responses" class="debug-btn">Show LLM Responses</button>
+                        </div>
+                    </div>
+
+                    <!-- Test Cases Display -->
+                    <div class="test-cases-section" id="test-cases-section" style="display: none;">
+                        <h3>📋 Generated Test Cases</h3>
+                        
+                        <!-- Test Cases Filter -->
+                        <div class="test-filter">
+                            <input type="text" id="test-search" placeholder="Search test cases...">
+                            <select id="test-category-filter">
+                                <option value="">All Categories</option>
+                                <option value="data_validation">Data Validation</option>
+                                <option value="functionality">Functionality</option>
+                                <option value="ui_validation">UI Validation</option>
+                                <option value="performance">Performance</option>
+                            </select>
+                            <select id="test-priority-filter">
+                                <option value="">All Priorities</option>
+                                <option value="high">High</option>
+                                <option value="medium">Medium</option>
+                                <option value="low">Low</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Test Cases List -->
+                        <div class="test-cases-list" id="test-cases-list">
+                            <!-- Test cases will be populated here -->
+                        </div>
+                        
+                        <!-- Test Cases Actions -->
+                        <div class="test-actions">
+                            <button id="select-all-tests" class="action-btn">Select All</button>
+                            <button id="deselect-all-tests" class="action-btn">Deselect All</button>
+                            <button id="execute-selected-tests" class="action-btn primary" disabled>Execute Selected Tests</button>
+                            <button id="export-tests" class="action-btn">Export Tests</button>
+                        </div>
+                    </div>
+
+                    <!-- Test Execution Results -->
+                    <div class="test-results-section" id="test-results-section" style="display: none;">
+                        <h3>⚡ Test Execution Results</h3>
+                        
+                        <!-- Results Summary -->
+                        <div class="results-summary" id="results-summary">
+                            <div class="summary-card">
+                                <h4>Total Tests</h4>
+                                <div class="summary-value" id="total-tests">0</div>
+                            </div>
+                            <div class="summary-card">
+                                <h4>Passed</h4>
+                                <div class="summary-value passed" id="passed-tests">0</div>
+                            </div>
+                            <div class="summary-card">
+                                <h4>Failed</h4>
+                                <div class="summary-value failed" id="failed-tests">0</div>
+                            </div>
+                            <div class="summary-card">
+                                <h4>Duration</h4>
+                                <div class="summary-value" id="execution-duration">0s</div>
+                            </div>
+                        </div>
+                        
+                        <!-- Detailed Results -->
+                        <div class="detailed-results" id="detailed-results">
+                            <!-- Individual test results will be populated here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
+    </div>
+
+    <!-- Phase 3: Execute Tests (Hidden initially) -->
+    <div class="phase-section" id="test-execution-phase" style="display: none;">
+        <h2>⚡ Phase 3: Execute Tests</h2>
+        <div class="test-execution-content">
+            <p>Test execution phase will be implemented here...</p>
+        </div>
+    </div>
+
+    <!-- Phase 4: Generate Reports (Hidden initially) -->
+    <div class="phase-section" id="reporting-phase" style="display: none;">
+        <h2>�� Phase 4: Generate Reports</h2>
+        <div class="reporting-content">
+            <p>Reporting phase will be implemented here...</p>
+        </div>
+    </div>
+
+    <!-- Chatbot Phase Content -->
+    <div class="phase-content" id="chatbot-phase">
+        <div class="chat-container">
+            <div class="chat-header">
+                <h1>�� Playwright Automation Chatbot</h1>
+                <p>Ask me to automate web browsers using Playwright!</p>
+            </div>
+            
+            <div class="chat-messages" id="chatMessages">
+                <div class="message system">
+                    <div class="message-content">
+                        <p>Hello! I can help you automate web browsers using Playwright. Try asking me to:</p>
+                        <ul>
+                            <li>Navigate to a website</li>
+                            <li>Take screenshots</li>
+                            <li>Fill out forms</li>
+                            <li>Click buttons</li>
+                            <li>Extract data from web pages</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="chat-input-container">
+                <div class="input-group">
+                    <input type="text" id="messageInput" placeholder="Type your message here..." autocomplete="off">
+                    <button id="sendButton">Send</button>
+                </div>
+                <div class="input-actions">
+                    <button id="clearButton">Clear History</button>
+                    <button id="toolsButton">Show Available Tools</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal" id="toolsModal">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <h2>Available Playwright Tools</h2>
+                <div id="toolsList"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add this after the test execution results section -->
+    <div id="log-window" class="log-window" style="display: none;">
+      <div class="log-header">
+        <h3>Debug Logs</h3>
+        <button id="clear-logs" class="btn btn-secondary">Clear Logs</button>
+        <button id="close-logs" class="btn btn-secondary">Close</button>
+      </div>
+      <div id="log-content" class="log-content"></div>
+    </div>
+
+    <!-- LLM Response Window -->
+    <div id="llm-response-window" class="log-window" style="display: none;">
+        <div class="log-header">
+            <h3>🤖 LLM Responses</h3>
+            <div class="log-controls">
+                <button id="clear-llm-responses" class="log-btn">Clear Responses</button>
+                <button id="close-llm-responses" class="log-btn">Close</button>
+            </div>
+        </div>
+        <div id="llm-response-content" class="log-content"></div>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>

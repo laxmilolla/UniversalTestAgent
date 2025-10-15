@@ -23,16 +23,18 @@ export class MessageHandler {
       timestamp: new Date()
     };
     this.conversationHistory.push(userMsg);
-    console.log('DEBUG: Added user message to history');
 
     try {
-      // Get available tools from MCP server
-      console.log('DEBUG: Getting tools from MCP server');
-      const tools = this.mcpClient.getTools();
-      console.log('DEBUG: Got tools:', tools.length);
+      // Check if this is a compound command
+      const compoundCommands = this.parseCompoundCommand(userMessage);
+      
+      if (compoundCommands.length > 1) {
+        console.log('DEBUG: Detected compound command, generating multiple tool calls');
+        return await this.executeCompoundCommand(compoundCommands, userMessage);
+      }
 
-      // Generate response from Bedrock
-      console.log('DEBUG: Calling Bedrock client');
+      // Single command - use normal Bedrock flow
+      const tools = this.mcpClient.getTools();
       const bedrockResponse = await this.bedrockClient.generateResponse(
         this.conversationHistory.map(msg => ({
           role: msg.role,
@@ -40,9 +42,7 @@ export class MessageHandler {
         })),
         tools
       );
-      console.log('DEBUG: Got Bedrock response:', bedrockResponse);
 
-      // Create assistant message
       const assistantMsg: ChatMessage = {
         id: this.generateId(),
         role: 'assistant',
@@ -51,116 +51,183 @@ export class MessageHandler {
         toolCalls: bedrockResponse.toolCalls
       };
 
-      // Execute tool calls if any
       if (bedrockResponse.toolCalls && bedrockResponse.toolCalls.length > 0) {
-        console.log(`DEBUG: Executing ${bedrockResponse.toolCalls.length} tool calls`);
         const toolResults = await this.mcpClient.callTools(bedrockResponse.toolCalls);
         assistantMsg.toolResults = toolResults;
-        console.log('DEBUG: Tool execution completed');
-
-        // Update assistant message with tool results
         const toolResultsText = this.formatToolResults(toolResults);
         assistantMsg.content += `\n\n**Tool Execution Results:**\n${toolResultsText}`;
-
-        // Check if we need to continue with more actions
-        if (this.shouldContinueWithMoreActions(userMessage, toolResults)) {
-          console.log('DEBUG: Continuing with more actions');
-          const followUpResponse = await this.continueWithMoreActions(userMessage, toolResults);
-          if (followUpResponse) {
-            assistantMsg.content += `\n\n${followUpResponse.content}`;
-            if (followUpResponse.toolResults) {
-              assistantMsg.toolResults = [...(assistantMsg.toolResults || []), ...followUpResponse.toolResults];
-            }
-          }
-        }
       }
 
       this.conversationHistory.push(assistantMsg);
-      console.log('DEBUG: Message processing completed successfully');
       return assistantMsg;
 
     } catch (error) {
-      console.log('DEBUG: Error in processMessage:', error);
       console.error('Error processing message:', error);
-
       const errorMsg: ChatMessage = {
         id: this.generateId(),
         role: 'assistant',
         content: `Sorry, I encountered an error: ${error.message}`,
         timestamp: new Date()
       };
-
       this.conversationHistory.push(errorMsg);
       return errorMsg;
     }
   }
 
-  private shouldContinueWithMoreActions(userMessage: string, toolResults: ToolResult[]): boolean {
-    const message = userMessage.toLowerCase();
-    const hasNavigation = toolResults.some(result => 
-      result.success && 
-      result.result && 
-      Array.isArray(result.result) && 
-      result.result.some((item: any) => item.text && item.text.includes('Navigated to'))
-    );
-    
-    // Check if user asked for screenshot specifically
-    const needsScreenshot = message.includes('screenshot') && hasNavigation;
-    
-    console.log('DEBUG: Should continue with more actions:', needsScreenshot);
-    return needsScreenshot;
+  private parseCompoundCommand(message: string): string[] {
+    const commands: string[] = [];
+    const lowerMessage = message.toLowerCase();
+
+    // Common compound command patterns
+    if (lowerMessage.includes(' and ')) {
+      const parts = message.split(/\s+and\s+/i);
+      commands.push(...parts);
+    } else if (lowerMessage.includes(' then ')) {
+      const parts = message.split(/\s+then\s+/i);
+      commands.push(...parts);
+    } else if (lowerMessage.includes(' after ')) {
+      const parts = message.split(/\s+after\s+/i);
+      commands.push(...parts);
+    } else {
+      // Single command
+      commands.push(message);
+    }
+
+    return commands.map(cmd => cmd.trim()).filter(cmd => cmd.length > 0);
   }
 
-  private async continueWithMoreActions(userMessage: string, previousResults: ToolResult[]): Promise<ChatMessage | null> {
-    try {
-      console.log('DEBUG: Continuing with more actions for:', userMessage);
+  private async executeCompoundCommand(commands: string[], originalMessage: string): Promise<ChatMessage> {
+    const allToolCalls: ToolCall[] = [];
+    const allToolResults: ToolResult[] = [];
+    let responseText = `I'll execute your compound request: "${originalMessage}"\n\nHere's what I'm going to do:\n`;
+
+    // Generate tool calls for each command
+    for (let i = 0; i < commands.length; i++) {
+      const command = commands[i];
+      responseText += `${i + 1}. ${command}\n`;
       
-      // Create a specific follow-up message for screenshots
-      const followUpMessage = `Now take a screenshot of the current page`;
-      
-      const followUpMsg: ChatMessage = {
-        id: this.generateId(),
-        role: 'user',
-        content: followUpMessage,
-        timestamp: new Date()
-      };
-      this.conversationHistory.push(followUpMsg);
-
-      // Get tools and generate response
-      const tools = this.mcpClient.getTools();
-      const bedrockResponse = await this.bedrockClient.generateResponse(
-        this.conversationHistory.map(msg => ({
-          role: msg.role,
-          content: msg.content
-        })),
-        tools
-      );
-
-      const assistantMsg: ChatMessage = {
-        id: this.generateId(),
-        role: 'assistant',
-        content: bedrockResponse.content,
-        timestamp: new Date(),
-        toolCalls: bedrockResponse.toolCalls
-      };
-
-      // Execute follow-up tool calls
-      if (bedrockResponse.toolCalls && bedrockResponse.toolCalls.length > 0) {
-        console.log(`DEBUG: Executing ${bedrockResponse.toolCalls.length} follow-up tool calls`);
-        const toolResults = await this.mcpClient.callTools(bedrockResponse.toolCalls);
-        assistantMsg.toolResults = toolResults;
-
-        const toolResultsText = this.formatToolResults(toolResults);
-        assistantMsg.content += `\n\n**Follow-up Tool Execution Results:**\n${toolResultsText}`;
-      }
-
-      this.conversationHistory.push(assistantMsg);
-      return assistantMsg;
-
-    } catch (error) {
-      console.log('DEBUG: Error in continueWithMoreActions:', error);
-      return null;
+      const toolCalls = await this.generateToolCallsForCommand(command);
+      allToolCalls.push(...toolCalls);
     }
+
+    responseText += `\nLet's execute these actions:\n`;
+
+    // Execute all tool calls
+    if (allToolCalls.length > 0) {
+      console.log(`DEBUG: Executing ${allToolCalls.length} tool calls for compound command`);
+      const toolResults = await this.mcpClient.callTools(allToolCalls);
+      allToolResults.push(...toolResults);
+      const toolResultsText = this.formatToolResults(toolResults);
+      responseText += `\n**Tool Execution Results:**\n${toolResultsText}`;
+    }
+
+    const assistantMsg: ChatMessage = {
+      id: this.generateId(),
+      role: 'assistant',
+      content: responseText,
+      timestamp: new Date(),
+      toolCalls: allToolCalls,
+      toolResults: allToolResults
+    };
+
+    this.conversationHistory.push(assistantMsg);
+    return assistantMsg;
+  }
+
+  private async generateToolCallsForCommand(command: string): Promise<ToolCall[]> {
+    const lowerCommand = command.toLowerCase();
+    const toolCalls: ToolCall[] = [];
+
+    // Navigation patterns
+    if (lowerCommand.includes('go to') || lowerCommand.includes('navigate to') || lowerCommand.includes('visit')) {
+      const urlMatch = command.match(/(?:go to|navigate to|visit)\s+([^\s]+)/i);
+      if (urlMatch) {
+        let url = urlMatch[1];
+        if (!url.startsWith('http')) {
+          url = 'https://' + url;
+        }
+        toolCalls.push({
+          id: this.generateId(),
+          name: 'playwright_navigate',
+          parameters: { url: url }
+        });
+      }
+    }
+
+    // Screenshot patterns
+    if (lowerCommand.includes('screenshot') || lowerCommand.includes('take a screenshot') || lowerCommand.includes('capture')) {
+      toolCalls.push({
+        id: this.generateId(),
+        name: 'playwright_screenshot',
+        parameters: { name: `screenshot_${Date.now()}` }
+      });
+    }
+
+    // Click patterns
+    if (lowerCommand.includes('click')) {
+      const clickMatch = command.match(/click\s+(.+)/i);
+      if (clickMatch) {
+        toolCalls.push({
+          id: this.generateId(),
+          name: 'playwright_click',
+          parameters: { selector: clickMatch[1] }
+        });
+      }
+    }
+
+    // Search patterns - HYBRID APPROACH
+    if (lowerCommand.includes('search for')) {
+      const searchMatch = command.match(/search for\s+(.+)/i);
+      if (searchMatch) {
+        const searchTerm = searchMatch[1];
+        
+        // Step 1: Try generic selectors first (fast)
+        const genericSelectors = [
+          'input[type="search"]',
+          'input[name="q"]',
+          'input[placeholder*="search"]',
+          'input[aria-label*="search"]',
+          'input[role="searchbox"]',
+          'input[class*="search"]',
+          'input[id*="search"]'
+        ];
+
+        // Step 2: Try each generic selector
+        for (const selector of genericSelectors) {
+          console.log("Trying selector:", selector);
+          toolCalls.push({
+            id: this.generateId(),
+            name: 'playwright_click',
+            parameters: { selector: selector }
+          });
+          toolCalls.push({
+            id: this.generateId(),
+            name: 'playwright_fill',
+            parameters: { selector: selector, value: searchTerm }
+          });
+          toolCalls.push({
+            id: this.generateId(),
+            name: 'playwright_press_key',
+            parameters: { key: 'Enter' }
+          });
+          break; // Try first selector, if it fails, we'll handle it
+        }
+      }
+    }
+
+    // Fill form patterns
+    if (lowerCommand.includes('fill') && lowerCommand.includes('form')) {
+      const fillMatch = command.match(/fill\s+(.+?)\s+with\s+(.+)/i);
+      if (fillMatch) {
+        toolCalls.push({
+          id: this.generateId(),
+          name: 'playwright_fill',
+          parameters: { selector: fillMatch[1], value: fillMatch[2] }
+        });
+      }
+    }
+
+    return toolCalls;
   }
 
   private formatToolResults(toolResults: ToolResult[]): string {
@@ -176,6 +243,15 @@ export class MessageHandler {
 
   private generateId(): string {
     return Math.random().toString(36).substr(2, 9);
+  }
+
+  // Add missing methods for compatibility
+  async handleMessage(userMessage: string, socket: any): Promise<ChatMessage> {
+    return this.processMessage(userMessage);
+  }
+
+  async getAvailableTools(): Promise<any[]> {
+    return this.mcpClient.getTools();
   }
 
   getConversationHistory(): ChatMessage[] {
