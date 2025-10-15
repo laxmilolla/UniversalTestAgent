@@ -30,27 +30,50 @@ export class TestGenerationOrchestrator {
         };
       }
       
-      // Convert Learning Phase test cases to TestCase format
-      const testCases = learningTestCases.map((tc: any, index: number) => ({
-        id: `test-${index + 1}`,
-        name: tc.name || `Test Case ${index + 1}`,
-        description: tc.description || 'No description provided',
-        category: tc.category?.toLowerCase().replace(/\s+/g, '_') || 'general',
-        priority: tc.priority?.toLowerCase() || 'medium',
-        status: 'ready' as const,
-        steps: Array.isArray(tc.steps) ? tc.steps : (tc.steps || '').split(',').map(s => s.trim()),
-        selectors: Array.isArray(tc.selectors) ? tc.selectors : [tc.selectors || '#element'],
-        testData: tc.testData || {},
-        expectedResults: tc.expectedResults || ['Test passes'],
-        // TSV Validation fields (now included from Learning Phase)
-        dataField: tc.dataField,
-        testValues: tc.testValues,
-        type: tc.type,
-        websiteUrl: tc.websiteUrl,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        tags: tc.tags || ['generated']
-      }));
+      // Convert Learning Phase test cases to TestCase format with validation
+      const testCases = learningTestCases
+        .filter(tc => {
+          // STRICT VALIDATION: Only include test cases with valid TSV validation fields
+          const hasValidDataField = tc.dataField && tc.dataField !== 'undefined';
+          const hasValidTestValues = tc.testValues && Array.isArray(tc.testValues) && tc.testValues.length > 0;
+          const hasValidSelectors = tc.selectors && Array.isArray(tc.selectors) && tc.selectors.length > 0 && 
+                                   !tc.selectors.some(s => s === 'undefined' || s.includes('undefined'));
+          
+          if (!hasValidDataField) {
+            console.warn(`⚠️ Skipping test case "${tc.name}": No valid dataField`);
+            return false;
+          }
+          if (!hasValidTestValues) {
+            console.warn(`⚠️ Skipping test case "${tc.name}": No valid testValues`);
+            return false;
+          }
+          if (!hasValidSelectors) {
+            console.warn(`⚠️ Skipping test case "${tc.name}": No valid selectors`);
+            return false;
+          }
+          
+          return true;
+        })
+        .map((tc: any, index: number) => ({
+          id: `test-${index + 1}`,
+          name: tc.name || `Test Case ${index + 1}`,
+          description: tc.description || 'No description provided',
+          category: tc.category?.toLowerCase().replace(/\s+/g, '_') || 'general',
+          priority: tc.priority?.toLowerCase() || 'medium',
+          status: 'ready' as const,
+          steps: Array.isArray(tc.steps) ? tc.steps : (tc.steps || '').split(',').map(s => s.trim()),
+          selectors: Array.isArray(tc.selectors) ? tc.selectors : [tc.selectors || '#element'],
+          testData: tc.testData || {},
+          expectedResults: tc.expectedResults || ['Test passes'],
+          // TSV Validation fields (now included from Learning Phase)
+          dataField: tc.dataField,
+          testValues: tc.testValues,
+          type: tc.type,
+          websiteUrl: tc.websiteUrl,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          tags: tc.tags || ['generated']
+        }));
       
       // Save test cases to storage
       await this.storage.saveTestCases(testCases);

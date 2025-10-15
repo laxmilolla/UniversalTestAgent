@@ -456,27 +456,31 @@ private combineHTMLAndScreenshotAnalysis(htmlPatterns: any, screenshotAnalysis: 
     if (screenshotAnalysis) {
         // Add screenshot-detected buttons
         if (screenshotAnalysis.buttons) {
-            const screenshotButtons = screenshotAnalysis.buttons.map(b => ({
-                selector: `[data-screenshot-button="${b.text}"]`,
-                type: b.type,
-                text: b.text,
-                position: b.position,
-                purpose: b.purpose,
-                source: 'screenshot'
-            }));
+            const screenshotButtons = screenshotAnalysis.buttons
+                .filter(b => b.text && b.text !== 'undefined') // STRICT VALIDATION: Only include buttons with valid text
+                .map(b => ({
+                    selector: `[data-screenshot-button="${b.text}"]`,
+                    type: b.type,
+                    text: b.text,
+                    position: b.position,
+                    purpose: b.purpose,
+                    source: 'screenshot'
+                }));
             result.buttons.push(...screenshotButtons);
         }
         
         // Add screenshot-detected forms
         if (screenshotAnalysis.forms) {
-            const screenshotForms = screenshotAnalysis.forms.map(f => ({
-                selector: `[data-screenshot-form="${f.label}"]`,
-                type: f.type,
-                label: f.label,
-                placeholder: f.placeholder,
-                position: f.position,
-                source: 'screenshot'
-            }));
+            const screenshotForms = screenshotAnalysis.forms
+                .filter(f => f.label && f.label !== 'undefined') // STRICT VALIDATION: Only include forms with valid labels
+                .map(f => ({
+                    selector: `[data-screenshot-form="${f.label}"]`,
+                    type: f.type,
+                    label: f.label,
+                    placeholder: f.placeholder,
+                    position: f.position,
+                    source: 'screenshot'
+                }));
             result.forms.push(...screenshotForms);
         }
         
