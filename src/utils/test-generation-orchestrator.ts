@@ -62,7 +62,7 @@ export class TestGenerationOrchestrator {
           priority: tc.priority?.toLowerCase() || 'medium',
           status: 'ready' as const,
           steps: Array.isArray(tc.steps) ? tc.steps : (tc.steps || '').split(',').map(s => s.trim()),
-          selectors: Array.isArray(tc.selectors) ? tc.selectors : [tc.selectors || '#element'],
+          selectors: Array.isArray(tc.selectors) ? tc.selectors : (tc.selectors ? [tc.selectors] : []),
           testData: tc.testData || {},
           expectedResults: tc.expectedResults || ['Test passes'],
           // TSV Validation fields (now included from Learning Phase)
@@ -427,7 +427,7 @@ Return JSON in this format:
     // Navigate to website
     await this.mcpClient.callTools([{
       name: 'playwright_navigate',
-      parameters: { url: testCase.websiteUrl || 'https://www.cancer.gov/ccg/research/genome-sequencing/tcga' }
+      parameters: { url: testCase.websiteUrl }
     }]);
     
     // Wait for page to load
@@ -469,10 +469,10 @@ Return JSON in this format:
           Array.from(tableRows).map(row => {
             const cells = Array.from(row.querySelectorAll('td'));
             return {
-              case_id: cells[0]?.textContent?.trim(),
-              breed: cells[1]?.textContent?.trim(),
-              diagnosis: cells[2]?.textContent?.trim(),
-              stage: cells[3]?.textContent?.trim()
+              field1: cells[0]?.textContent?.trim(),
+              field2: cells[1]?.textContent?.trim(),
+              field3: cells[2]?.textContent?.trim(),
+              field4: cells[3]?.textContent?.trim()
             };
           });
         `

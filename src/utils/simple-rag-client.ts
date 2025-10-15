@@ -346,7 +346,7 @@ Return JSON:
   ],
   "validationRules": ["Required fields", "Data types", "Constraints"],
   "missingMappings": [],
-  "dataRelationships": ["Case->Patient", "Case->Diagnosis"]
+  "dataRelationships": ["Field1->Field2", "Field1->Field3"]
 }`;
 
         try {
@@ -495,10 +495,10 @@ Return JSON:
                                 'Expected behavior observed'
                             ],
                             // ADD TSV VALIDATION FIELDS:
-                            dataField: this.fieldNames[0] || 'breed', // Use first TSV field
+                            dataField: this.fieldNames[0] || 'field1', // Use first TSV field
                             testValues: ['test_value_1', 'test_value_2'], // Default test values
                             type: 'filter_test', // Default test type
-                            websiteUrl: 'https://www.cancer.gov/ccg/research/genome-sequencing/tcga'
+                            websiteUrl: 'https://example.com'
                         };
                     });
                 }

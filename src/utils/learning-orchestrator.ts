@@ -123,8 +123,8 @@ RETURN DETAILED JSON:
 
 IMPORTANT: Even though I cannot see the actual image, please analyze this as if you were looking at a typical data exploration website (like Canine Commons) and provide a comprehensive analysis of what UI elements would typically be present:
 
-1. Data tables with columns for Case ID, Study Code, Breed, Diagnosis, etc.
-2. Filter panels with dropdowns for Breed, Diagnosis, Stage of Disease, etc.
+1. Data tables with columns for Case ID, Study Code, Field1, Field2, etc.
+2. Filter panels with dropdowns for Field1, Field2, Field3, etc.
 3. Action buttons like "Add Files", "View in JBrowse", "Export"
 4. Search boxes and pagination controls
 5. Charts showing data distributions (donut charts, bar charts)
@@ -171,7 +171,7 @@ Return JSON format:
 {
   "mappings": [
     {"dbField": "sample_id", "uiElement": "Sample ID column", "type": "display"},
-    {"dbField": "breed", "uiElement": "Breed dropdown", "type": "input"}
+    {"dbField": "field1", "uiElement": "Field 1 dropdown", "type": "input"}
   ],
   "testCases": [
     {"name": "test1", "description": "description", "steps": ["step1", "step2"]}

@@ -848,7 +848,7 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
             dataField: test.dataField,
             testValues: test.testValues,
             uiElement: test.uiElement,
-            websiteUrl: 'https://www.cancer.gov/ccg/research/genome-sequencing/tcga',
+            websiteUrl: this.currentWebsiteUrl || 'https://example.com',
             expectedResults: test.expectedResults,
             confidence: test.confidence
         }));
