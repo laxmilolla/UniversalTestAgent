@@ -493,7 +493,12 @@ Return JSON:
                                 'Test executes successfully',
                                 'No errors occur',
                                 'Expected behavior observed'
-                            ]
+                            ],
+                            // ADD TSV VALIDATION FIELDS:
+                            dataField: this.fieldNames[0] || 'breed', // Use first TSV field
+                            testValues: ['test_value_1', 'test_value_2'], // Default test values
+                            type: 'filter_test', // Default test type
+                            websiteUrl: 'https://www.cancer.gov/ccg/research/genome-sequencing/tcga'
                         };
                     });
                 }
@@ -509,7 +514,12 @@ Return JSON:
                         priority: 'High',
                         steps: ['Navigate to form', 'Test field validation', 'Verify results'],
                         selectors: ['#form', 'input[required]'],
-                        expectedResults: ['Validation works correctly']
+                        expectedResults: ['Validation works correctly'],
+                        // ADD TSV VALIDATION FIELDS:
+                        dataField: this.fieldNames[0] || 'breed',
+                        testValues: ['test_value_1', 'test_value_2'],
+                        type: 'filter_test',
+                        websiteUrl: 'https://www.cancer.gov/ccg/research/genome-sequencing/tcga'
                     },
                     {
                         name: 'Search Functionality Test', 
@@ -518,7 +528,12 @@ Return JSON:
                         priority: 'High',
                         steps: ['Navigate to search', 'Enter search criteria', 'Verify results'],
                         selectors: ['#search-input', '.results'],
-                        expectedResults: ['Search returns correct results']
+                        expectedResults: ['Search returns correct results'],
+                        // ADD TSV VALIDATION FIELDS:
+                        dataField: this.fieldNames[1] || 'diagnosis',
+                        testValues: ['test_search_1', 'test_search_2'],
+                        type: 'search_test',
+                        websiteUrl: 'https://www.cancer.gov/ccg/research/genome-sequencing/tcga'
                     },
                     {
                         name: 'Data Relationship Test',
@@ -527,7 +542,12 @@ Return JSON:
                         priority: 'Medium',
                         steps: ['Select record', 'Navigate to related data', 'Verify consistency'],
                         selectors: ['.record-item', '.related-data'],
-                        expectedResults: ['Relationships work correctly']
+                        expectedResults: ['Relationships work correctly'],
+                        // ADD TSV VALIDATION FIELDS:
+                        dataField: this.fieldNames[2] || 'stage',
+                        testValues: ['test_stage_1', 'test_stage_2'],
+                        type: 'filter_test',
+                        websiteUrl: 'https://www.cancer.gov/ccg/research/genome-sequencing/tcga'
                     },
                     {
                         name: 'Error Handling Test',
@@ -536,7 +556,12 @@ Return JSON:
                         priority: 'Medium', 
                         steps: ['Test invalid input', 'Verify error messages', 'Check recovery'],
                         selectors: ['.error-message', '.validation-alert'],
-                        expectedResults: ['Errors handled gracefully']
+                        expectedResults: ['Errors handled gracefully'],
+                        // ADD TSV VALIDATION FIELDS:
+                        dataField: this.fieldNames[3] || 'patient_id',
+                        testValues: ['invalid_id', 'empty_value'],
+                        type: 'filter_test',
+                        websiteUrl: 'https://www.cancer.gov/ccg/research/genome-sequencing/tcga'
                     },
                     {
                         name: 'Performance Test',
@@ -545,7 +570,12 @@ Return JSON:
                         priority: 'Low',
                         steps: ['Load large dataset', 'Test response times', 'Check memory usage'],
                         selectors: ['.loading-indicator', '.results-container'],
-                        expectedResults: ['Performance within acceptable limits']
+                        expectedResults: ['Performance within acceptable limits'],
+                        // ADD TSV VALIDATION FIELDS:
+                        dataField: this.fieldNames[4] || 'case_id',
+                        testValues: ['large_dataset_test'],
+                        type: 'filter_test',
+                        websiteUrl: 'https://www.cancer.gov/ccg/research/genome-sequencing/tcga'
                     }
                 ];
             }
