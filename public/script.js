@@ -1044,11 +1044,16 @@ class TestGenerationUI {
             steps: typeof testCase.steps === 'string' 
                 ? testCase.steps.split(' ').filter(step => step.length > 0)
                 : testCase.steps || [],
-            selectors: testCase.selectors || 'No selectors provided',
+            selectors: Array.isArray(testCase.selectors) ? testCase.selectors : [testCase.selectors || '#element'],
             category: testCase.category?.toLowerCase().replace(/\s+/g, '_') || 'general',
             priority: testCase.priority?.toLowerCase() || 'medium',
             type: testCase.type || 'functional',
-            status: 'pending'
+            status: 'pending',
+            // PRESERVE TSV VALIDATION FIELDS:
+            dataField: testCase.dataField,
+            testValues: testCase.testValues,
+            websiteUrl: testCase.websiteUrl,
+            expectedResults: testCase.expectedResults || ['Test passes']
         }));
     }
 

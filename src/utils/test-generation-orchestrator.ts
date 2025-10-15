@@ -14,29 +14,56 @@ export class TestGenerationOrchestrator {
     private ragClient?: any  // Add optional RAG client
   ) {}
 
-  // Main test generation method
+  // Main test generation method - now uses Learning Phase test cases
   async generateTestCases(learningResults: LearningResults, testOptions?: any): Promise<{success: boolean, testCases?: TestCase[], statistics?: any, error?: string}> {
     try {
-      console.log('Starting test case generation...');
+      console.log('Using test cases from Learning Phase...');
       
-      // Generate test cases using LLM
-      const testCases = await this.generateTestCasesWithLLM(learningResults);
+      // Get test cases from Learning Phase (already generated with TSV validation fields)
+      const learningTestCases = learningResults.analysis.mapping.testCases || [];
       
-      // Generate test data for each test case
-      const testCasesWithData = await this.generateTestDataForTestCases(testCases, learningResults);
+      if (learningTestCases.length === 0) {
+        console.warn('No test cases found in Learning Phase results');
+        return {
+          success: false,
+          error: 'No test cases found in Learning Phase results'
+        };
+      }
+      
+      // Convert Learning Phase test cases to TestCase format
+      const testCases = learningTestCases.map((tc: any, index: number) => ({
+        id: `test-${index + 1}`,
+        name: tc.name || `Test Case ${index + 1}`,
+        description: tc.description || 'No description provided',
+        category: tc.category?.toLowerCase().replace(/\s+/g, '_') || 'general',
+        priority: tc.priority?.toLowerCase() || 'medium',
+        status: 'ready' as const,
+        steps: Array.isArray(tc.steps) ? tc.steps : (tc.steps || '').split(',').map(s => s.trim()),
+        selectors: Array.isArray(tc.selectors) ? tc.selectors : [tc.selectors || '#element'],
+        testData: tc.testData || {},
+        expectedResults: tc.expectedResults || ['Test passes'],
+        // TSV Validation fields (now included from Learning Phase)
+        dataField: tc.dataField,
+        testValues: tc.testValues,
+        type: tc.type,
+        websiteUrl: tc.websiteUrl,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        tags: tc.tags || ['generated']
+      }));
       
       // Save test cases to storage
-      await this.storage.saveTestCases(testCasesWithData);
+      await this.storage.saveTestCases(testCases);
       
-      console.log(`Generated ${testCasesWithData.length} test cases`);
+      console.log(`Loaded ${testCases.length} test cases from Learning Phase`);
       
       return {
         success: true,
-        testCases: testCasesWithData,
+        testCases: testCases,
         statistics: {
-          total: testCasesWithData.length,
-          byCategory: this.groupBy(testCasesWithData, 'category'),
-          byPriority: this.groupBy(testCasesWithData, 'priority')
+          total: testCases.length,
+          byCategory: this.groupBy(testCases, 'category'),
+          byPriority: this.groupBy(testCases, 'priority')
         }
       };
       
@@ -49,8 +76,8 @@ export class TestGenerationOrchestrator {
     }
   }
 
-  // LLM-powered test case generation
-  private async generateTestCasesWithLLM(learningResults: LearningResults): Promise<TestCase[]> {
+  // OLD LLM-powered test case generation (NOT USED - using Learning Phase test cases instead)
+  private async generateTestCasesWithLLM_OLD(learningResults: LearningResults): Promise<TestCase[]> {
     console.log('\n=== TEST CASE GENERATION - SENDING TO LLM ===');
     
     const prompt = `Generate comprehensive test cases for a website based on the following analysis:

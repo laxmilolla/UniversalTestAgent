@@ -839,7 +839,14 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
             selectors: test.selectors,
             category: test.category,
             priority: test.priority,
-            type: test.type
+            type: test.type,
+            // ADD TSV VALIDATION FIELDS:
+            dataField: test.dataField,
+            testValues: test.testValues,
+            uiElement: test.uiElement,
+            websiteUrl: 'https://www.cancer.gov/ccg/research/genome-sequencing/tcga',
+            expectedResults: test.expectedResults,
+            confidence: test.confidence
         }));
     }
     
@@ -1336,9 +1343,15 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
                         `Interact with ${element.text || element.label || 'the element'}`,
                         `Verify expected behavior`
                     ],
+                    selectors: [element.selector || '#interactive-element'],
+                    category: 'functionality',
                     type: element.type || 'interactive',
                     priority: 'medium',
-                    source: element.source || 'ui-analysis'
+                    source: element.source || 'ui-analysis',
+                    // ADD TSV VALIDATION FIELDS (with defaults):
+                    dataField: 'breed', // Default field for testing
+                    testValues: ['Golden Retriever', 'Labrador'], // Default test values
+                    websiteUrl: 'https://www.cancer.gov/ccg/research/genome-sequencing/tcga'
                 });
             });
         } else {
@@ -1358,9 +1371,15 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
                         `Verify data is displayed correctly`,
                         `Test data interactions if applicable`
                     ],
+                    selectors: [component.selector || '#data-component'],
+                    category: 'data-validation',
                     type: 'data-validation',
                     priority: 'high',
-                    source: component.source || 'ui-analysis'
+                    source: component.source || 'ui-analysis',
+                    // ADD TSV VALIDATION FIELDS (with defaults):
+                    dataField: 'diagnosis', // Default field for testing
+                    testValues: ['Cancer', 'Normal'], // Default test values
+                    websiteUrl: 'https://www.cancer.gov/ccg/research/genome-sequencing/tcga'
                 });
             });
         } else {
