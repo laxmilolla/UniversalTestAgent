@@ -32,7 +32,19 @@ export class UniversalPatternMatcher {
     const connections: TestableConnection[] = [];
 
     categorical.forEach(dataField => {
+      // STRICT VALIDATION: Skip if no values
+      if (!dataField.values || dataField.values.length === 0) {
+        console.warn(`⚠️ Skipping ${dataField.name}: No values from TSV`);
+        return;
+      }
+      
       filters.forEach(uiElement => {
+        // STRICT VALIDATION: Skip if no selector
+        if (!uiElement.selector || uiElement.selector === 'undefined') {
+          console.warn(`⚠️ Skipping ${dataField.name}: No valid UI selector found`);
+          return;
+        }
+        
         const confidence = this.calculateCategoricalFilterConfidence(dataField, uiElement);
         
         if (confidence > 0.2) { // Minimum confidence threshold
@@ -55,7 +67,19 @@ export class UniversalPatternMatcher {
     const connections: TestableConnection[] = [];
 
     searchable.forEach(dataField => {
+      // STRICT VALIDATION: Skip if no sample values
+      if (!dataField.sampleValues || dataField.sampleValues.length === 0) {
+        console.warn(`⚠️ Skipping ${dataField.name}: No sample values from TSV`);
+        return;
+      }
+      
       search.forEach(uiElement => {
+        // STRICT VALIDATION: Skip if no selector
+        if (!uiElement.selector || uiElement.selector === 'undefined') {
+          console.warn(`⚠️ Skipping ${dataField.name}: No valid UI selector found`);
+          return;
+        }
+        
         const confidence = this.calculateSearchableSearchConfidence(dataField, uiElement);
         
         if (confidence > 0.2) {
@@ -78,7 +102,19 @@ export class UniversalPatternMatcher {
     const connections: TestableConnection[] = [];
 
     numerical.forEach(dataField => {
+      // STRICT VALIDATION: Skip if no min/max values
+      if (typeof dataField.min === 'undefined' || typeof dataField.max === 'undefined') {
+        console.warn(`⚠️ Skipping ${dataField.name}: No min/max values from TSV`);
+        return;
+      }
+      
       filters.forEach(uiElement => {
+        // STRICT VALIDATION: Skip if no selector
+        if (!uiElement.selector || uiElement.selector === 'undefined') {
+          console.warn(`⚠️ Skipping ${dataField.name}: No valid UI selector found`);
+          return;
+        }
+        
         // Numerical fields work well with sliders and range inputs
         if (uiElement.type === 'slider' || uiElement.type === 'dropdown') {
           connections.push({
@@ -100,7 +136,19 @@ export class UniversalPatternMatcher {
     const connections: TestableConnection[] = [];
 
     sortable.forEach(dataField => {
+      // STRICT VALIDATION: Skip if no sample values
+      if (!dataField.sampleValues || dataField.sampleValues.length === 0) {
+        console.warn(`⚠️ Skipping ${dataField.name}: No sample values from TSV`);
+        return;
+      }
+      
       sortElements.forEach(uiElement => {
+        // STRICT VALIDATION: Skip if no selector
+        if (!uiElement.selector || uiElement.selector === 'undefined') {
+          console.warn(`⚠️ Skipping ${dataField.name}: No valid UI selector found`);
+          return;
+        }
+        
         connections.push({
           dataField: dataField.name,
           uiElement: uiElement.selector,

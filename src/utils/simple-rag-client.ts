@@ -504,80 +504,10 @@ Return JSON:
                 }
             }
             
-            // If no test cases found, create default ones
+            // If no test cases found, DON'T create default ones
             if (testCases.length === 0) {
-                testCases = [
-                    {
-                        name: 'Field Validation Test',
-                        description: 'Test that database fields are properly validated',
-                        category: 'Data Integrity',
-                        priority: 'High',
-                        steps: ['Navigate to form', 'Test field validation', 'Verify results'],
-                        selectors: ['#form', 'input[required]'],
-                        expectedResults: ['Validation works correctly'],
-                        // ADD TSV VALIDATION FIELDS:
-                        dataField: this.fieldNames[0] || 'breed',
-                        testValues: ['test_value_1', 'test_value_2'],
-                        type: 'filter_test',
-                        websiteUrl: 'https://www.cancer.gov/ccg/research/genome-sequencing/tcga'
-                    },
-                    {
-                        name: 'Search Functionality Test', 
-                        description: 'Test search and filter functionality',
-                        category: 'Search & Filter',
-                        priority: 'High',
-                        steps: ['Navigate to search', 'Enter search criteria', 'Verify results'],
-                        selectors: ['#search-input', '.results'],
-                        expectedResults: ['Search returns correct results'],
-                        // ADD TSV VALIDATION FIELDS:
-                        dataField: this.fieldNames[1] || 'diagnosis',
-                        testValues: ['test_search_1', 'test_search_2'],
-                        type: 'search_test',
-                        websiteUrl: 'https://www.cancer.gov/ccg/research/genome-sequencing/tcga'
-                    },
-                    {
-                        name: 'Data Relationship Test',
-                        description: 'Test data relationships and navigation',
-                        category: 'Data Relationships', 
-                        priority: 'Medium',
-                        steps: ['Select record', 'Navigate to related data', 'Verify consistency'],
-                        selectors: ['.record-item', '.related-data'],
-                        expectedResults: ['Relationships work correctly'],
-                        // ADD TSV VALIDATION FIELDS:
-                        dataField: this.fieldNames[2] || 'stage',
-                        testValues: ['test_stage_1', 'test_stage_2'],
-                        type: 'filter_test',
-                        websiteUrl: 'https://www.cancer.gov/ccg/research/genome-sequencing/tcga'
-                    },
-                    {
-                        name: 'Error Handling Test',
-                        description: 'Test error handling and edge cases',
-                        category: 'Error Handling',
-                        priority: 'Medium', 
-                        steps: ['Test invalid input', 'Verify error messages', 'Check recovery'],
-                        selectors: ['.error-message', '.validation-alert'],
-                        expectedResults: ['Errors handled gracefully'],
-                        // ADD TSV VALIDATION FIELDS:
-                        dataField: this.fieldNames[3] || 'patient_id',
-                        testValues: ['invalid_id', 'empty_value'],
-                        type: 'filter_test',
-                        websiteUrl: 'https://www.cancer.gov/ccg/research/genome-sequencing/tcga'
-                    },
-                    {
-                        name: 'Performance Test',
-                        description: 'Test system performance with large datasets',
-                        category: 'Performance',
-                        priority: 'Low',
-                        steps: ['Load large dataset', 'Test response times', 'Check memory usage'],
-                        selectors: ['.loading-indicator', '.results-container'],
-                        expectedResults: ['Performance within acceptable limits'],
-                        // ADD TSV VALIDATION FIELDS:
-                        dataField: this.fieldNames[4] || 'case_id',
-                        testValues: ['large_dataset_test'],
-                        type: 'filter_test',
-                        websiteUrl: 'https://www.cancer.gov/ccg/research/genome-sequencing/tcga'
-                    }
-                ];
+                console.warn('⚠️ No test cases found in LLM response - will not generate fallback test cases');
+                // Return empty array instead of defaults
             }
             
             const result = {

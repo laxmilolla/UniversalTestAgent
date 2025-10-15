@@ -183,14 +183,16 @@ discoverUIPatterns(html: string): UIPatterns {
         const uniqueCount = uniqueValues.length;
         const totalCount = values.length;
   
-        // Categorical if: has repeated values AND not too many unique values
-        if (uniqueCount > 1 && uniqueCount < totalCount * 0.8 && uniqueCount < 50) {
+        // STRICT VALIDATION: Categorical if: has repeated values AND not too many unique values AND sufficient data
+        if (uniqueCount > 1 && uniqueCount < totalCount * 0.8 && uniqueCount < 50 && values.length >= 3) {
           categorical.push({
             name: field,
             values: uniqueValues,
             uniqueCount,
             totalCount
           });
+        } else if (values.length < 3) {
+          console.warn(`⚠️ Skipping categorical field ${field}: Insufficient sample values (${values.length} < 3)`);
         }
       });
   
@@ -208,13 +210,16 @@ discoverUIPatterns(html: string): UIPatterns {
           return typeof val === 'number' ? val : parseFloat(String(val));
         }).filter(v => !isNaN(v));
   
-        if (values.length > 0) {
+        // STRICT VALIDATION: Only include if we have sufficient numerical data
+        if (values.length >= 3) {
           numerical.push({
             name: field,
             min: Math.min(...values),
             max: Math.max(...values),
             average: values.reduce((a, b) => a + b, 0) / values.length
           });
+        } else if (values.length > 0) {
+          console.warn(`⚠️ Skipping numerical field ${field}: Insufficient sample values (${values.length} < 3)`);
         }
       });
   
@@ -252,13 +257,15 @@ discoverUIPatterns(html: string): UIPatterns {
         const values = data.map(record => String(record[field] || '')).filter(v => v);
         const avgLength = values.reduce((sum, val) => sum + val.length, 0) / values.length;
   
-        // Searchable if: text content AND reasonable length
-        if (avgLength > 2 && avgLength < 200) {
+        // STRICT VALIDATION: Only include if we have actual sample values
+        if (avgLength > 2 && avgLength < 200 && values.length >= 3) {
           searchable.push({
             name: field,
             sampleValues: values.slice(0, 5),
             avgLength
           });
+        } else if (values.length < 3) {
+          console.warn(`⚠️ Skipping searchable field ${field}: Insufficient sample values (${values.length} < 3)`);
         }
       });
   
@@ -304,7 +311,11 @@ discoverUIPatterns(html: string): UIPatterns {
       fields.forEach(field => {
         const values = data.map(record => String(record[field] || '')).filter(v => v);
         
-        if (values.length === 0) return;
+        // STRICT VALIDATION: Only process if we have sufficient data
+        if (values.length < 3) {
+          console.warn(`⚠️ Skipping sortable field ${field}: Insufficient sample values (${values.length} < 3)`);
+          return;
+        }
 
         // Check if field is numeric
         const numericValues = values.map(v => parseFloat(v)).filter(v => !isNaN(v));
@@ -569,11 +580,16 @@ discoverUIPatterns(html: string): UIPatterns {
       let match;
       while ((match = searchRegex.exec(html)) !== null) {
         const placeholderMatch = match[0].match(/placeholder=["']([^"']+)["']/);
-        search.push({
-          selector: 'input[type="search"]',
-          type: 'search',
-          placeholder: placeholderMatch ? placeholderMatch[1] : undefined
-        });
+        const selector = 'input[type="search"]';
+        
+        // STRICT VALIDATION: Only add if selector is valid
+        if (selector && selector.trim() !== '') {
+          search.push({
+            selector: selector,
+            type: 'search',
+            placeholder: placeholderMatch ? placeholderMatch[1] : undefined
+          });
+        }
       }
   
       // Text inputs that might be search
@@ -581,11 +597,16 @@ discoverUIPatterns(html: string): UIPatterns {
       while ((match = textRegex.exec(html)) !== null) {
         const placeholderMatch = match[0].match(/placeholder=["']([^"']+)["']/);
         if (placeholderMatch && placeholderMatch[1].toLowerCase().includes('search')) {
-          search.push({
-            selector: 'input[type="text"]',
-            type: 'text',
-            placeholder: placeholderMatch[1]
-          });
+          const selector = 'input[type="text"]';
+          
+          // STRICT VALIDATION: Only add if selector is valid
+          if (selector && selector.trim() !== '') {
+            search.push({
+              selector: selector,
+              type: 'text',
+              placeholder: placeholderMatch[1]
+            });
+          }
         }
       }
     }
@@ -600,11 +621,16 @@ discoverUIPatterns(html: string): UIPatterns {
         const ariaLabelMatch = match[0].match(/aria-label=["']([^"']+)["']/i);
         
         if (placeholderMatch || ariaLabelMatch) {
-          search.push({
-            selector: `[aria-label="${ariaLabelMatch?.[1] || placeholderMatch?.[1]}"]`,
-            type: 'text',
-            placeholder: placeholderMatch?.[1]
-          });
+          const selector = `[aria-label="${ariaLabelMatch?.[1] || placeholderMatch?.[1]}"]`;
+          
+          // STRICT VALIDATION: Only add if selector is valid
+          if (selector && selector !== 'undefined' && selector.trim() !== '') {
+            search.push({
+              selector: selector,
+              type: 'text',
+              placeholder: placeholderMatch?.[1]
+            });
+          }
         }
       }
 
@@ -620,10 +646,15 @@ discoverUIPatterns(html: string): UIPatterns {
           );
           
           if (searchClass) {
-            search.push({
-              selector: `.${searchClass}`,
-              type: 'text'
-            });
+            const selector = `.${searchClass}`;
+            
+            // STRICT VALIDATION: Only add if selector is valid
+            if (selector && selector !== 'undefined' && selector.trim() !== '') {
+              search.push({
+                selector: selector,
+                type: 'text'
+              });
+            }
           }
         }
       }

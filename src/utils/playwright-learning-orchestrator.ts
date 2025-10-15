@@ -1334,24 +1334,32 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
         if (uiAnalysis.interactiveElements && uiAnalysis.interactiveElements.length > 0) {
             console.log('🎯 Found interactive elements for test cases:', uiAnalysis.interactiveElements.length);
             uiAnalysis.interactiveElements.forEach((element: any, index: number) => {
+                // STRICT VALIDATION: Only generate if element has required data
+                if (!element.text && !element.label) {
+                    console.warn(`⚠️ Skipping interactive element ${index}: No text/label`);
+                    return;
+                }
+                if (!element.selector) {
+                    console.warn(`⚠️ Skipping interactive element ${index}: No selector`);
+                    return;
+                }
+                
                 testCases.push({
                     name: `test_interactive_${index + 1}`,
-                    description: `Test interaction with ${element.text || element.label || 'element'}`,
+                    description: `Test interaction with ${element.text || element.label}`,
                     steps: [
                         `Navigate to the page`,
-                        `Locate ${element.text || element.label || 'the element'}`,
-                        `Interact with ${element.text || element.label || 'the element'}`,
+                        `Locate ${element.text || element.label}`,
+                        `Interact with ${element.text || element.label}`,
                         `Verify expected behavior`
                     ],
-                    selectors: [element.selector || '#interactive-element'],
+                    selectors: [element.selector],
                     category: 'functionality',
                     type: element.type || 'interactive',
                     priority: 'medium',
-                    source: element.source || 'ui-analysis',
-                    // ADD TSV VALIDATION FIELDS (with defaults):
-                    dataField: 'breed', // Default field for testing
-                    testValues: ['Golden Retriever', 'Labrador'], // Default test values
-                    websiteUrl: 'https://www.cancer.gov/ccg/research/genome-sequencing/tcga'
+                    source: element.source || 'ui-analysis'
+                    // REMOVED: Default dataField, testValues, websiteUrl
+                    // These MUST come from actual TSV data, not defaults
                 });
             });
         } else {
@@ -1362,6 +1370,16 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
         if (uiAnalysis.dataComponents && uiAnalysis.dataComponents.length > 0) {
             console.log('🎯 Found data components for test cases:', uiAnalysis.dataComponents.length);
             uiAnalysis.dataComponents.forEach((component: any, index: number) => {
+                // STRICT VALIDATION: Only generate if component has required data
+                if (!component.title && !component.text) {
+                    console.warn(`⚠️ Skipping data component ${index}: No title/text`);
+                    return;
+                }
+                if (!component.selector) {
+                    console.warn(`⚠️ Skipping data component ${index}: No selector`);
+                    return;
+                }
+                
                 testCases.push({
                     name: `test_data_${index + 1}`,
                     description: `Test data component: ${component.title || 'data-component'}`,
@@ -1371,15 +1389,13 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
                         `Verify data is displayed correctly`,
                         `Test data interactions if applicable`
                     ],
-                    selectors: [component.selector || '#data-component'],
+                    selectors: [component.selector],
                     category: 'data-validation',
                     type: 'data-validation',
                     priority: 'high',
-                    source: component.source || 'ui-analysis',
-                    // ADD TSV VALIDATION FIELDS (with defaults):
-                    dataField: 'diagnosis', // Default field for testing
-                    testValues: ['Cancer', 'Normal'], // Default test values
-                    websiteUrl: 'https://www.cancer.gov/ccg/research/genome-sequencing/tcga'
+                    source: component.source || 'ui-analysis'
+                    // REMOVED: Default dataField, testValues, websiteUrl
+                    // These MUST come from actual TSV data, not defaults
                 });
             });
         } else {

@@ -22,27 +22,54 @@ export class UniversalTestGenerator {
   generateTests(connections: TestableConnections): UniversalTestCase[] {
     const tests: UniversalTestCase[] = [];
 
-    // Generate filter tests
+    // Generate filter tests with validation
     connections.categoricalToFilters.forEach(connection => {
-      tests.push(this.generateFilterTest(connection));
+      if (this.isValidConnection(connection)) {
+        tests.push(this.generateFilterTest(connection));
+      } else {
+        console.warn(`⚠️ Skipping invalid filter connection: ${connection.dataField}`);
+      }
     });
 
-    // Generate search tests
+    // Generate search tests with validation
     connections.searchableToSearch.forEach(connection => {
-      tests.push(this.generateSearchTest(connection));
+      if (this.isValidConnection(connection)) {
+        tests.push(this.generateSearchTest(connection));
+      } else {
+        console.warn(`⚠️ Skipping invalid search connection: ${connection.dataField}`);
+      }
     });
 
-    // Generate numerical filter tests
+    // Generate numerical filter tests with validation
     connections.numericalToFilters.forEach(connection => {
-      tests.push(this.generateNumericalFilterTest(connection));
+      if (this.isValidConnection(connection)) {
+        tests.push(this.generateNumericalFilterTest(connection));
+      } else {
+        console.warn(`⚠️ Skipping invalid numerical filter connection: ${connection.dataField}`);
+      }
     });
 
-    // Generate sort tests
+    // Generate sort tests with validation
     connections.sortableToSort.forEach(connection => {
-      tests.push(this.generateSortTest(connection));
+      if (this.isValidConnection(connection)) {
+        tests.push(this.generateSortTest(connection));
+      } else {
+        console.warn(`⚠️ Skipping invalid sort connection: ${connection.dataField}`);
+      }
     });
 
     return tests;
+  }
+
+  // Add validation method
+  private isValidConnection(connection: TestableConnection): boolean {
+    return !!(
+      connection.dataField &&
+      connection.uiElement &&
+      connection.uiElement !== 'undefined' &&
+      connection.testValues &&
+      connection.testValues.length > 0
+    );
   }
 
   // Generate universal filter test
