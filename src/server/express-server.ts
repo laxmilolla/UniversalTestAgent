@@ -438,6 +438,60 @@ app.post('/api/test/execute', async (req, res) => {
     }
 });
 
+// Test Reports API
+app.get('/api/test/reports', async (req, res) => {
+    try {
+        const fs = require('fs');
+        const path = require('path');
+        const reportsDir = path.join(__dirname, '../../public/test-reports');
+        
+        if (!fs.existsSync(reportsDir)) {
+            return res.json({ success: true, runs: [] });
+        }
+        
+        const runs = fs.readdirSync(reportsDir)
+            .filter(dir => fs.statSync(path.join(reportsDir, dir)).isDirectory())
+            .map(runId => {
+                const runPath = path.join(reportsDir, runId);
+                const metadataPath = path.join(runPath, 'run-metadata.json');
+                
+                if (fs.existsSync(metadataPath)) {
+                    const metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
+                    return {
+                        runId: runId,
+                        timestamp: metadata.timestamp,
+                        totalTests: metadata.totalTests,
+                        passed: metadata.passed,
+                        failed: metadata.failed,
+                        error: metadata.error,
+                        duration: metadata.duration,
+                        summaryReportUrl: `/test-reports/${runId}/summary-report.html`
+                    };
+                }
+                
+                return {
+                    runId: runId,
+                    timestamp: fs.statSync(runPath).mtime.toISOString(),
+                    totalTests: 0,
+                    passed: 0,
+                    failed: 0,
+                    error: 0,
+                    duration: 0,
+                    summaryReportUrl: `/test-reports/${runId}/summary-report.html`
+                };
+            })
+            .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        
+        res.json({ success: true, runs });
+    } catch (error) {
+        console.error('Failed to list test reports:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to list test reports' 
+        });
+    }
+});
+
 app.get('/api/test/results', async (req, res) => {
     try {
         const testResults = await testStorage.getAllTestResults();

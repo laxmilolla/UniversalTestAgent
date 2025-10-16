@@ -297,6 +297,27 @@ Return JSON in this format:
     try {
       console.log('Starting test execution for test cases:', testCaseIds);
       
+      // Generate run ID and create run folder
+      const runId = `run-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5)}`;
+      const runFolder = `public/test-reports/${runId}`;
+      const fs = require('fs');
+      
+      if (!fs.existsSync(runFolder)) {
+        fs.mkdirSync(runFolder, { recursive: true });
+      }
+      
+      // Create run metadata
+      const runMetadata = {
+        runId: runId,
+        timestamp: new Date().toISOString(),
+        totalTests: testCaseIds.length,
+        passed: 0,
+        failed: 0,
+        error: 0,
+        duration: 0,
+        testCases: []
+      };
+      
       const results = [];
       const startTime = Date.now();
       
@@ -315,7 +336,7 @@ Return JSON in this format:
         }
         
         const testStartTime = Date.now();
-        const testResult = await this.executeTestWithValidation(testCase);
+        const testResult = await this.executeTestWithValidation(testCase, runId);
         const testEndTime = Date.now();
         
         results.push({
@@ -326,8 +347,41 @@ Return JSON in this format:
           endTime: new Date(testEndTime),
           duration: testEndTime - testStartTime,
           screenshots: testResult.screenshots || [],
-          error: testResult.error
+          error: testResult.error,
+          validation: testResult.validation
         });
+        
+        // Generate individual test report
+        const testReport = {
+          testCaseId: testCase.id,
+          testCaseName: testCase.name,
+          status: testResult.status,
+          startTime: new Date(testStartTime).toISOString(),
+          endTime: new Date(testEndTime).toISOString(),
+          duration: testEndTime - testStartTime,
+          dataField: testCase.dataField,
+          testValues: testCase.testValues,
+          websiteUrl: testCase.websiteUrl,
+          screenshots: testResult.screenshots || [],
+          validation: testResult.validation,
+          error: testResult.error
+        };
+        
+        // Save individual test report
+        const testReportPath = `${runFolder}/test-${testCase.id}/test-report.json`;
+        fs.writeFileSync(testReportPath, JSON.stringify(testReport, null, 2));
+        
+        // Update run metadata
+        runMetadata.testCases.push({
+          testCaseId: testCase.id,
+          testCaseName: testCase.name,
+          status: testResult.status,
+          duration: testEndTime - testStartTime
+        });
+        
+        if (testResult.status === 'passed') runMetadata.passed++;
+        else if (testResult.status === 'failed') runMetadata.failed++;
+        else if (testResult.status === 'error') runMetadata.error++;
         
         await this.storage.saveTestResult({
           testCaseId,
@@ -341,11 +395,24 @@ Return JSON in this format:
       }
       
       const endTime = Date.now();
+      runMetadata.duration = endTime - startTime;
+      
+      // Save run metadata
+      const runMetadataPath = `${runFolder}/run-metadata.json`;
+      fs.writeFileSync(runMetadataPath, JSON.stringify(runMetadata, null, 2));
+      
+      // Generate summary HTML report
+      const summaryReportPath = `${runFolder}/summary-report.html`;
+      const summaryHTML = this.generateSummaryReport(runMetadata, results);
+      fs.writeFileSync(summaryReportPath, summaryHTML);
+      
       const statistics = {
         total: results.length,
         passed: results.filter(r => r.status === 'passed').length,
         failed: results.filter(r => r.status === 'failed').length,
-        duration: `${((endTime - startTime) / 1000).toFixed(2)}s`
+        duration: `${((endTime - startTime) / 1000).toFixed(2)}s`,
+        runId: runId,
+        runFolder: runFolder
       };
       
       return {
@@ -363,7 +430,7 @@ Return JSON in this format:
     }
   }
 
-  private async executeTestWithValidation(testCase: TestCase): Promise<{status: 'passed' | 'failed' | 'skipped' | 'error', screenshots?: string[], error?: string, validation?: any}> {
+  private async executeTestWithValidation(testCase: TestCase, runId: string): Promise<{status: 'passed' | 'failed' | 'skipped' | 'error', screenshots?: string[], error?: string, validation?: any}> {
     console.log(`🧪 Executing test: ${testCase.name}`);
     
     try {
@@ -377,15 +444,15 @@ Return JSON in this format:
       console.log(`📊 Expected from TSV: ${expectedResults.expectedCount} records`);
       
       // 2. Execute test on UI with Playwright
-      const actualRecords = await this.executeTestOnUI(testCase);
-      console.log(`🌐 Actual from UI: ${actualRecords.length} records`);
+      const uiResult = await this.executeTestOnUI(testCase, runId);
+      console.log(`🌐 Actual from UI: ${uiResult.data.length} records`);
       
       // 3. Validate using TSV as gold standard
-      const validation = await this.ragClient.validateResults(actualRecords, expectedResults);
+      const validation = await this.ragClient.validateResults(uiResult.data, expectedResults);
       
       return {
         status: validation.status,
-        screenshots: [],
+        screenshots: [uiResult.screenshots.before, uiResult.screenshots.after, uiResult.screenshots.results],
         error: validation.passed ? undefined : validation.message,
         validation: validation
       };
@@ -421,7 +488,7 @@ Return JSON in this format:
   }
 
   // Execute test on UI with Playwright
-  private async executeTestOnUI(testCase: TestCase): Promise<any[]> {
+  private async executeTestOnUI(testCase: TestCase, runId: string): Promise<{data: any[], screenshots: {before: string, after: string, results: string}}> {
     console.log(`🌐 Executing test on UI: ${testCase.name}`);
     
     // Validate test case has required fields
@@ -431,6 +498,13 @@ Return JSON in this format:
     
     if (!testCase.selectors || testCase.selectors.length === 0) {
       throw new Error(`Test case ${testCase.name} has no selectors`);
+    }
+    
+    // Create test folder for screenshots
+    const testFolder = `public/test-reports/${runId}/test-${testCase.id}`;
+    const fs = require('fs');
+    if (!fs.existsSync(testFolder)) {
+      fs.mkdirSync(testFolder, { recursive: true });
     }
     
     // Navigate to website
@@ -445,6 +519,14 @@ Return JSON in this format:
       id: 'wait-body-' + Date.now(),
       name: 'playwright_wait_for',
       parameters: { selector: 'body', timeout: 5000 }
+    }]);
+    
+    // Take screenshot before test
+    const beforeScreenshot = `${testFolder}/before.png`;
+    await this.mcpClient.callTools([{
+      id: 'screenshot-before-' + Date.now(),
+      name: 'playwright_screenshot',
+      parameters: { path: beforeScreenshot }
     }]);
     
     // Apply filter based on test case
@@ -494,7 +576,35 @@ Return JSON in this format:
       }
     }]);
     
-    return results[0]?.result[0]?.value || [];
+    // Take screenshot after results
+    const afterScreenshot = `${testFolder}/after.png`;
+    await this.mcpClient.callTools([{
+      id: 'screenshot-after-' + Date.now(),
+      name: 'playwright_screenshot',
+      parameters: { path: afterScreenshot }
+    }]);
+    
+    // Take screenshot of results table specifically
+    const resultsScreenshot = `${testFolder}/results.png`;
+    await this.mcpClient.callTools([{
+      id: 'screenshot-results-' + Date.now(),
+      name: 'playwright_screenshot',
+      parameters: { 
+        path: resultsScreenshot,
+        selector: '[data-screenshot-table]'
+      }
+    }]);
+    
+    const actualData = results[0]?.result[0]?.value || [];
+    
+    return {
+      data: actualData,
+      screenshots: {
+        before: beforeScreenshot,
+        after: afterScreenshot,
+        results: resultsScreenshot
+      }
+    };
   }
 
   private groupBy(array: any[], key: string): Record<string, number> {
@@ -503,5 +613,120 @@ Return JSON in this format:
       groups[value] = (groups[value] || 0) + 1;
       return groups;
     }, {});
+  }
+
+  private generateSummaryReport(runMetadata: any, results: any[]): string {
+    const passRate = runMetadata.total > 0 ? ((runMetadata.passed / runMetadata.total) * 100).toFixed(1) : '0';
+    
+    return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Run Summary - ${runMetadata.runId}</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .header { text-align: center; margin-bottom: 30px; }
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px; }
+        .stat-card { background: #f8f9fa; padding: 20px; border-radius: 8px; text-align: center; border-left: 4px solid #007bff; }
+        .stat-number { font-size: 2em; font-weight: bold; color: #007bff; }
+        .stat-label { color: #6c757d; margin-top: 5px; }
+        .passed { border-left-color: #28a745; }
+        .passed .stat-number { color: #28a745; }
+        .failed { border-left-color: #dc3545; }
+        .failed .stat-number { color: #dc3545; }
+        .error { border-left-color: #ffc107; }
+        .error .stat-number { color: #ffc107; }
+        .test-results { margin-top: 30px; }
+        .test-item { background: #f8f9fa; margin: 10px 0; padding: 15px; border-radius: 8px; border-left: 4px solid #dee2e6; }
+        .test-item.passed { border-left-color: #28a745; }
+        .test-item.failed { border-left-color: #dc3545; }
+        .test-item.error { border-left-color: #ffc107; }
+        .test-name { font-weight: bold; margin-bottom: 5px; }
+        .test-details { color: #6c757d; font-size: 0.9em; }
+        .screenshots { margin-top: 10px; }
+        .screenshot-link { display: inline-block; margin-right: 10px; padding: 5px 10px; background: #007bff; color: white; text-decoration: none; border-radius: 4px; font-size: 0.8em; }
+        .validation-details { margin-top: 10px; padding: 10px; background: #e9ecef; border-radius: 4px; }
+        .validation-passed { color: #28a745; font-weight: bold; }
+        .validation-failed { color: #dc3545; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Test Run Summary</h1>
+            <p><strong>Run ID:</strong> ${runMetadata.runId}</p>
+            <p><strong>Timestamp:</strong> ${new Date(runMetadata.timestamp).toLocaleString()}</p>
+        </div>
+        
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-number">${runMetadata.total}</div>
+                <div class="stat-label">Total Tests</div>
+            </div>
+            <div class="stat-card passed">
+                <div class="stat-number">${runMetadata.passed}</div>
+                <div class="stat-label">Passed</div>
+            </div>
+            <div class="stat-card failed">
+                <div class="stat-number">${runMetadata.failed}</div>
+                <div class="stat-label">Failed</div>
+            </div>
+            <div class="stat-card error">
+                <div class="stat-number">${runMetadata.error}</div>
+                <div class="stat-label">Errors</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">${passRate}%</div>
+                <div class="stat-label">Pass Rate</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">${(runMetadata.duration / 1000).toFixed(1)}s</div>
+                <div class="stat-label">Duration</div>
+            </div>
+        </div>
+        
+        <div class="test-results">
+            <h2>Test Results</h2>
+            ${results.map(result => `
+                <div class="test-item ${result.status}">
+                    <div class="test-name">${result.testCaseName}</div>
+                    <div class="test-details">
+                        <strong>Status:</strong> ${result.status.toUpperCase()} | 
+                        <strong>Duration:</strong> ${result.duration}ms | 
+                        <strong>Test Case ID:</strong> ${result.testCaseId}
+                    </div>
+                    ${result.screenshots && result.screenshots.length > 0 ? `
+                        <div class="screenshots">
+                            <strong>Screenshots:</strong><br>
+                            ${result.screenshots.map(screenshot => `
+                                <a href="${screenshot}" target="_blank" class="screenshot-link">View Screenshot</a>
+                            `).join('')}
+                        </div>
+                    ` : ''}
+                    ${result.validation ? `
+                        <div class="validation-details">
+                            <strong>TSV Validation:</strong> 
+                            <span class="${result.validation.passed ? 'validation-passed' : 'validation-failed'}">
+                                ${result.validation.passed ? 'PASSED' : 'FAILED'}
+                            </span><br>
+                            <strong>Expected Count:</strong> ${result.validation.expectedCount} | 
+                            <strong>Actual Count:</strong> ${result.validation.actualCount}<br>
+                            <strong>Message:</strong> ${result.validation.message}
+                        </div>
+                    ` : ''}
+                    ${result.error ? `
+                        <div class="validation-details" style="background: #f8d7da; color: #721c24;">
+                            <strong>Error:</strong> ${result.error}
+                        </div>
+                    ` : ''}
+                </div>
+            `).join('')}
+        </div>
+    </div>
+</body>
+</html>`;
   }
 }

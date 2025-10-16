@@ -1306,7 +1306,7 @@ class TestGenerationUI {
     displayTestResults(results, statistics) {
         if (!this.resultsSummary || !this.detailedResults) return;
 
-        // Update summary
+        // Update summary with run information
         this.resultsSummary.innerHTML = `
             <div class="summary-card">
                 <h4>Total Tests</h4>
@@ -1324,6 +1324,20 @@ class TestGenerationUI {
                 <h4>Duration</h4>
                 <div class="summary-value">${statistics.duration || '0s'}</div>
             </div>
+            ${statistics.runId ? `
+                <div class="summary-card">
+                    <h4>Run ID</h4>
+                    <div class="summary-value">${statistics.runId}</div>
+                </div>
+                <div class="summary-card">
+                    <h4>Reports</h4>
+                    <div class="summary-value">
+                        <a href="/test-reports/${statistics.runId}/summary-report.html" target="_blank" class="report-link">
+                            📊 Summary Report
+                        </a>
+                    </div>
+                </div>
+            ` : ''}
         `;
 
         // Display detailed results
