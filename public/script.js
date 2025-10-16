@@ -1070,7 +1070,7 @@ class TestGenerationUI {
                 <div class="test-case-header">
                     <div class="test-case-checkbox">
                         <input type="checkbox" id="test-${testCase.id}" ${this.selectedTests.has(testCase.id) ? 'checked' : ''} 
-                               onchange="testGenerationUI.toggleTestSelection('${testCase.id}')">
+                               data-test-id="${testCase.id}">
                     </div>
                     <div class="test-case-info">
                         <h4>${testCase.name}</h4>
@@ -1126,6 +1126,19 @@ class TestGenerationUI {
                 </div>
             </div>
         `).join('');
+        
+        // Add event listeners to checkboxes after rendering
+        this.attachCheckboxListeners();
+    }
+
+    attachCheckboxListeners() {
+        const checkboxes = this.testCasesList.querySelectorAll('input[type="checkbox"]');
+        checkboxes.forEach(checkbox => {
+            checkbox.addEventListener('change', (event) => {
+                const testId = event.target.getAttribute('data-test-id');
+                this.toggleTestSelection(testId);
+            });
+        });
     }
 
     toggleTestSelection(testId) {
