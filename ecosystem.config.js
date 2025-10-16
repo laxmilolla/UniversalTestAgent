@@ -1,8 +1,7 @@
 module.exports = {
   apps: [{
     name: 'playwright-chatbot',
-    script: 'tsx',
-    args: 'src/server/express-server.ts',
+    script: 'dist/server/express-server.js',
     instances: 1,
     autorestart: true,
     watch: false,
