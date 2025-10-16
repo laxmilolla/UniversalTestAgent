@@ -966,7 +966,13 @@ class TestGenerationUI {
                             'Content-Type': 'application/json'
                         },
                         body: JSON.stringify({
-                            learningResults: learningResults,
+                            learningResults: {
+                                analysis: {
+                                    mapping: {
+                                        testCases: learningResults.analysis?.mapping?.testCases || []
+                                    }
+                                }
+                            },
                             testOptions: this.getTestOptions()
                         })
                     });
