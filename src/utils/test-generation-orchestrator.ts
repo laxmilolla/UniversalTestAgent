@@ -34,8 +34,8 @@ export class TestGenerationOrchestrator {
       const testCases = learningTestCases
         .filter(tc => {
           // STRICT VALIDATION: Only include test cases with valid TSV validation fields
-          const hasValidDataField = tc.dataField && tc.dataField !== 'undefined';
-          const hasValidTestValues = tc.testValues && Array.isArray(tc.testValues) && tc.testValues.length > 0;
+          const hasValidDataField = (tc as any).dataField && (tc as any).dataField !== 'undefined';
+          const hasValidTestValues = (tc as any).testValues && Array.isArray((tc as any).testValues) && (tc as any).testValues.length > 0;
           const hasValidSelectors = tc.selectors && Array.isArray(tc.selectors) && tc.selectors.length > 0 && 
                                    !tc.selectors.some(s => s === 'undefined' || s.includes('undefined'));
           
@@ -435,12 +435,14 @@ Return JSON in this format:
     
     // Navigate to website
     await this.mcpClient.callTools([{
+      id: 'navigate-' + Date.now(),
       name: 'playwright_navigate',
       parameters: { url: testCase.websiteUrl }
     }]);
     
     // Wait for page to load
     await this.mcpClient.callTools([{
+      id: 'wait-body-' + Date.now(),
       name: 'playwright_wait_for',
       parameters: { selector: 'body', timeout: 5000 }
     }]);
@@ -449,12 +451,14 @@ Return JSON in this format:
     if (testCase.type === 'filter_test') {
       // Click filter dropdown
       await this.mcpClient.callTools([{
+        id: 'click-filter-' + Date.now(),
         name: 'playwright_click',
         parameters: { selector: testCase.selectors[0] }
       }]);
       
       // Select filter value
       await this.mcpClient.callTools([{
+        id: 'fill-filter-' + Date.now(),
         name: 'playwright_fill',
         parameters: { 
           selector: testCase.selectors[0],
@@ -464,6 +468,7 @@ Return JSON in this format:
       
       // Wait for results
       await this.mcpClient.callTools([{
+        id: 'wait-results-' + Date.now(),
         name: 'playwright_wait_for',
         parameters: { selector: '[data-screenshot-table] tr', timeout: 5000 }
       }]);
@@ -471,6 +476,7 @@ Return JSON in this format:
     
     // Extract actual results from UI
     const results = await this.mcpClient.callTools([{
+      id: 'evaluate-results-' + Date.now(),
       name: 'playwright_evaluate',
       parameters: {
         expression: `
