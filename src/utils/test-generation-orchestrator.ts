@@ -424,6 +424,15 @@ Return JSON in this format:
   private async executeTestOnUI(testCase: TestCase): Promise<any[]> {
     console.log(`🌐 Executing test on UI: ${testCase.name}`);
     
+    // Validate test case has required fields
+    if (!testCase.websiteUrl) {
+      throw new Error(`Test case ${testCase.name} has no websiteUrl`);
+    }
+    
+    if (!testCase.selectors || testCase.selectors.length === 0) {
+      throw new Error(`Test case ${testCase.name} has no selectors`);
+    }
+    
     // Navigate to website
     await this.mcpClient.callTools([{
       name: 'playwright_navigate',

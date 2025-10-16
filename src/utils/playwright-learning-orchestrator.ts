@@ -1361,8 +1361,9 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
                     category: 'functionality',
                     type: element.type || 'interactive',
                     priority: 'medium',
-                    source: element.source || 'ui-analysis'
-                    // REMOVED: Default dataField, testValues, websiteUrl
+                    source: element.source || 'ui-analysis',
+                    websiteUrl: this.currentWebsiteUrl
+                    // REMOVED: Default dataField, testValues
                     // These MUST come from actual TSV data, not defaults
                 });
             });
@@ -1397,8 +1398,9 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
                     category: 'data-validation',
                     type: 'data-validation',
                     priority: 'high',
-                    source: component.source || 'ui-analysis'
-                    // REMOVED: Default dataField, testValues, websiteUrl
+                    source: component.source || 'ui-analysis',
+                    websiteUrl: this.currentWebsiteUrl
+                    // REMOVED: Default dataField, testValues
                     // These MUST come from actual TSV data, not defaults
                 });
             });
