@@ -946,28 +946,55 @@ class TestGenerationUI {
             if (existingTestCases.length > 0) {
                 console.log(`🔄 Found ${existingTestCases.length} existing test cases from Phase 1`);
                 
-                // Update UI to show we're displaying existing test cases
+                // Update UI to show we're loading existing test cases
                 this.generateBtn.disabled = true;
                 this.generateBtn.innerHTML = '<span class="btn-icon">📋</span><span class="btn-text">Loading Test Cases...</span>';
                 this.generationStatus.style.display = 'block';
-                this.generationStatus.textContent = `Displaying ${existingTestCases.length} existing test cases...`;
+                this.generationStatus.textContent = `Loading ${existingTestCases.length} existing test cases...`;
 
                 // Convert Phase 1 test cases to Phase 2 format
-                this.generatedTests = this.convertPhase1TestCases(existingTestCases);
+                const convertedTestCases = this.convertPhase1TestCases(existingTestCases);
                 
                 // Store test cases globally for debugging
-                window.testCases = this.generatedTests;
+                window.testCases = convertedTestCases;
                 
-                // Display the test cases
-                this.displayTestCases();
-                this.showTestCasesSection();
-                this.updateTestStatistics();
-                
-                console.log(`✅ Displayed ${this.generatedTests.length} existing test cases`);
-                
-                // Update button text to reflect that test cases are now displayed
-                this.generateBtn.innerHTML = '<span class="btn-icon">✅</span><span class="btn-text">Test Cases Loaded</span>';
-                this.generationStatus.textContent = `Successfully loaded ${this.generatedTests.length} test cases from Phase 1`;
+                // Call backend API to save test cases to storage
+                try {
+                    const response = await fetch('/api/test/generate', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            learningResults: learningResults,
+                            testOptions: this.getTestOptions()
+                        })
+                    });
+
+                    const result = await response.json();
+
+                    if (result.success) {
+                        this.generatedTests = result.testCases;
+                        this.displayTestCases();
+                        this.showTestCasesSection();
+                        this.updateTestStatistics();
+                        
+                        console.log(`✅ Loaded and saved ${this.generatedTests.length} test cases from Phase 1`);
+                        
+                        // Update button text to reflect that test cases are now loaded
+                        this.generateBtn.innerHTML = '<span class="btn-icon">✅</span><span class="btn-text">Test Cases Loaded</span>';
+                        this.generationStatus.textContent = `Successfully loaded ${this.generatedTests.length} test cases from Phase 1`;
+                    } else {
+                        throw new Error(result.error || 'Failed to load test cases from Phase 1');
+                    }
+                } catch (error) {
+                    console.error('❌ Failed to load test cases from Phase 1:', error);
+                    this.showError(error.message);
+                } finally {
+                    this.generateBtn.disabled = false;
+                    this.generateBtn.innerHTML = '<span class="btn-icon">✅</span><span class="btn-text">Test Cases Loaded</span>';
+                    this.generationStatus.style.display = 'none';
+                }
                 
                 return;
             }
