@@ -501,6 +501,9 @@ Return JSON in this format:
       parameters: { selector: 'body', timeout: 5000 }
     }]);
     
+    // Detect and dismiss any UI obstacles (modals, popups, banners, etc.)
+    await this.dismissUIObstacles();
+    
     // Take screenshot before test
     const beforeScreenshotResult = await this.mcpClient.callTools([{
       id: 'screenshot-before-' + Date.now(),
@@ -591,6 +594,157 @@ Return JSON in this format:
         results: resultsScreenshotPath
       }
     };
+  }
+
+  private async dismissUIObstacles(): Promise<void> {
+    console.log('🔍 Detecting and dismissing UI obstacles...');
+    
+    try {
+      // Common selectors for blocking UI elements
+      const obstacleSelectors = [
+        // Modals and dialogs
+        '[role="dialog"]',
+        '.modal',
+        '.modal-dialog',
+        '.popup',
+        '.overlay',
+        '.modal-overlay',
+        '.modal-backdrop',
+        
+        // Warning banners and notifications
+        '.warning',
+        '.alert',
+        '.banner',
+        '.notification',
+        '.toast',
+        '.notice',
+        
+        // Cookie consent and age verification
+        '.cookie-consent',
+        '.cookie-banner',
+        '.age-verification',
+        '.terms-acceptance',
+        
+        // Generic blocking elements
+        '.blocking',
+        '.obstacle',
+        '.interstitial',
+        '.splash',
+        
+        // Government and legal warnings
+        '.government-warning',
+        '.legal-notice',
+        '.disclaimer',
+        '.terms-modal'
+      ];
+      
+      // Try to find and dismiss obstacles
+      for (const selector of obstacleSelectors) {
+        try {
+          // Check if element exists
+          const elementCheck = await this.mcpClient.callTools([{
+            id: 'check-obstacle-' + Date.now(),
+            name: 'playwright_evaluate',
+            parameters: {
+              expression: `document.querySelector('${selector}') !== null`
+            }
+          }]);
+          
+          if (elementCheck[0]?.result?.[0]?.value === true) {
+            console.log(`🚫 Found obstacle: ${selector}`);
+            
+            // Try to dismiss by clicking common dismissal buttons
+            const dismissButtons = [
+              'button:contains("Continue")',
+              'button:contains("Accept")',
+              'button:contains("OK")',
+              'button:contains("Dismiss")',
+              'button:contains("Close")',
+              'button:contains("Got it")',
+              'button:contains("I understand")',
+              'button:contains("Proceed")',
+              '.close',
+              '.dismiss',
+              '.accept',
+              '.continue',
+              '[aria-label="Close"]',
+              '[aria-label="Dismiss"]',
+              '.btn-close',
+              '.modal-close'
+            ];
+            
+            let dismissed = false;
+            for (const buttonSelector of dismissButtons) {
+              try {
+                const buttonCheck = await this.mcpClient.callTools([{
+                  id: 'check-button-' + Date.now(),
+                  name: 'playwright_evaluate',
+                  parameters: {
+                    expression: `document.querySelector('${buttonSelector}') !== null`
+                  }
+                }]);
+                
+                if (buttonCheck[0]?.result?.[0]?.value === true) {
+                  console.log(`✅ Clicking dismissal button: ${buttonSelector}`);
+                  await this.mcpClient.callTools([{
+                    id: 'click-dismiss-' + Date.now(),
+                    name: 'playwright_click',
+                    parameters: { selector: buttonSelector }
+                  }]);
+                  
+                  // Wait a moment for the obstacle to disappear
+                  await new Promise(resolve => setTimeout(resolve, 1000));
+                  dismissed = true;
+                  break;
+                }
+              } catch (error) {
+                // Continue to next button if this one fails
+                continue;
+              }
+            }
+            
+            // If no button found, try pressing Escape key
+            if (!dismissed) {
+              console.log('⌨️ Trying Escape key to dismiss obstacle');
+              await this.mcpClient.callTools([{
+                id: 'press-escape-' + Date.now(),
+                name: 'playwright_press_key',
+                parameters: { key: 'Escape' }
+              }]);
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+          }
+        } catch (error) {
+          // Continue to next selector if this one fails
+          continue;
+        }
+      }
+      
+      // Final check: ensure main content is accessible
+      const contentCheck = await this.mcpClient.callTools([{
+        id: 'check-content-' + Date.now(),
+        name: 'playwright_evaluate',
+        parameters: {
+          expression: `
+            const mainContent = document.querySelector('main') || 
+                               document.querySelector('.main') || 
+                               document.querySelector('#main') ||
+                               document.querySelector('body');
+            return mainContent && mainContent.offsetHeight > 100;
+          `
+        }
+      }]);
+      
+      if (contentCheck[0]?.result?.[0]?.value === true) {
+        console.log('✅ Main content is accessible');
+      } else {
+        console.log('⚠️ Main content may still be blocked');
+      }
+      
+    } catch (error) {
+      console.error('Error dismissing UI obstacles:', error);
+      // Continue with test execution even if obstacle dismissal fails
+    }
   }
 
   private extractScreenshotPath(screenshotResult: any[]): string {
