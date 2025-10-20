@@ -502,12 +502,14 @@ Return JSON in this format:
     }]);
     
     // Take screenshot before test
-    const beforeScreenshot = `${testFolder}/before.png`;
-    await this.mcpClient.callTools([{
+    const beforeScreenshotResult = await this.mcpClient.callTools([{
       id: 'screenshot-before-' + Date.now(),
       name: 'playwright_screenshot',
-      parameters: { path: beforeScreenshot }
+      parameters: { path: `${testFolder}/before.png` }
     }]);
+    
+    // Extract actual screenshot path from Playwright MCP response
+    const beforeScreenshotPath = this.extractScreenshotPath(beforeScreenshotResult);
     
     // Apply filter based on test case
     if (testCase.type === 'filter_test') {
@@ -557,34 +559,65 @@ Return JSON in this format:
     }]);
     
     // Take screenshot after results
-    const afterScreenshot = `${testFolder}/after.png`;
-    await this.mcpClient.callTools([{
+    const afterScreenshotResult = await this.mcpClient.callTools([{
       id: 'screenshot-after-' + Date.now(),
       name: 'playwright_screenshot',
-      parameters: { path: afterScreenshot }
+      parameters: { path: `${testFolder}/after.png` }
     }]);
     
+    // Extract actual screenshot path from Playwright MCP response
+    const afterScreenshotPath = this.extractScreenshotPath(afterScreenshotResult);
+    
     // Take screenshot of results table specifically
-    const resultsScreenshot = `${testFolder}/results.png`;
-    await this.mcpClient.callTools([{
+    const resultsScreenshotResult = await this.mcpClient.callTools([{
       id: 'screenshot-results-' + Date.now(),
       name: 'playwright_screenshot',
       parameters: { 
-        path: resultsScreenshot,
+        path: `${testFolder}/results.png`,
         selector: '[data-screenshot-table]'
       }
     }]);
+    
+    // Extract actual screenshot path from Playwright MCP response
+    const resultsScreenshotPath = this.extractScreenshotPath(resultsScreenshotResult);
     
     const actualData = results[0]?.result[0]?.value || [];
     
     return {
       data: actualData,
       screenshots: {
-        before: beforeScreenshot,
-        after: afterScreenshot,
-        results: resultsScreenshot
+        before: beforeScreenshotPath,
+        after: afterScreenshotPath,
+        results: resultsScreenshotPath
       }
     };
+  }
+
+  private extractScreenshotPath(screenshotResult: any[]): string {
+    try {
+      // Extract the actual screenshot path from Playwright MCP response
+      const result = screenshotResult[0]?.result?.[0];
+      if (result?.content) {
+        // Look for "Screenshot saved to:" in the content
+        const content = result.content.find((c: any) => c.text?.includes('Screenshot saved to:'));
+        if (content?.text) {
+          const pathMatch = content.text.match(/Screenshot saved to: (.+)/);
+          if (pathMatch && pathMatch[1]) {
+            // Convert the path to a web-accessible URL
+            const actualPath = pathMatch[1].trim();
+            // Extract just the filename and create a web path
+            const filename = actualPath.split('/').pop();
+            return `/screenshots/${filename}`;
+          }
+        }
+      }
+      
+      // Fallback: return a default path
+      return '/screenshots/default.png';
+    } catch (error) {
+      console.error('Error extracting screenshot path:', error);
+      return '/screenshots/error.png';
+    }
   }
 
   private groupBy(array: any[], key: string): Record<string, number> {
