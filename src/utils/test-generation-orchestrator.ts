@@ -299,7 +299,7 @@ Return JSON in this format:
       
       // Generate run ID and create run folder
       const runId = `run-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5)}`;
-      const runFolder = `public/test-reports/${runId}`;
+      const runFolder = `test-reports/${runId}`;
       const fs = require('fs');
       
       if (!fs.existsSync(runFolder)) {
@@ -501,7 +501,7 @@ Return JSON in this format:
     }
     
     // Create test folder for screenshots
-    const testFolder = `public/test-reports/${runId}/test-${testCase.id}`;
+    const testFolder = `test-reports/${runId}/test-${testCase.id}`;
     const fs = require('fs');
     if (!fs.existsSync(testFolder)) {
       fs.mkdirSync(testFolder, { recursive: true });
