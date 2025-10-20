@@ -11,7 +11,7 @@ export class TestGenerationOrchestrator {
     private bedrockClient: BedrockClient,
     private mcpClient: MCPPlaywrightClient,
     private storage: TestStorage,
-    private ragClient?: any  // Add optional RAG client
+    private playwrightLearningOrchestrator: any  // Get RAG client dynamically from this
   ) {}
 
   // Main test generation method - now uses Learning Phase test cases
@@ -434,13 +434,14 @@ Return JSON in this format:
     console.log(`🧪 Executing test: ${testCase.name}`);
     
     try {
-      // 1. Get expected results from TSV gold standard
-      if (!this.ragClient) {
-        console.warn('⚠️ No RAG client available, using simulated execution');
-        return this.simulateTestExecution(testCase);
+      // Get RAG client dynamically from playwrightLearningOrchestrator
+      const ragClient = this.playwrightLearningOrchestrator.getRagClient();
+      if (!ragClient) {
+        throw new Error('RAG client is not available. Please complete the Learning Phase first to load TSV data.');
       }
       
-      const expectedResults = await this.ragClient.generateExpectedResults(testCase);
+      // 1. Get expected results from TSV gold standard
+      const expectedResults = await ragClient.generateExpectedResults(testCase);
       console.log(`📊 Expected from TSV: ${expectedResults.expectedCount} records`);
       
       // 2. Execute test on UI with Playwright
@@ -448,7 +449,7 @@ Return JSON in this format:
       console.log(`🌐 Actual from UI: ${uiResult.data.length} records`);
       
       // 3. Validate using TSV as gold standard
-      const validation = await this.ragClient.validateResults(uiResult.data, expectedResults);
+      const validation = await ragClient.validateResults(uiResult.data, expectedResults);
       
       return {
         status: validation.status,
@@ -463,27 +464,6 @@ Return JSON in this format:
         status: 'error',
         error: error.message
       };
-    }
-  }
-
-  private async simulateTestExecution(testCase: TestCase): Promise<{status: 'passed' | 'failed' | 'skipped' | 'error', screenshots?: string[], error?: string}> {
-    const random = Math.random();
-    
-    if (random > 0.8) {
-        return {
-            status: 'failed' as const,
-            error: 'Simulated test failure'
-        };
-    } else if (random > 0.9) {
-        return {
-            status: 'error' as const,
-            error: 'Simulated test error'
-        };
-    } else {
-        return {
-            status: 'passed' as const,
-            screenshots: ['screenshot1.png', 'screenshot2.png']
-        };
     }
   }
 
