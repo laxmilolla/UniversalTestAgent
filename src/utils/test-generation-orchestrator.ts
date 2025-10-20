@@ -598,12 +598,12 @@ Return JSON in this format:
       console.log('🔍 DEBUG: Extracting screenshot path from result:', JSON.stringify(screenshotResult, null, 2));
       
       // Extract the actual screenshot path from Playwright MCP response
-      const result = screenshotResult[0]?.result?.[0];
-      if (result?.content) {
-        console.log('🔍 DEBUG: Found content:', result.content);
+      const result = screenshotResult[0]?.result; // Fixed: removed extra [0]
+      if (result && Array.isArray(result)) {
+        console.log('🔍 DEBUG: Found result array:', result);
         
         // Look for "Screenshot saved to:" in the content
-        const content = result.content.find((c: any) => c.text?.includes('Screenshot saved to:'));
+        const content = result.find((c: any) => c.text?.includes('Screenshot saved to:'));
         if (content?.text) {
           console.log('🔍 DEBUG: Found screenshot text:', content.text);
           const pathMatch = content.text.match(/Screenshot saved to: (.+)/);
