@@ -595,23 +595,33 @@ Return JSON in this format:
 
   private extractScreenshotPath(screenshotResult: any[]): string {
     try {
+      console.log('🔍 DEBUG: Extracting screenshot path from result:', JSON.stringify(screenshotResult, null, 2));
+      
       // Extract the actual screenshot path from Playwright MCP response
       const result = screenshotResult[0]?.result?.[0];
       if (result?.content) {
+        console.log('🔍 DEBUG: Found content:', result.content);
+        
         // Look for "Screenshot saved to:" in the content
         const content = result.content.find((c: any) => c.text?.includes('Screenshot saved to:'));
         if (content?.text) {
+          console.log('🔍 DEBUG: Found screenshot text:', content.text);
           const pathMatch = content.text.match(/Screenshot saved to: (.+)/);
           if (pathMatch && pathMatch[1]) {
             // Convert the path to a web-accessible URL
             const actualPath = pathMatch[1].trim();
+            console.log('🔍 DEBUG: Extracted actual path:', actualPath);
+            
             // Extract just the filename and create a web path
             const filename = actualPath.split('/').pop();
-            return `/screenshots/${filename}`;
+            const webPath = `/screenshots/${filename}`;
+            console.log('🔍 DEBUG: Generated web path:', webPath);
+            return webPath;
           }
         }
       }
       
+      console.warn('⚠️ Could not extract screenshot path, using fallback');
       // Fallback: return a default path
       return '/screenshots/default.png';
     } catch (error) {
