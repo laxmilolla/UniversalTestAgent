@@ -1570,6 +1570,4 @@ Return ONLY a JSON response in this exact format:
             console.log('⚠️ AI popup detection failed - continuing without popup dismissal');
         }
     }
-
-    }
 }
