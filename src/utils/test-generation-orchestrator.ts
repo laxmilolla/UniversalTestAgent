@@ -597,153 +597,169 @@ Return JSON in this format:
   }
 
   private async dismissUIObstacles(): Promise<void> {
-    console.log('🔍 Detecting and dismissing UI obstacles...');
+    console.log('🔍 Universal AI-powered popup detection starting...');
     
     try {
-      // Common selectors for blocking UI elements
-      const obstacleSelectors = [
-        // Modals and dialogs
-        '[role="dialog"]',
-        '.modal',
-        '.modal-dialog',
-        '.popup',
-        '.overlay',
-        '.modal-overlay',
-        '.modal-backdrop',
-        
-        // Warning banners and notifications
-        '.warning',
-        '.alert',
-        '.banner',
-        '.notification',
-        '.toast',
-        '.notice',
-        
-        // Cookie consent and age verification
-        '.cookie-consent',
-        '.cookie-banner',
-        '.age-verification',
-        '.terms-acceptance',
-        
-        // Generic blocking elements
-        '.blocking',
-        '.obstacle',
-        '.interstitial',
-        '.splash',
-        
-        // Government and legal warnings
-        '.government-warning',
-        '.legal-notice',
-        '.disclaimer',
-        '.terms-modal'
-      ];
+      // Step 1: Take screenshot for AI analysis
+      console.log('📸 Taking screenshot for AI analysis...');
+      const screenshotResult = await this.mcpClient.callTools([{
+        id: 'popup-screenshot-' + Date.now(),
+        name: 'playwright_screenshot',
+        parameters: { name: 'popup-detection.png' }
+      }]);
       
-      // Try to find and dismiss obstacles
-      for (const selector of obstacleSelectors) {
+      // Step 2: Get page text content
+      console.log('📄 Getting page text content...');
+      const pageTextResult = await this.mcpClient.callTools([{
+        id: 'page-text-' + Date.now(),
+        name: 'playwright_get_visible_text',
+        parameters: {}
+      }]);
+      
+      const pageText = pageTextResult[0]?.result?.[0]?.text || '';
+      
+      // Step 3: Use AI to analyze the page for popups
+      console.log('🧠 Analyzing page with AI for popups...');
+      const prompt = `You are analyzing a webpage screenshot and text to detect popups that need to be dismissed before testing can proceed.
+
+Page Text Content: ${pageText.substring(0, 2000)}...
+
+Analyze this page and determine:
+1. Are there any popups, modals, warning dialogs, or blocking elements visible?
+2. If yes, what is the dismissal button text and CSS selector?
+3. What type of popup is it? (warning, consent, verification, terms, government notice, etc.)
+
+Look for common popup patterns:
+- Warning dialogs with "Continue", "Accept", "OK" buttons
+- Cookie consent banners
+- Age verification popups
+- Government warnings
+- Terms acceptance dialogs
+- Privacy notices
+
+Return ONLY a JSON response in this exact format:
+{
+  "hasPopup": true/false,
+  "popupType": "warning|consent|verification|terms|government|other",
+  "buttonText": "Continue|Accept|OK|I Agree|etc",
+  "buttonSelector": "CSS selector like button:contains('Continue') or .btn-continue",
+  "confidence": 0.0-1.0,
+  "description": "Brief description of what you see"
+}`;
+
+      const aiResponse = await this.bedrockClient.generateResponse([{ role: 'user', content: prompt }], []);
+      
+      // Step 4: Parse AI response
+      let popupAnalysis;
+      try {
+        // Extract JSON from AI response
+        const jsonMatch = aiResponse.content.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          popupAnalysis = JSON.parse(jsonMatch[0]);
+        } else {
+          throw new Error('No JSON found in AI response');
+        }
+      } catch (parseError) {
+        console.log('⚠️ Failed to parse AI response, trying fallback detection');
+        popupAnalysis = { hasPopup: false, confidence: 0 };
+      }
+      
+      // Step 5: Handle popup if detected
+      if (popupAnalysis.hasPopup && popupAnalysis.confidence > 0.6) {
+        console.log(`🚫 AI detected ${popupAnalysis.popupType} popup`);
+        console.log(`🎯 Button text: ${popupAnalysis.buttonText}`);
+        console.log(`🎯 Button selector: ${popupAnalysis.buttonSelector}`);
+        console.log(`📊 Confidence: ${popupAnalysis.confidence}`);
+        
         try {
-          // Check if element exists
-          const elementCheck = await this.mcpClient.callTools([{
-            id: 'check-obstacle-' + Date.now(),
+          // Click the dismissal button
+          await this.mcpClient.callTools([{
+            id: 'dismiss-popup-' + Date.now(),
+            name: 'playwright_click',
+            parameters: { selector: popupAnalysis.buttonSelector }
+          }]);
+          
+          console.log(`✅ Popup dismissed successfully using AI detection`);
+          
+          // Wait for popup to disappear
+          await new Promise(resolve => setTimeout(resolve, 1500));
+          
+          // Verify popup is gone
+          const verifyResult = await this.mcpClient.callTools([{
+            id: 'verify-popup-gone-' + Date.now(),
             name: 'playwright_evaluate',
             parameters: {
-              expression: `document.querySelector('${selector}') !== null`
+              expression: `document.querySelector('${popupAnalysis.buttonSelector}') === null`
             }
           }]);
           
-          if (elementCheck[0]?.result?.[0]?.value === true) {
-            console.log(`🚫 Found obstacle: ${selector}`);
-            
-            // Try to dismiss by clicking common dismissal buttons
-            const dismissButtons = [
-              'button:contains("Continue")',
-              'button:contains("Accept")',
-              'button:contains("OK")',
-              'button:contains("Dismiss")',
-              'button:contains("Close")',
-              'button:contains("Got it")',
-              'button:contains("I understand")',
-              'button:contains("Proceed")',
-              '.close',
-              '.dismiss',
-              '.accept',
-              '.continue',
-              '[aria-label="Close"]',
-              '[aria-label="Dismiss"]',
-              '.btn-close',
-              '.modal-close'
-            ];
-            
-            let dismissed = false;
-            for (const buttonSelector of dismissButtons) {
-              try {
-                const buttonCheck = await this.mcpClient.callTools([{
-                  id: 'check-button-' + Date.now(),
-                  name: 'playwright_evaluate',
-                  parameters: {
-                    expression: `document.querySelector('${buttonSelector}') !== null`
-                  }
-                }]);
-                
-                if (buttonCheck[0]?.result?.[0]?.value === true) {
-                  console.log(`✅ Clicking dismissal button: ${buttonSelector}`);
-                  await this.mcpClient.callTools([{
-                    id: 'click-dismiss-' + Date.now(),
-                    name: 'playwright_click',
-                    parameters: { selector: buttonSelector }
-                  }]);
-                  
-                  // Wait a moment for the obstacle to disappear
-                  await new Promise(resolve => setTimeout(resolve, 1000));
-                  dismissed = true;
-                  break;
-                }
-              } catch (error) {
-                // Continue to next button if this one fails
-                continue;
-              }
-            }
-            
-            // If no button found, try pressing Escape key
-            if (!dismissed) {
-              console.log('⌨️ Trying Escape key to dismiss obstacle');
-              await this.mcpClient.callTools([{
-                id: 'press-escape-' + Date.now(),
-                name: 'playwright_press_key',
-                parameters: { key: 'Escape' }
-              }]);
-              await new Promise(resolve => setTimeout(resolve, 1000));
-            }
+          if (verifyResult[0]?.result?.[0]?.value === true) {
+            console.log('✅ Popup verification: Successfully dismissed');
+          } else {
+            console.log('⚠️ Popup verification: May still be present');
           }
-        } catch (error) {
-          // Continue to next selector if this one fails
-          continue;
+          
+        } catch (clickError) {
+          console.log(`❌ Failed to click popup button: ${clickError.message}`);
+          // Try fallback methods
+          await this.tryFallbackDismissal();
         }
-      }
-      
-      // Final check: ensure main content is accessible
-      const contentCheck = await this.mcpClient.callTools([{
-        id: 'check-content-' + Date.now(),
-        name: 'playwright_evaluate',
-        parameters: {
-          expression: `
-            const mainContent = document.querySelector('main') || 
-                               document.querySelector('.main') || 
-                               document.querySelector('#main') ||
-                               document.querySelector('body');
-            return mainContent && mainContent.offsetHeight > 100;
-          `
-        }
-      }]);
-      
-      if (contentCheck[0]?.result?.[0]?.value === true) {
-        console.log('✅ Main content is accessible');
       } else {
-        console.log('⚠️ Main content may still be blocked');
+        console.log('✅ AI analysis: No popups detected');
+        console.log(`📊 Confidence: ${popupAnalysis.confidence || 0}`);
       }
       
     } catch (error) {
-      console.error('Error dismissing UI obstacles:', error);
-      // Continue with test execution even if obstacle dismissal fails
+      console.error('❌ Error in AI popup detection:', error);
+      console.log('🔄 Falling back to generic dismissal methods...');
+      await this.tryFallbackDismissal();
+    }
+  }
+
+  // Fallback method for when AI detection fails
+  private async tryFallbackDismissal(): Promise<void> {
+    console.log('🔄 Trying fallback dismissal methods...');
+    
+    const fallbackMethods = [
+      // Try common button selectors
+      () => this.mcpClient.callTools([{
+        id: 'fallback-continue-' + Date.now(),
+        name: 'playwright_click',
+        parameters: { selector: 'button:contains("Continue")' }
+      }]),
+      () => this.mcpClient.callTools([{
+        id: 'fallback-accept-' + Date.now(),
+        name: 'playwright_click',
+        parameters: { selector: 'button:contains("Accept")' }
+      }]),
+      () => this.mcpClient.callTools([{
+        id: 'fallback-ok-' + Date.now(),
+        name: 'playwright_click',
+        parameters: { selector: 'button:contains("OK")' }
+      }]),
+      // Try keyboard shortcuts
+      () => this.mcpClient.callTools([{
+        id: 'fallback-escape-' + Date.now(),
+        name: 'playwright_press_key',
+        parameters: { key: 'Escape' }
+      }]),
+      () => this.mcpClient.callTools([{
+        id: 'fallback-enter-' + Date.now(),
+        name: 'playwright_press_key',
+        parameters: { key: 'Enter' }
+      }])
+    ];
+    
+    for (const method of fallbackMethods) {
+      try {
+        await method();
+        console.log('✅ Fallback method succeeded');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        break;
+      } catch (error) {
+        // Try next method
+        continue;
+      }
     }
   }
 
