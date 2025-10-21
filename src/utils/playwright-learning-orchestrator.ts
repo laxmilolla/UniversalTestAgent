@@ -1558,8 +1558,7 @@ Return ONLY a JSON response in this exact format:
                     
                 } catch (clickError) {
                     console.log(`❌ Failed to click popup button: ${clickError.message}`);
-                    // Try fallback methods
-                    await this.tryFallbackDismissal();
+                    console.log('⚠️ Popup button click failed - continuing without popup dismissal');
                 }
             } else {
                 console.log('✅ AI analysis: No popups detected');
@@ -1568,55 +1567,9 @@ Return ONLY a JSON response in this exact format:
             
         } catch (error) {
             console.error('❌ Error in AI popup detection:', error);
-            console.log('🔄 Falling back to generic dismissal methods...');
-            await this.tryFallbackDismissal();
+            console.log('⚠️ AI popup detection failed - continuing without popup dismissal');
         }
     }
 
-    // Fallback method for when AI detection fails
-    private async tryFallbackDismissal(): Promise<void> {
-        console.log('🔄 Trying fallback dismissal methods...');
-        
-        const fallbackMethods = [
-            // Try common button selectors
-            () => this.mcpClient.callTools([{
-                id: 'fallback-continue-' + Date.now(),
-                name: 'playwright_click',
-                parameters: { selector: 'button:contains("Continue")' }
-            }]),
-            () => this.mcpClient.callTools([{
-                id: 'fallback-accept-' + Date.now(),
-                name: 'playwright_click',
-                parameters: { selector: 'button:contains("Accept")' }
-            }]),
-            () => this.mcpClient.callTools([{
-                id: 'fallback-ok-' + Date.now(),
-                name: 'playwright_click',
-                parameters: { selector: 'button:contains("OK")' }
-            }]),
-            // Try keyboard shortcuts
-            () => this.mcpClient.callTools([{
-                id: 'fallback-escape-' + Date.now(),
-                name: 'playwright_press_key',
-                parameters: { key: 'Escape' }
-            }]),
-            () => this.mcpClient.callTools([{
-                id: 'fallback-enter-' + Date.now(),
-                name: 'playwright_press_key',
-                parameters: { key: 'Enter' }
-            }])
-        ];
-        
-        for (const method of fallbackMethods) {
-            try {
-                await method();
-                console.log('✅ Fallback method succeeded');
-                await new Promise(resolve => setTimeout(resolve, 1000));
-                break;
-            } catch (error) {
-                // Try next method
-                continue;
-            }
-        }
     }
 }
