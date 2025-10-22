@@ -624,10 +624,32 @@ private combineDOMAndHTMLAnalysis(domAnalysis: any, htmlPatterns: any): any {
         confidence: result.confidence
     });
     
-    return {
+    // Group elements for frontend display and test case generation
+    const groupedResult = {
         ...result,
-        totalElements: totalElements
+        totalElements: totalElements,
+        
+        // Grouped elements for test case generation
+        interactiveElements: [
+            ...result.buttons,
+            ...result.forms,
+            ...result.dropdowns,
+            ...result.checkboxes,
+            ...result.searchBoxes
+        ],
+        
+        dataComponents: [
+            ...result.tables,
+            ...result.charts
+        ],
+        
+        navigationElements: [
+            ...result.navigation,
+            ...result.filters
+        ]
     };
+    
+    return groupedResult;
 }
 
 // New method to combine HTML and screenshot analysis
