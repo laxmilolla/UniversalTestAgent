@@ -22,6 +22,12 @@ ssh -i "$KEY_PATH" "$EC2_USER@$EC2_HOST" "
         cp ~/$PROJECT_NAME/.env ~/.env.backup
     fi
     
+    # Backup test-reports directory if it exists
+    if [ -d ~/$PROJECT_NAME/test-reports ]; then
+        echo '💾 Backing up test-reports directory...'
+        cp -r ~/$PROJECT_NAME/test-reports ~/test-reports.backup
+    fi
+    
     # Remove existing project directory
     rm -rf ~/$PROJECT_NAME
     
@@ -33,6 +39,13 @@ ssh -i "$KEY_PATH" "$EC2_USER@$EC2_HOST" "
         echo '🔄 Restoring .env file...'
         cp ~/.env.backup ~/$PROJECT_NAME/.env
         rm ~/.env.backup
+    fi
+    
+    # Restore test-reports directory if backup exists
+    if [ -d ~/test-reports.backup ]; then
+        echo '🔄 Restoring test-reports directory...'
+        cp -r ~/test-reports.backup ~/$PROJECT_NAME/test-reports
+        rm -rf ~/test-reports.backup
     fi
     
     # Navigate to project directory
