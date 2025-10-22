@@ -674,7 +674,7 @@ CRITICAL INSTRUCTIONS:
 3. Do NOT make up or assume buttons that aren't explicitly mentioned
 4. Look for actual button text like "Continue", "Accept", "Dismiss", "Close", "OK", "I Agree"
 
-Page Text Content: ${pageText.substring(0, 2000)}...
+Page Text Content: ${pageText}...
 
 Analyze this text content and determine:
 1. Are there any popups, modals, warning dialogs, or blocking elements mentioned?
