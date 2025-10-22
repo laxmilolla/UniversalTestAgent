@@ -340,6 +340,7 @@ Return JSON in this format:
         const testStartTime = Date.now();
         console.log(`🔍 Calling executeTestWithValidation for test: ${testCase.name}`);
         console.log(`🚨 ABOUT TO CALL: executeTestWithValidation for test: ${testCase.name}`);
+        console.log(`🚨 PARAMS CHECK: testCase=${JSON.stringify(testCase?.name)}, runId=${runId}`);
         const testResult = await this.executeTestWithValidation(testCase, runId);
         console.log(`🚨 AFTER CALL: executeTestWithValidation completed for test: ${testCase.name}`);
         console.log(`🔍 executeTestWithValidation completed for test: ${testCase.name}`);
@@ -438,6 +439,7 @@ Return JSON in this format:
 
   private async executeTestWithValidation(testCase: TestCase, runId: string): Promise<{status: 'passed' | 'failed' | 'skipped' | 'error', screenshots?: string[], error?: string, validation?: any}> {
     console.log(`🚨 FIRST LINE: executeTestWithValidation called for test: ${testCase.name}`);
+    console.log(`🚨 METHOD START: executeTestWithValidation called for test: ${testCase.name}`);
     console.log(`🔍 executeTestWithValidation entry for test: ${testCase.name}`);
     
     try {
