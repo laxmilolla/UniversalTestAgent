@@ -434,29 +434,21 @@ private async performPlaywrightDOMAnalysis(): Promise<any> {
         
         // Use native Playwright MCP tools for reliable element detection
         const queries = [
-            // Sortable table columns (like Case ID with sort indicators)
-            { name: 'sortableColumns', selector: 'th[data-sortable], th.sortable, th[onclick], th[role="button"], .sortable-header, [data-testid*="sort"], th:has(.sort-icon), th:has(.sort-arrow), th:has([class*="sort"])' },
-            
-            // Filter dropdowns in sidebar (like Breed, Sex, Diagnosis filters)
-            { name: 'filterDropdowns', selector: '.filter-section select, .filter-panel select, .sidebar select, .filter-dropdown, [data-testid*="filter"] select, .filter-item select, .filter-group select, .filter-control select' },
-            
-            // Filter checkboxes (for multi-select filters)
-            { name: 'filterCheckboxes', selector: '.filter-section input[type="checkbox"], .filter-panel input[type="checkbox"], .sidebar input[type="checkbox"], .filter-item input[type="checkbox"], .filter-group input[type="checkbox"]' },
-            
-            // Search boxes (main search and table search)
-            { name: 'searchBoxes', selector: 'input[type="search"], input[placeholder*="search"], input[placeholder*="Search"], .search-input, .search-box, input[aria-label*="search"], input[aria-label*="Search"]' },
-            
-            // Data tables (main content area)
-            { name: 'dataTables', selector: 'table.data-table, table[role="table"], .data-table, .results-table, .main-table, table:has(th), table:has(tbody)' },
-            
-            // Action buttons (Add Files, View in Browser, etc.)
-            { name: 'actionButtons', selector: 'button:contains("Add Files"), button:contains("View"), button:contains("Export"), button:contains("Download"), .action-button, .primary-button' },
-            
-            // Pagination controls
-            { name: 'pagination', selector: '.pagination, .page-controls, .pager, [data-testid*="pagination"], .page-navigation, select[name*="page"], select[name*="rows"]' },
-            
-            // Tab navigation (Cases, Samples, Case Files, Study Files)
-            { name: 'tabs', selector: '.tab, .tab-button, [role="tab"], .nav-tabs .nav-link, .tab-list .tab-item, [data-testid*="tab"]' }
+            // Generic selectors that should catch most elements
+            { name: 'buttons', selector: 'button, input[type="button"], input[type="submit"], .btn, .button, [role="button"]' },
+            { name: 'forms', selector: 'form, .form, fieldset' },
+            { name: 'tables', selector: 'table, .table, [role="table"]' },
+            { name: 'dropdowns', selector: 'select, .dropdown, .select, [role="combobox"]' },
+            { name: 'checkboxes', selector: 'input[type="checkbox"], .checkbox, [role="checkbox"]' },
+            { name: 'searchBoxes', selector: 'input[type="search"], input[placeholder*="search"], input[placeholder*="Search"], .search-input, .search-box' },
+            { name: 'filters', selector: '.sidebar, .filter-panel, .filter-container, .filter-section, .filter-sidebar, .left-panel, .right-panel, aside, .panel, .controls' },
+            { name: 'navigation', selector: '.nav, .navigation, .menu, .tabs, .breadcrumb, .pagination, nav, .breadcrumbs, .pager' },
+            { name: 'charts', selector: '.chart, .graph, canvas, svg, [role="img"]' },
+            // More specific selectors for common patterns
+            { name: 'sortableColumns', selector: 'th, .table-header, .column-header, [data-sortable], .sortable' },
+            { name: 'actionButtons', selector: 'button[class*="action"], button[class*="primary"], .action-button, .primary-button' },
+            { name: 'pagination', selector: '.pagination, .page-controls, .pager, .page-navigation, select[name*="page"], select[name*="rows"]' },
+            { name: 'tabs', selector: '.tab, .tab-button, [role="tab"], .nav-tabs .nav-link, .tab-list .tab-item' }
         ];
         
         for (const query of queries) {
