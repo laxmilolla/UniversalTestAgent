@@ -560,9 +560,9 @@ private async performPlaywrightDOMAnalysis(): Promise<any> {
     }
 }
 
-// Fallback DOM analysis using simpler queries
+// Fallback DOM analysis using native Playwright MCP tools
 private async performFallbackDOMAnalysis(): Promise<any> {
-    console.log('🔍 Starting fallback DOM analysis with simpler queries...');
+    console.log('🔍 Starting fallback DOM analysis with native Playwright tools...');
     
     const elements = {
         filters: [],
@@ -575,18 +575,18 @@ private async performFallbackDOMAnalysis(): Promise<any> {
         navigation: [],
         charts: [],
         totalElements: 0,
-        analysisMethod: 'playwright-dom-fallback'
+        analysisMethod: 'playwright-native-tools'
     };
     
     try {
-        // Try individual queries for each element type
+        // Use native Playwright MCP tools instead of playwright_evaluate
         const queries = [
-            { name: 'buttons', selector: 'button, .btn, [role="button"]' },
-            { name: 'forms', selector: 'form, .form' },
-            { name: 'tables', selector: 'table, .table' },
-            { name: 'dropdowns', selector: 'select, [role="combobox"]' },
+            { name: 'buttons', selector: 'button' },
+            { name: 'forms', selector: 'form' },
+            { name: 'tables', selector: 'table' },
+            { name: 'dropdowns', selector: 'select' },
             { name: 'checkboxes', selector: 'input[type="checkbox"]' },
-            { name: 'searchBoxes', selector: 'input[type="search"], input[placeholder*="search"]' },
+            { name: 'searchBoxes', selector: 'input[type="search"]' },
             { name: 'filters', selector: '.sidebar, .filter-panel, .filter-container' },
             { name: 'navigation', selector: '.nav, .navigation, .menu, .tabs' },
             { name: 'charts', selector: '.chart, .graph, canvas, svg' }
@@ -596,30 +596,28 @@ private async performFallbackDOMAnalysis(): Promise<any> {
             try {
                 console.log(`🔍 Querying ${query.name} with selector: ${query.selector}`);
                 
+                // Use playwright_query_selector_all instead of playwright_evaluate
                 const result = await this.mcpClient.callTools([{
-                    name: 'playwright_evaluate',
+                    name: 'playwright_query_selector_all',
                     parameters: {
-                        expression: `
-                            const elements = document.querySelectorAll('${query.selector}');
-                            return Array.from(elements).map(el => ({
-                                selector: el.id ? '#' + el.id : 
-                                         el.className ? '.' + el.className.split(' ')[0] : 
-                                         el.tagName.toLowerCase(),
-                                text: el.textContent?.trim().substring(0, 100) || '',
-                                placeholder: el.placeholder || '',
-                                ariaLabel: el.getAttribute('aria-label') || '',
-                                dataTestId: el.getAttribute('data-testid') || '',
-                                source: 'playwright-dom-fallback'
-                            }));
-                        `
+                        selector: query.selector
                     },
-                    id: `fallback-${query.name}-${Date.now()}`
+                    id: `native-${query.name}-${Date.now()}`
                 }]);
                 
-                const queryResult = result[0]?.result?.[0] || [];
-                elements[query.name] = queryResult;
+                console.log(`🔍 Raw result for ${query.name}:`, JSON.stringify(result, null, 2));
                 
-                console.log(`✅ Found ${queryResult.length} ${query.name}`);
+                const queryResult = result[0]?.result || [];
+                elements[query.name] = queryResult.map((el: any, index: number) => ({
+                    selector: `${query.selector}:nth-child(${index + 1})`,
+                    text: el.textContent?.trim().substring(0, 100) || '',
+                    placeholder: el.placeholder || '',
+                    ariaLabel: el.getAttribute?.('aria-label') || '',
+                    dataTestId: el.getAttribute?.('data-testid') || '',
+                    source: 'playwright-native-tools'
+                }));
+                
+                console.log(`✅ Found ${elements[query.name].length} ${query.name}`);
                 
             } catch (queryError) {
                 console.error(`❌ Failed to query ${query.name}:`, queryError.message);
@@ -636,7 +634,7 @@ private async performFallbackDOMAnalysis(): Promise<any> {
         });
         elements.totalElements = totalElements;
         
-        console.log('✅ Fallback DOM analysis completed:', {
+        console.log('✅ Native Playwright DOM analysis completed:', {
             totalElements: elements.totalElements,
             breakdown: Object.keys(elements).map(key => ({ [key]: Array.isArray(elements[key]) ? elements[key].length : 0 }))
         });
