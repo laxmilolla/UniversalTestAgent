@@ -525,6 +525,14 @@ Return JSON in this format:
       console.log('🎯 About to call dismissUIObstacles...');
       await this.dismissUIObstacles();
       console.log('🎯 dismissUIObstacles completed successfully');
+      
+      // Verify UI is accessible before proceeding
+      const isUIAccessible = await this.verifyUIAccessible();
+      if (!isUIAccessible) {
+        throw new Error('CRITICAL: UI still blocked by popup - test execution aborted for reliability');
+      }
+      
+      console.log('✅ UI verified as accessible - proceeding with test execution');
     } catch (error) {
       console.error('🎯 ERROR in dismissUIObstacles:', error);
       throw error; // Re-throw to see if it's being caught elsewhere
@@ -752,7 +760,7 @@ Return ONLY a JSON response in this exact format:
           
         } catch (clickError) {
           console.log(`❌ Failed to click popup button: ${clickError.message}`);
-          console.log('⚠️ Popup button click failed - continuing without popup dismissal');
+          throw new Error(`CRITICAL: Cannot dismiss popup - UI blocked. Test execution aborted for reliability. Selector: ${popupAnalysis.buttonSelector}`);
         }
       } else {
         console.log('✅ AI analysis: No popups detected');
@@ -762,6 +770,54 @@ Return ONLY a JSON response in this exact format:
     } catch (error) {
       console.error('❌ Error in AI popup detection:', error);
       console.log('⚠️ AI popup detection failed - continuing without popup dismissal');
+    }
+  }
+
+  private async verifyUIAccessible(): Promise<boolean> {
+    try {
+      // Take a verification screenshot
+      const verifyScreenshot = await this.mcpClient.callTools([{
+        id: 'verify-screenshot-' + Date.now(),
+        name: 'playwright_screenshot',
+        parameters: { name: 'ui-verification.png' }
+      }]);
+      
+      // Get page text to check for popup keywords
+      const pageText = await this.mcpClient.callTools([{
+        id: 'verify-text-' + Date.now(),
+        name: 'playwright_get_visible_text',
+        parameters: {}
+      }]);
+      
+      const text = pageText[0]?.result?.[0]?.text || '';
+      
+      // Check for common popup indicators
+      const popupKeywords = [
+        'government funding lapse',
+        'accept cookies',
+        'continue',
+        'i agree',
+        'close',
+        'dismiss',
+        'terms and conditions',
+        'privacy policy'
+      ];
+      
+      const hasPopupKeywords = popupKeywords.some(keyword => 
+        text.toLowerCase().includes(keyword.toLowerCase())
+      );
+      
+      if (hasPopupKeywords) {
+        console.log('⚠️ UI Verification: Popup keywords detected in text');
+        return false;
+      }
+      
+      console.log('✅ UI Verification: UI appears accessible');
+      return true;
+      
+    } catch (error) {
+      console.log('⚠️ UI Verification failed:', error);
+      return false;
     }
   }
 

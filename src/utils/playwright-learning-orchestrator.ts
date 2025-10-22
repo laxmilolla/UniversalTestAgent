@@ -150,6 +150,14 @@ export class PlaywrightLearningOrchestrator {
                 // Detect and dismiss any UI obstacles (modals, popups, banners, etc.)
                 await this.dismissUIObstacles();
 
+                // Verify UI is accessible before proceeding
+                const isUIAccessible = await this.verifyUIAccessible();
+                if (!isUIAccessible) {
+                    throw new Error('CRITICAL: UI still blocked by popup - learning aborted for reliability');
+                }
+
+                console.log('✅ UI verified as accessible - proceeding with learning');
+
                 this.logStep('4', 'Playwright', 'Extract HTML Content', 
                     { website: websiteUrl, waitForJS: true, waitForReact: true }, 
                     'Extracting HTML after React components load...');
@@ -214,9 +222,13 @@ export class PlaywrightLearningOrchestrator {
             } catch (playwrightError) {
                 this.logStep('11', 'Playwright', 'Playwright Failed', 
                     { error: playwrightError.message }, 
-                    'Playwright extraction failed - no fallback content');
+                    'Playwright extraction failed');
                 
-                // No fallback - let it fail cleanly
+                // Check if error is due to popup blocking
+                if (playwrightError.message.includes('popup') || playwrightError.message.includes('UI blocked')) {
+                    throw new Error(`Cannot proceed with learning: ${playwrightError.message}. Please ensure popups can be dismissed.`);
+                }
+                
                 throw new Error(`Playwright failed: ${playwrightError.message}`);
             }
             
@@ -1454,6 +1466,54 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
         return relationships;
     }
 
+    private async verifyUIAccessible(): Promise<boolean> {
+        try {
+            // Take a verification screenshot
+            const verifyScreenshot = await this.mcpClient.callTools([{
+                id: 'verify-screenshot-' + Date.now(),
+                name: 'playwright_screenshot',
+                parameters: { name: 'ui-verification.png' }
+            }]);
+            
+            // Get page text to check for popup keywords
+            const pageText = await this.mcpClient.callTools([{
+                id: 'verify-text-' + Date.now(),
+                name: 'playwright_get_visible_text',
+                parameters: {}
+            }]);
+            
+            const text = pageText[0]?.result?.[0]?.text || '';
+            
+            // Check for common popup indicators
+            const popupKeywords = [
+                'government funding lapse',
+                'accept cookies',
+                'continue',
+                'i agree',
+                'close',
+                'dismiss',
+                'terms and conditions',
+                'privacy policy'
+            ];
+            
+            const hasPopupKeywords = popupKeywords.some(keyword => 
+                text.toLowerCase().includes(keyword.toLowerCase())
+            );
+            
+            if (hasPopupKeywords) {
+                console.log('⚠️ UI Verification: Popup keywords detected in text');
+                return false;
+            }
+            
+            console.log('✅ UI Verification: UI appears accessible');
+            return true;
+            
+        } catch (error) {
+            console.log('⚠️ UI Verification failed:', error);
+            return false;
+        }
+    }
+
     private extractScreenshotPath(screenshotResult: any[]): string {
         try {
             console.log('🔍 DEBUG: Extracting screenshot path from result:', JSON.stringify(screenshotResult, null, 2));
@@ -1620,7 +1680,7 @@ Return ONLY a JSON response in this exact format:
                     
                 } catch (clickError) {
                     console.log(`❌ Failed to click popup button: ${clickError.message}`);
-                    console.log('⚠️ Popup button click failed - continuing without popup dismissal');
+                    throw new Error(`CRITICAL: Cannot dismiss popup - UI blocked. Learning aborted for reliability. Selector: ${popupAnalysis.buttonSelector}`);
                 }
             } else {
                 console.log('✅ AI analysis: No popups detected');
