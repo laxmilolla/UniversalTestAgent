@@ -72,6 +72,9 @@ app.use(express.static(path.join(__dirname, '../../public')));
 // Serve screenshots from Playwright MCP Downloads folder
 app.use('/screenshots', express.static('/home/ubuntu/Downloads'));
 
+// Serve test reports from the correct location
+app.use('/test-reports', express.static('/home/ubuntu/playwright-chatbot/test-reports'));
+
 // Routes
 app.get('/api/tools', async (req, res) => {
   try {
@@ -446,7 +449,7 @@ app.get('/api/test/reports', async (req, res) => {
     try {
         const fs = require('fs');
         const path = require('path');
-        const reportsDir = path.join(__dirname, '../../public/test-reports');
+        const reportsDir = '/home/ubuntu/playwright-chatbot/test-reports';
         
         if (!fs.existsSync(reportsDir)) {
             return res.json({ success: true, runs: [] });
