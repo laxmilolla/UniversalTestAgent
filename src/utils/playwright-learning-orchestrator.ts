@@ -506,12 +506,9 @@ private async performPlaywrightDOMAnalysis(): Promise<any> {
         }
         
         // If we found very few elements, try more generic fallback selectors
-        const totalFound: number = Object.values(elements).reduce((sum: number, arr: any) => {
-            if (Array.isArray(arr)) {
-                return sum + arr.length;
-            }
-            return sum;
-        }, 0);
+        const totalFound: number = Object.values(elements)
+            .filter((arr: any) => Array.isArray(arr))
+            .reduce((sum: number, arr: any[]) => sum + arr.length, 0);
         
         if (totalFound < 5) {
             console.log('🔍 Found few elements, trying generic fallback selectors...');
