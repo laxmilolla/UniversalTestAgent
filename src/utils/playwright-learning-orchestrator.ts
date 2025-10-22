@@ -406,17 +406,43 @@ private async performPlaywrightDOMAnalysis(): Promise<any> {
     };
     
     try {
+        // First, let's debug what elements are actually on the page
+        console.log('🔍 Debugging: Getting all elements on the page...');
+        try {
+            const debugResult = await this.mcpClient.callTools([{
+                name: 'playwright_query_selector_all',
+                parameters: {
+                    selector: '*'
+                },
+                id: `debug-all-elements-${Date.now()}`
+            }]);
+            
+            const allElements = debugResult[0]?.result || [];
+            console.log(`🔍 Total elements on page: ${allElements.length}`);
+            
+            // Log unique tag names
+            const tagNames = [...new Set(allElements.map((el: any) => el.tagName))];
+            console.log('🔍 Unique tag names found:', tagNames.slice(0, 20)); // Show first 20
+            
+            // Log unique class names (first 20)
+            const classNames = [...new Set(allElements.flatMap((el: any) => el.className ? el.className.split(' ') : []))].filter(Boolean);
+            console.log('🔍 Sample class names found:', classNames.slice(0, 20));
+            
+        } catch (debugError) {
+            console.error('❌ Debug query failed:', debugError);
+        }
+        
         // Use native Playwright MCP tools for reliable element detection
         const queries = [
-            { name: 'buttons', selector: 'button, input[type="button"], input[type="submit"], .btn, .button, [role="button"], .MuiButton-root, .ant-btn' },
-            { name: 'forms', selector: 'form, .form, .MuiForm-root, .ant-form' },
-            { name: 'tables', selector: 'table, .table, .MuiTable-root, .data-table, .ant-table' },
-            { name: 'dropdowns', selector: 'select, .dropdown, .select, .MuiSelect-root, .ant-select, [role="combobox"], .filter-dropdown' },
-            { name: 'checkboxes', selector: 'input[type="checkbox"], .checkbox, .MuiCheckbox-root, .ant-checkbox' },
-            { name: 'searchBoxes', selector: 'input[type="search"], input[placeholder*="search"], .search-input, .search-box, .MuiInputBase-root input' },
-            { name: 'filters', selector: '.sidebar, .filter-panel, .filter-container, .filter-section, .filter-sidebar, .left-panel, .right-panel, .ant-filter' },
-            { name: 'navigation', selector: '.nav, .navigation, .menu, .tabs, .breadcrumb, .pagination, .MuiTabs-root, .ant-menu, .ant-tabs' },
-            { name: 'charts', selector: '.chart, .graph, canvas, svg, .MuiChart-root, .recharts-wrapper, .ant-chart' }
+            { name: 'buttons', selector: 'button, input[type="button"], input[type="submit"], .btn, .button, [role="button"], .MuiButton-root, .ant-btn, [data-testid*="button"], [class*="button"], [class*="btn"], [aria-label*="button"]' },
+            { name: 'forms', selector: 'form, .form, .MuiForm-root, .ant-form, [data-testid*="form"], [class*="form"], fieldset' },
+            { name: 'tables', selector: 'table, .table, .MuiTable-root, .data-table, .ant-table, [data-testid*="table"], [class*="table"], [role="table"], [aria-label*="table"]' },
+            { name: 'dropdowns', selector: 'select, .dropdown, .select, .MuiSelect-root, .ant-select, [role="combobox"], .filter-dropdown, [data-testid*="select"], [data-testid*="dropdown"], [class*="select"], [class*="dropdown"], [aria-haspopup="listbox"]' },
+            { name: 'checkboxes', selector: 'input[type="checkbox"], .checkbox, .MuiCheckbox-root, .ant-checkbox, [data-testid*="checkbox"], [class*="checkbox"], [role="checkbox"]' },
+            { name: 'searchBoxes', selector: 'input[type="search"], input[placeholder*="search"], .search-input, .search-box, .MuiInputBase-root input, [data-testid*="search"], [class*="search"], input[type="text"][placeholder*="Search"], input[type="text"][placeholder*="Filter"]' },
+            { name: 'filters', selector: '.sidebar, .filter-panel, .filter-container, .filter-section, .filter-sidebar, .left-panel, .right-panel, .ant-filter, [data-testid*="filter"], [class*="filter"], [class*="sidebar"], [role="complementary"], aside, .panel, .controls' },
+            { name: 'navigation', selector: '.nav, .navigation, .menu, .tabs, .breadcrumb, .pagination, .MuiTabs-root, .ant-menu, .ant-tabs, [data-testid*="nav"], [class*="nav"], [class*="menu"], [role="navigation"], nav, .breadcrumbs, .pager' },
+            { name: 'charts', selector: '.chart, .graph, canvas, svg, .MuiChart-root, .recharts-wrapper, .ant-chart, [data-testid*="chart"], [class*="chart"], [class*="graph"], [role="img"]' }
         ];
         
         for (const query of queries) {
@@ -476,6 +502,59 @@ private async performPlaywrightDOMAnalysis(): Promise<any> {
             } catch (queryError) {
                 console.error(`❌ Failed to query ${query.name}:`, queryError);
                 elements[query.name] = [];
+            }
+        }
+        
+        // If we found very few elements, try more generic fallback selectors
+        const totalFound: number = Object.values(elements).reduce((sum: number, arr: any) => {
+            return sum + (Array.isArray(arr) ? arr.length : 0);
+        }, 0);
+        
+        if (totalFound < 5) {
+            console.log('🔍 Found few elements, trying generic fallback selectors...');
+            
+            const fallbackQueries = [
+                { name: 'genericButtons', selector: '[onclick], [data-action], [data-click], [data-toggle]' },
+                { name: 'genericInputs', selector: 'input, textarea, [contenteditable]' },
+                { name: 'genericContainers', selector: '[class*="container"], [class*="wrapper"], [class*="panel"], [class*="section"]' },
+                { name: 'genericLists', selector: 'ul, ol, [role="list"], [class*="list"]' }
+            ];
+            
+            for (const query of fallbackQueries) {
+                try {
+                    console.log(`🔍 Fallback querying ${query.name} with selector: ${query.selector}`);
+                    
+                    const result = await this.mcpClient.callTools([{
+                        name: 'playwright_query_selector_all',
+                        parameters: {
+                            selector: query.selector
+                        },
+                        id: `fallback-${query.name}-${Date.now()}`
+                    }]);
+                    
+                    const queryResult = result[0]?.result || [];
+                    console.log(`🔍 Fallback found ${queryResult.length} ${query.name}`);
+                    
+                    if (queryResult.length > 0) {
+                        // Add to appropriate category based on element type
+                        const elementType = query.name.replace('generic', '').toLowerCase();
+                        if (!elements[elementType]) {
+                            elements[elementType] = [];
+                        }
+                        
+                        elements[elementType] = elements[elementType].concat(queryResult.map((el: any, index: number) => ({
+                            selector: el.id ? `#${el.id}` : 
+                                       el.className ? `.${el.className.split(' ')[0]}` : 
+                                       `${query.selector}:nth-child(${index + 1})`,
+                            type: elementType,
+                            text: el.textContent?.trim().substring(0, 100) || '',
+                            source: 'playwright-fallback'
+                        })));
+                    }
+                    
+                } catch (queryError) {
+                    console.error(`❌ Fallback failed to query ${query.name}:`, queryError);
+                }
             }
         }
         
