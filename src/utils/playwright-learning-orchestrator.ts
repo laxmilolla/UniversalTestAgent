@@ -352,58 +352,282 @@ export class PlaywrightLearningOrchestrator {
     }
 
 async analyzeRealUI(pageContent: string, pageText: string, screenshot: any, existingScreenshotAnalysis?: any): Promise<any> {
-    console.log('\n=== HYBRID UI ANALYSIS (HTML + SCREENSHOT) ===');
+    console.log('\n=== PLAYWRIGHT DOM ANALYSIS ===');
         
-        try {
-        // Phase 1: HTML-based pattern detection
-        console.log('Phase 1: HTML Pattern Detection...');
-            const patternDetector = new UniversalPatternDetector();
+    try {
+        // Phase 1: Playwright DOM-based element detection (Most Reliable)
+        console.log('Phase 1: Playwright DOM Element Detection...');
+        const domAnalysis = await this.performPlaywrightDOMAnalysis();
+        console.log('🎯 DOM Elements Found:', domAnalysis);
+        
+        // Phase 2: Enhanced HTML pattern detection (Backup)
+        console.log('Phase 2: Enhanced HTML Pattern Detection...');
+        const patternDetector = new UniversalPatternDetector();
         const htmlPatterns = patternDetector.discoverUIPatterns(pageContent);
         console.log('🎯 HTML Patterns:', htmlPatterns);
         
-        // Phase 2: Screenshot-based visual analysis
-        console.log('Phase 2: Screenshot Visual Analysis...');
-        let screenshotAnalysis = existingScreenshotAnalysis;
-        
-        // If no existing analysis provided, try to analyze the current screenshot
-        if (!screenshotAnalysis && screenshot) {
-            console.log('📸 Analyzing current screenshot...');
-            const { LearningOrchestrator } = await import('./learning-orchestrator');
-            const { BedrockClient } = await import('../chatbot/bedrock-client');
-            const bedrockClient = new BedrockClient({
-                region: (process as any).env.AWS_REGION || 'us-east-1',
-                modelId: (process as any).env.BEDROCK_MODEL_ID || 'anthropic.claude-3-5-sonnet-20241022-v2:0',
-                accessKeyId: (process as any).env.AWS_ACCESS_KEY_ID || '',
-                secretAccessKey: (process as any).env.AWS_SECRET_ACCESS_KEY || ''
-            });
-            const learningOrchestrator = new LearningOrchestrator(bedrockClient);
-            screenshotAnalysis = await learningOrchestrator.analyzeUIScreenshot({
-                name: 'playwright-screenshot.png',
-                size: screenshot.length || 0,
-                data: screenshot
-            });
-            console.log('📸 Current Screenshot Analysis:', screenshotAnalysis);
-        } else if (screenshotAnalysis) {
-            console.log('📸 Using provided screenshot analysis:', screenshotAnalysis);
-        } else {
-            console.log('📸 No screenshot analysis available');
-        }
-        
-        // Phase 3: Combine both approaches
-        console.log('Phase 3: Combining Analysis...');
-        const combinedResult = this.combineHTMLAndScreenshotAnalysis(htmlPatterns, screenshotAnalysis);
+        // Phase 3: Combine DOM and HTML analysis
+        console.log('Phase 3: Combining DOM and HTML Analysis...');
+        const combinedResult = this.combineDOMAndHTMLAnalysis(domAnalysis, htmlPatterns);
         
         console.log('✅ Combined Analysis:', combinedResult);
         
         return combinedResult;
         
     } catch (error) {
-        console.error('Error in hybrid UI analysis:', error);
+        console.error('Error in Playwright DOM analysis:', error);
         // Fallback to HTML-only analysis
         const patternDetector = new UniversalPatternDetector();
         const htmlPatterns = patternDetector.discoverUIPatterns(pageContent);
         return this.convertHTMLPatternsToResult(htmlPatterns);
     }
+}
+
+// New method to perform comprehensive Playwright DOM analysis
+private async performPlaywrightDOMAnalysis(): Promise<any> {
+    console.log('🔍 Starting Playwright DOM analysis...');
+    
+    try {
+        // Use Playwright to find all interactive elements directly from the DOM
+        const domResult = await this.mcpClient.callTools([{
+            name: 'playwright_evaluate',
+            parameters: {
+                expression: `
+                    console.log('🔍 Starting DOM element detection...');
+                    
+                    // Comprehensive element detection
+                    const elements = {
+                        filters: [],
+                        dropdowns: [],
+                        checkboxes: [],
+                        searchBoxes: [],
+                        buttons: [],
+                        forms: [],
+                        tables: [],
+                        navigation: [],
+                        charts: []
+                    };
+                    
+                    // Helper function to create element info
+                    function createElementInfo(el, type, additionalInfo = {}) {
+                        const selector = el.id ? '#' + el.id : 
+                                       el.className ? '.' + el.className.split(' ')[0] : 
+                                       el.tagName.toLowerCase();
+                        
+                        return {
+                            selector: selector,
+                            type: type,
+                            text: el.textContent?.trim().substring(0, 100) || '',
+                            placeholder: el.placeholder || '',
+                            ariaLabel: el.getAttribute('aria-label') || '',
+                            dataTestId: el.getAttribute('data-testid') || '',
+                            source: 'playwright-dom',
+                            ...additionalInfo
+                        };
+                    }
+                    
+                    // 1. FILTER PANELS AND SIDE BARS
+                    document.querySelectorAll('.sidebar, .filter-panel, .filter-container, .filter-section, .filter-sidebar, .left-panel, .right-panel').forEach(el => {
+                        elements.filters.push(createElementInfo(el, 'filter-panel', {
+                            position: 'sidebar',
+                            childCount: el.children.length
+                        }));
+                    });
+                    
+                    // 2. DROPDOWNS AND SELECTS
+                    document.querySelectorAll('select, .MuiSelect-root, [role="combobox"], .dropdown, .select-dropdown, .filter-dropdown').forEach(el => {
+                        const options = Array.from(el.querySelectorAll('option')).map(opt => opt.textContent?.trim()).filter(Boolean);
+                        elements.dropdowns.push(createElementInfo(el, 'dropdown', {
+                            options: options,
+                            optionCount: options.length
+                        }));
+                    });
+                    
+                    // 3. CHECKBOXES
+                    document.querySelectorAll('input[type="checkbox"], .MuiCheckbox-root, .checkbox, .filter-checkbox').forEach(el => {
+                        elements.checkboxes.push(createElementInfo(el, 'checkbox', {
+                            checked: el.checked || false,
+                            label: el.nextElementSibling?.textContent?.trim() || ''
+                        }));
+                    });
+                    
+                    // 4. SEARCH BOXES
+                    document.querySelectorAll('input[type="search"], .search-input, .filter-search, input[placeholder*="search"], input[placeholder*="Search"], .search-box').forEach(el => {
+                        elements.searchBoxes.push(createElementInfo(el, 'search', {
+                            inputType: el.type || 'text'
+                        }));
+                    });
+                    
+                    // 5. BUTTONS
+                    document.querySelectorAll('button, .btn, .MuiButton-root, [role="button"], input[type="button"], input[type="submit"]').forEach(el => {
+                        elements.buttons.push(createElementInfo(el, 'button', {
+                            buttonType: el.type || 'button',
+                            disabled: el.disabled || false
+                        }));
+                    });
+                    
+                    // 6. FORMS
+                    document.querySelectorAll('form, .form, .MuiForm-root').forEach(el => {
+                        const inputs = Array.from(el.querySelectorAll('input, select, textarea')).length;
+                        elements.forms.push(createElementInfo(el, 'form', {
+                            inputCount: inputs,
+                            method: el.method || 'get',
+                            action: el.action || ''
+                        }));
+                    });
+                    
+                    // 7. TABLES
+                    document.querySelectorAll('table, .table, .MuiTable-root, .data-table').forEach(el => {
+                        const rows = el.querySelectorAll('tr').length;
+                        const cols = el.querySelectorAll('th, td').length;
+                        const headers = Array.from(el.querySelectorAll('th')).map(th => th.textContent?.trim()).filter(Boolean);
+                        elements.tables.push(createElementInfo(el, 'table', {
+                            rowCount: rows,
+                            columnCount: cols,
+                            headers: headers,
+                            sortable: el.querySelectorAll('th[data-sortable], .sortable').length > 0
+                        }));
+                    });
+                    
+                    // 8. NAVIGATION
+                    document.querySelectorAll('.nav, .navigation, .menu, .tabs, .breadcrumb, .pagination, .MuiTabs-root').forEach(el => {
+                        const items = Array.from(el.querySelectorAll('a, button, .nav-item')).map(item => item.textContent?.trim()).filter(Boolean);
+                        elements.navigation.push(createElementInfo(el, 'navigation', {
+                            itemCount: items.length,
+                            items: items
+                        }));
+                    });
+                    
+                    // 9. CHARTS AND VISUALIZATIONS
+                    document.querySelectorAll('.chart, .graph, .visualization, .donut-chart, .bar-chart, .pie-chart, canvas, svg').forEach(el => {
+                        elements.charts.push(createElementInfo(el, 'chart', {
+                            chartType: el.className.includes('donut') ? 'donut' : 
+                                      el.className.includes('bar') ? 'bar' : 
+                                      el.className.includes('pie') ? 'pie' : 'unknown'
+                        }));
+                    });
+                    
+                    // Calculate totals
+                    const totalElements = Object.values(elements).reduce((sum, arr) => sum + arr.length, 0);
+                    
+                    console.log('🎯 DOM Analysis Complete:', {
+                        totalElements: totalElements,
+                        breakdown: Object.keys(elements).map(key => ({ [key]: elements[key].length }))
+                    });
+                    
+                    return {
+                        ...elements,
+                        totalElements: totalElements,
+                        analysisMethod: 'playwright-dom',
+                        timestamp: new Date().toISOString()
+                    };
+                `
+            },
+            id: 'dom-analysis-' + Date.now()
+        }]);
+        
+        const domAnalysis = domResult[0]?.result?.[0] || {};
+        console.log('✅ Playwright DOM analysis completed:', domAnalysis);
+        
+        return domAnalysis;
+        
+    } catch (error) {
+        console.error('❌ Playwright DOM analysis failed:', error);
+        return {
+            filters: [],
+            dropdowns: [],
+            checkboxes: [],
+            searchBoxes: [],
+            buttons: [],
+            forms: [],
+            tables: [],
+            navigation: [],
+            charts: [],
+            totalElements: 0,
+            analysisMethod: 'playwright-dom-failed',
+            error: error.message
+        };
+    }
+}
+
+// New method to combine DOM and HTML analysis
+private combineDOMAndHTMLAnalysis(domAnalysis: any, htmlPatterns: any): any {
+    console.log('🔄 Combining DOM and HTML analysis...');
+    
+    const result = {
+        // Primary: DOM analysis results
+        filters: domAnalysis.filters || [],
+        dropdowns: domAnalysis.dropdowns || [],
+        checkboxes: domAnalysis.checkboxes || [],
+        searchBoxes: domAnalysis.searchBoxes || [],
+        buttons: domAnalysis.buttons || [],
+        forms: domAnalysis.forms || [],
+        tables: domAnalysis.tables || [],
+        navigation: domAnalysis.navigation || [],
+        charts: domAnalysis.charts || [],
+        
+        // Backup: HTML patterns (if DOM analysis missed anything)
+        htmlForms: htmlPatterns.forms?.map(f => ({ 
+            selector: f.selector, 
+            inputs: f.inputs,
+            submitButton: f.submitButton,
+            source: 'html-backup'
+        })) || [],
+        
+        htmlButtons: htmlPatterns.buttons?.map(b => ({ 
+            selector: b.selector, 
+            type: b.type,
+            text: b.text,
+            ariaLabel: b.ariaLabel,
+            source: 'html-backup'
+        })) || [],
+        
+        htmlTables: htmlPatterns.tables?.map(t => ({ 
+            selector: t.selector, 
+            columns: t.columns,
+            source: 'html-backup'
+        })) || [],
+        
+        // Analysis metadata
+        analysisMethod: 'dom-primary-html-backup',
+        domElements: domAnalysis.totalElements || 0,
+        htmlElements: (htmlPatterns.forms?.length || 0) + (htmlPatterns.buttons?.length || 0) + (htmlPatterns.tables?.length || 0),
+        confidence: domAnalysis.totalElements > 0 ? 0.95 : 0.7,
+        timestamp: new Date().toISOString()
+    };
+    
+    // Merge HTML backup elements if DOM analysis found fewer elements
+    if (result.htmlForms.length > result.forms.length) {
+        console.log('📝 Adding HTML backup forms...');
+        result.forms = [...result.forms, ...result.htmlForms];
+    }
+    
+    if (result.htmlButtons.length > result.buttons.length) {
+        console.log('📝 Adding HTML backup buttons...');
+        result.buttons = [...result.buttons, ...result.htmlButtons];
+    }
+    
+    if (result.htmlTables.length > result.tables.length) {
+        console.log('📝 Adding HTML backup tables...');
+        result.tables = [...result.tables, ...result.htmlTables];
+    }
+    
+    // Calculate final totals
+    const totalElements = result.filters.length + result.dropdowns.length + result.checkboxes.length + 
+                          result.searchBoxes.length + result.buttons.length + result.forms.length + 
+                          result.tables.length + result.navigation.length + result.charts.length;
+    
+    console.log('✅ Combined analysis complete:', {
+        totalElements: totalElements,
+        domElements: result.domElements,
+        htmlElements: result.htmlElements,
+        confidence: result.confidence
+    });
+    
+    return {
+        ...result,
+        totalElements: totalElements
+    };
 }
 
 // New method to combine HTML and screenshot analysis
