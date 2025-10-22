@@ -439,12 +439,15 @@ Return JSON in this format:
     
     try {
       // Get RAG client dynamically from playwrightLearningOrchestrator
+      console.log('🔍 Getting RAG client...');
       const ragClient = this.playwrightLearningOrchestrator.getRagClient();
       if (!ragClient) {
         throw new Error('RAG client is not available. Please complete the Learning Phase first to load TSV data.');
       }
+      console.log('✅ RAG client obtained successfully');
       
       // 1. Get expected results from TSV gold standard
+      console.log('🔍 Generating expected results...');
       const expectedResults = await ragClient.generateExpectedResults(testCase);
       console.log(`📊 Expected from TSV: ${expectedResults.expectedCount} records`);
       
@@ -455,6 +458,7 @@ Return JSON in this format:
       console.log(`🌐 Actual from UI: ${uiResult.data.length} records`);
       
       // 3. Validate using TSV as gold standard
+      console.log('🔍 Validating TSV Gold Standard vs UI Results...');
       const validation = await ragClient.validateResults(uiResult.data, expectedResults);
       
       return {
@@ -465,7 +469,9 @@ Return JSON in this format:
       };
       
     } catch (error) {
-      console.error('Test execution error:', error);
+      console.error('❌ ERROR in executeTestWithValidation:', error);
+      console.error('❌ Error details:', error.message);
+      console.error('❌ Error stack:', error.stack);
       return {
         status: 'error',
         error: error.message
