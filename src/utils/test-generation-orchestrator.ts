@@ -339,7 +339,9 @@ Return JSON in this format:
         
         const testStartTime = Date.now();
         console.log(`🔍 Calling executeTestWithValidation for test: ${testCase.name}`);
+        console.log(`🚨 ABOUT TO CALL: executeTestWithValidation for test: ${testCase.name}`);
         const testResult = await this.executeTestWithValidation(testCase, runId);
+        console.log(`🚨 AFTER CALL: executeTestWithValidation completed for test: ${testCase.name}`);
         console.log(`🔍 executeTestWithValidation completed for test: ${testCase.name}`);
         const testEndTime = Date.now();
         
