@@ -523,7 +523,7 @@ Return JSON in this format:
     // Detect and dismiss any UI obstacles (modals, popups, banners, etc.)
     try {
       console.log('🎯 About to call dismissUIObstacles...');
-      await this.dismissUIObstacles();
+    await this.dismissUIObstacles();
       console.log('🎯 dismissUIObstacles completed successfully');
       
       // Verify UI is accessible before proceeding
@@ -673,6 +673,7 @@ CRITICAL INSTRUCTIONS:
 2. ONLY suggest button selectors for buttons that are ACTUALLY VISIBLE in the text
 3. Do NOT make up or assume buttons that aren't explicitly mentioned
 4. Look for actual button text like "Continue", "Accept", "Dismiss", "Close", "OK", "I Agree"
+5. Use EXACT button text as it appears - do NOT add ellipsis (...) or modify the text
 
 Page Text Content: ${pageText}...
 
@@ -706,7 +707,7 @@ Return ONLY a JSON response in this exact format:
 {
   "hasPopup": true/false,
   "popupType": "warning|consent|verification|terms|government|javascript_warning|other",
-  "buttonText": "EXACT button text as it appears in the content (e.g., 'Continue', 'Accept', 'OK')",
+  "buttonText": "EXACT button text as it appears in the content (e.g., 'Continue', 'Accept', 'OK') - NO ellipsis or modifications",
   "buttonSelector": "Valid CSS selector based on actual button text found",
   "confidence": 0.0-1.0,
   "description": "Brief description of what you see in the text"
@@ -762,12 +763,12 @@ Return ONLY a JSON response in this exact format:
           // Verify popup is gone
           const verifyResult = await this.mcpClient.callTools([{
             id: 'verify-popup-gone-' + Date.now(),
-            name: 'playwright_evaluate',
-            parameters: {
+                  name: 'playwright_evaluate',
+                  parameters: {
               expression: `document.querySelector('${popupAnalysis.buttonSelector}') === null`
-            }
-          }]);
-          
+                  }
+                }]);
+                
           if (verifyResult[0]?.result?.[0]?.value === true) {
             console.log('✅ Popup verification: Successfully dismissed');
           } else {
@@ -783,7 +784,7 @@ Return ONLY a JSON response in this exact format:
         console.log(`📊 Confidence: ${popupAnalysis.confidence || 0}`);
       }
       
-    } catch (error) {
+        } catch (error) {
       console.error('❌ Error in AI popup detection:', error);
       console.log('⚠️ AI popup detection failed - continuing without popup dismissal');
     }

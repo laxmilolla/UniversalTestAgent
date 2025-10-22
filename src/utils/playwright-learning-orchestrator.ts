@@ -1951,6 +1951,7 @@ CRITICAL INSTRUCTIONS:
 2. ONLY suggest button selectors for buttons that are ACTUALLY VISIBLE in the text
 3. Do NOT make up or assume buttons that aren't explicitly mentioned
 4. Look for actual button text like "Continue", "Accept", "Dismiss", "Close", "OK", "I Agree"
+5. Use EXACT button text as it appears - do NOT add ellipsis (...) or modify the text
 
 Page Text Content: ${pageText}...
 
@@ -1984,7 +1985,7 @@ Return ONLY a JSON response in this exact format:
 {
   "hasPopup": true/false,
   "popupType": "warning|consent|verification|terms|government|javascript_warning|other",
-  "buttonText": "EXACT button text as it appears in the content (e.g., 'Continue', 'Accept', 'OK')",
+  "buttonText": "EXACT button text as it appears in the content (e.g., 'Continue', 'Accept', 'OK') - NO ellipsis or modifications",
   "buttonSelector": "Valid CSS selector based on actual button text found",
   "confidence": 0.0-1.0,
   "description": "Brief description of what you see in the text"
