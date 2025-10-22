@@ -294,6 +294,8 @@ Return JSON in this format:
   }
 
   async executeTestCases(testCaseIds: string[], options?: any): Promise<{success: boolean, results?: any[], statistics?: any, error?: string}> {
+    console.log(`🔍 executeTestCases called with ${testCaseIds.length} test cases`);
+    
     try {
       console.log('Starting test execution for test cases:', testCaseIds);
       
@@ -336,7 +338,9 @@ Return JSON in this format:
         }
         
         const testStartTime = Date.now();
+        console.log(`🔍 Calling executeTestWithValidation for test: ${testCase.name}`);
         const testResult = await this.executeTestWithValidation(testCase, runId);
+        console.log(`🔍 executeTestWithValidation completed for test: ${testCase.name}`);
         const testEndTime = Date.now();
         
         results.push({
@@ -431,7 +435,7 @@ Return JSON in this format:
   }
 
   private async executeTestWithValidation(testCase: TestCase, runId: string): Promise<{status: 'passed' | 'failed' | 'skipped' | 'error', screenshots?: string[], error?: string, validation?: any}> {
-    console.log(`🧪 Executing test: ${testCase.name}`);
+    console.log(`🔍 executeTestWithValidation entry for test: ${testCase.name}`);
     
     try {
       // Get RAG client dynamically from playwrightLearningOrchestrator
@@ -445,7 +449,9 @@ Return JSON in this format:
       console.log(`📊 Expected from TSV: ${expectedResults.expectedCount} records`);
       
       // 2. Execute test on UI with Playwright
+      console.log(`🔍 About to call executeTestOnUI for test: ${testCase.name}`);
       const uiResult = await this.executeTestOnUI(testCase, runId);
+      console.log(`🔍 executeTestOnUI completed for test: ${testCase.name}`);
       console.log(`🌐 Actual from UI: ${uiResult.data.length} records`);
       
       // 3. Validate using TSV as gold standard
@@ -502,7 +508,14 @@ Return JSON in this format:
     }]);
     
     // Detect and dismiss any UI obstacles (modals, popups, banners, etc.)
-    await this.dismissUIObstacles();
+    try {
+      console.log('🎯 About to call dismissUIObstacles...');
+      await this.dismissUIObstacles();
+      console.log('🎯 dismissUIObstacles completed successfully');
+    } catch (error) {
+      console.error('🎯 ERROR in dismissUIObstacles:', error);
+      throw error; // Re-throw to see if it's being caught elsewhere
+    }
     
     // Take screenshot before test
     const beforeScreenshotResult = await this.mcpClient.callTools([{
@@ -597,6 +610,7 @@ Return JSON in this format:
   }
 
   private async dismissUIObstacles(): Promise<void> {
+    console.log('🔍 ENTRY: dismissUIObstacles method called');
     console.log('🔍 Universal AI-powered popup detection starting...');
     
     try {
