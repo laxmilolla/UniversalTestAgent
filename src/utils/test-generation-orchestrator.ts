@@ -440,6 +440,7 @@ Return JSON in this format:
   private async executeTestWithValidation(testCase: TestCase, runId: string): Promise<{status: 'passed' | 'failed' | 'skipped' | 'error', screenshots?: string[], error?: string, validation?: any}> {
     console.log(`🚨 FIRST LINE: executeTestWithValidation called for test: ${testCase.name}`);
     console.log(`🚨 METHOD START: executeTestWithValidation called for test: ${testCase.name}`);
+    console.log(`🚨 IMMEDIATE LOG: executeTestWithValidation called for test: ${testCase.name}`);
     console.log(`🔍 executeTestWithValidation entry for test: ${testCase.name}`);
     
     try {
