@@ -47,8 +47,8 @@ export class PlaywrightLearningOrchestrator {
         console.log(`🔍 [${actor}] ${action}:`, traceEntry);
         
         // Store in global for frontend access
-        if (typeof global !== 'undefined') {
-            global.executionTrace = this.executionTrace;
+        if (typeof (global as any) !== 'undefined') {
+            (global as any).executionTrace = this.executionTrace;
         }
     }
 
@@ -358,10 +358,10 @@ async analyzeRealUI(pageContent: string, pageText: string, screenshot: any, exis
             const { LearningOrchestrator } = await import('./learning-orchestrator');
             const { BedrockClient } = await import('../chatbot/bedrock-client');
             const bedrockClient = new BedrockClient({
-                region: process.env.AWS_REGION || 'us-east-1',
-                modelId: process.env.BEDROCK_MODEL_ID || 'anthropic.claude-3-5-sonnet-20241022-v2:0',
-                accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
-                secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || ''
+                region: (process as any).env.AWS_REGION || 'us-east-1',
+                modelId: (process as any).env.BEDROCK_MODEL_ID || 'anthropic.claude-3-5-sonnet-20241022-v2:0',
+                accessKeyId: (process as any).env.AWS_ACCESS_KEY_ID || '',
+                secretAccessKey: (process as any).env.AWS_SECRET_ACCESS_KEY || ''
             });
             const learningOrchestrator = new LearningOrchestrator(bedrockClient);
             screenshotAnalysis = await learningOrchestrator.analyzeUIScreenshot({
@@ -1025,18 +1025,18 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
     private emitLLMCall(llmCall: any) {
         try {
             // Send via existing socket if available
-            if (typeof global !== 'undefined' && global.io) {
-                global.io.emit('llmCallUpdate', llmCall);
+            if (typeof (global as any) !== 'undefined' && (global as any).io) {
+                (global as any).io.emit('llmCallUpdate', llmCall);
             }
             
             // Also store in browser-accessible global
-            if (typeof global !== 'undefined') {
-                if (!global.realtimeLLMCalls) {
-                    global.realtimeLLMCalls = [];
+            if (typeof (global as any) !== 'undefined') {
+                if (!(global as any).realtimeLLMCalls) {
+                    (global as any).realtimeLLMCalls = [];
                 }
-                global.realtimeLLMCalls.push(llmCall);
-                if (global.realtimeLLMCalls.length > 50) {
-                    global.realtimeLLMCalls = global.realtimeLLMCalls.slice(-50);
+                (global as any).realtimeLLMCalls.push(llmCall);
+                if ((global as any).realtimeLLMCalls.length > 50) {
+                    (global as any).realtimeLLMCalls = (global as any).realtimeLLMCalls.slice(-50);
                 }
             }
         } catch (error) {
@@ -1494,12 +1494,15 @@ Look for common popup patterns:
 - Terms acceptance dialogs
 - Privacy notices
 
+IMPORTANT: Generate ONLY valid CSS selectors. Do NOT use jQuery-style selectors like :contains().
+Use standard CSS selectors like: button, .btn-continue, button[class*='continue'], #accept-btn
+
 Return ONLY a JSON response in this exact format:
 {
   "hasPopup": true/false,
   "popupType": "warning|consent|verification|terms|government|other",
   "buttonText": "Continue|Accept|OK|I Agree|etc",
-  "buttonSelector": "CSS selector like button:contains('Continue') or .btn-continue",
+  "buttonSelector": "Valid CSS selector like button[class*='continue'] or .btn-continue or button",
   "confidence": 0.0-1.0,
   "description": "Brief description of what you see"
 }`;
