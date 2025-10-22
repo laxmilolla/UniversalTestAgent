@@ -1788,23 +1788,29 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
         if (uiAnalysis.interactiveElements && uiAnalysis.interactiveElements.length > 0) {
             console.log('🎯 Found interactive elements for test cases:', uiAnalysis.interactiveElements.length);
             uiAnalysis.interactiveElements.forEach((element: any, index: number) => {
-                // STRICT VALIDATION: Only generate if element has required data
-                if (!element.text && !element.label) {
-                    console.warn(`⚠️ Skipping interactive element ${index}: No text/label`);
-                    return;
-                }
+                // ENHANCED VALIDATION: Handle tables and other elements
                 if (!element.selector) {
                     console.warn(`⚠️ Skipping interactive element ${index}: No selector`);
                     return;
                 }
                 
+                // For tables, use columns as the identifier if no text/label
+                const elementText = element.text || element.label || 
+                    (element.type === 'table' && element.columns ? `Table with columns: ${element.columns.join(', ')}` : 
+                     `Element ${index + 1}`);
+                
+                if (!elementText) {
+                    console.warn(`⚠️ Skipping interactive element ${index}: No text/label/columns`);
+                    return;
+                }
+                
                 testCases.push({
                     name: `test_interactive_${index + 1}`,
-                    description: `Test interaction with ${element.text || element.label}`,
+                    description: `Test interaction with ${elementText}`,
                     steps: [
                         `Navigate to the page`,
-                        `Locate ${element.text || element.label}`,
-                        `Interact with ${element.text || element.label}`,
+                        `Locate ${elementText}`,
+                        `Interact with ${elementText}`,
                         `Verify expected behavior`
                     ],
                     selectors: [element.selector],
