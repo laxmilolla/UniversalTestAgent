@@ -341,7 +341,9 @@ Return JSON in this format:
         console.log(`🔍 Calling executeTestWithValidation for test: ${testCase.name}`);
         console.log(`🚨 ABOUT TO CALL: executeTestWithValidation for test: ${testCase.name}`);
         console.log(`🚨 PARAMS CHECK: testCase=${JSON.stringify(testCase?.name)}, runId=${runId}`);
+        console.log(`🚨 BEFORE AWAIT: About to await executeTestWithValidation for test: ${testCase.name}`);
         const testResult = await this.executeTestWithValidation(testCase, runId);
+        console.log(`🚨 AFTER AWAIT: executeTestWithValidation returned for test: ${testCase.name}`);
         console.log(`🚨 AFTER CALL: executeTestWithValidation completed for test: ${testCase.name}`);
         console.log(`🔍 executeTestWithValidation completed for test: ${testCase.name}`);
         const testEndTime = Date.now();
