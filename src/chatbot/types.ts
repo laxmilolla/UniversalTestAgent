@@ -1,7 +1,7 @@
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';
-  content: string;
+  content: string | { type: 'image'; text: string; data: string };
   timestamp: Date;
   toolCalls?: ToolCall[];
   toolResults?: ToolResult[];

@@ -1,6 +1,7 @@
 // src/utils/test-generation-orchestrator.ts
 // Main orchestrator for Phase 2 - LLM-First Test Generation
 
+import * as fs from 'fs';
 import { BedrockClient } from '../chatbot/bedrock-client';
 import { MCPPlaywrightClient } from '../chatbot/mcp-client';
 import { TestStorage } from './storage';
@@ -302,7 +303,6 @@ Return JSON in this format:
       // Generate run ID and create run folder
       const runId = `run-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5)}`;
       const runFolder = `test-reports/${runId}`;
-      const fs = require('fs');
       
       if (!fs.existsSync(runFolder)) {
         fs.mkdirSync(runFolder, { recursive: true });
@@ -502,7 +502,6 @@ Return JSON in this format:
     
     // Create test folder for screenshots
     const testFolder = `test-reports/${runId}/test-${testCase.id}`;
-    const fs = require('fs');
     if (!fs.existsSync(testFolder)) {
       fs.mkdirSync(testFolder, { recursive: true });
     }
@@ -637,6 +636,16 @@ Return JSON in this format:
         parameters: { name: 'popup-detection.png' }
       }]);
       
+      // Read the screenshot file and convert to base64
+      const screenshotPath = this.extractScreenshotPath(screenshotResult);
+      let screenshotBase64 = '';
+      if (screenshotPath && fs.existsSync(screenshotPath)) {
+        screenshotBase64 = fs.readFileSync(screenshotPath, 'base64');
+        console.log('📸 Screenshot loaded for AI analysis');
+      } else {
+        console.log('⚠️ Screenshot file not found, falling back to text-only analysis');
+      }
+      
       // Step 2: Get page text content
       console.log('📄 Getting page text content...');
       const pageTextResult = await this.mcpClient.callTools([{
@@ -679,7 +688,17 @@ Return ONLY a JSON response in this exact format:
   "description": "Brief description of what you see"
 }`;
 
-      const aiResponse = await this.bedrockClient.generateResponse([{ role: 'user', content: prompt }], []);
+      // Send both image and text to AI for analysis
+      const aiResponse = screenshotBase64 
+        ? await this.bedrockClient.generateResponse([{ 
+            role: 'user', 
+            content: {
+              type: 'image',
+              text: prompt,
+              data: screenshotBase64
+            }
+          }], [])
+        : await this.bedrockClient.generateResponse([{ role: 'user', content: prompt }], []);
       
       // Step 4: Parse AI response
       let popupAnalysis;

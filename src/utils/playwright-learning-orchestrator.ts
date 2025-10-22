@@ -1,3 +1,4 @@
+import * as fs from 'fs';
 import { BedrockClient } from '../chatbot/bedrock-client';
 import { MCPPlaywrightClient } from '../chatbot/mcp-client';
 import { FileProcessor } from './file-processor';
@@ -1453,6 +1454,44 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
         return relationships;
     }
 
+    private extractScreenshotPath(screenshotResult: any[]): string {
+        try {
+            console.log('🔍 DEBUG: Extracting screenshot path from result:', JSON.stringify(screenshotResult, null, 2));
+            
+            // Extract the actual screenshot path from Playwright MCP response
+            const result = screenshotResult[0]?.result;
+            if (result && Array.isArray(result)) {
+                console.log('🔍 DEBUG: Found result array:', result);
+                
+                // Look for "Screenshot saved to:" in the content
+                const content = result.find((c: any) => c.text?.includes('Screenshot saved to:'));
+                if (content?.text) {
+                    console.log('🔍 DEBUG: Found screenshot text:', content.text);
+                    const pathMatch = content.text.match(/Screenshot saved to: (.+)/);
+                    if (pathMatch && pathMatch[1]) {
+                        // Convert the path to a web-accessible URL
+                        const actualPath = pathMatch[1].trim();
+                        console.log('🔍 DEBUG: Extracted actual path:', actualPath);
+                        
+                        // Extract just the filename and create a web path
+                        const filename = actualPath.split('/').pop();
+                        if (filename) {
+                            const webPath = `/screenshots/${filename}`;
+                            console.log('🔍 DEBUG: Created web path:', webPath);
+                            return webPath;
+                        }
+                    }
+                }
+            }
+            
+            console.log('⚠️ DEBUG: Could not extract screenshot path');
+            return '';
+        } catch (error) {
+            console.error('❌ Error extracting screenshot path:', error);
+            return '';
+        }
+    }
+
     private async dismissUIObstacles(): Promise<void> {
         console.log('🔍 Universal AI-powered popup detection starting...');
         
@@ -1464,6 +1503,16 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
                 name: 'playwright_screenshot',
                 parameters: { name: 'popup-detection.png' }
             }]);
+            
+            // Read the screenshot file and convert to base64
+            const screenshotPath = this.extractScreenshotPath(screenshotResult);
+            let screenshotBase64 = '';
+            if (screenshotPath && fs.existsSync(screenshotPath)) {
+                screenshotBase64 = fs.readFileSync(screenshotPath, 'base64');
+                console.log('📸 Screenshot loaded for AI analysis');
+            } else {
+                console.log('⚠️ Screenshot file not found, falling back to text-only analysis');
+            }
             
             // Step 2: Get page text content
             console.log('📄 Getting page text content...');
@@ -1507,7 +1556,17 @@ Return ONLY a JSON response in this exact format:
   "description": "Brief description of what you see"
 }`;
 
-            const aiResponse = await this.bedrockClient.generateResponse([{ role: 'user', content: prompt }], []);
+            // Send both image and text to AI for analysis
+            const aiResponse = screenshotBase64 
+                ? await this.bedrockClient.generateResponse([{ 
+                    role: 'user', 
+                    content: {
+                        type: 'image',
+                        text: prompt,
+                        data: screenshotBase64
+                    }
+                }], [])
+                : await this.bedrockClient.generateResponse([{ role: 'user', content: prompt }], []);
             
             // Step 4: Parse AI response
             let popupAnalysis;

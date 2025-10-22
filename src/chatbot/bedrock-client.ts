@@ -30,7 +30,7 @@ export class BedrockClient {
   }
 
   async generateResponse(
-    messages: Array<{ role: string; content: string }>,
+    messages: Array<{ role: string; content: string | { type: 'image'; text: string; data: string } }>,
     tools: MCPToolDefinition[]
   ): Promise<BedrockResponse> {
     console.log('DEBUG: BedrockClient.generateResponse called');
@@ -58,15 +58,39 @@ export class BedrockClient {
 
     console.log('DEBUG: Claude tools:', JSON.stringify(claudeTools, null, 2));
 
+    // Process the last message to handle image content
+    const lastMessage = messages[messages.length - 1];
+    let messageContent;
+    
+    if (lastMessage && typeof lastMessage.content === 'object' && lastMessage.content.type === 'image') {
+      // Handle image content
+      messageContent = {
+        role: 'user',
+        content: [
+          { text: `${systemPrompt}\n\n${lastMessage.content.text}` },
+          {
+            image: {
+              format: 'base64' as const,
+              source: {
+                bytes: Buffer.from(lastMessage.content.data, 'base64')
+              }
+            }
+          }
+        ]
+      };
+    } else {
+      // Handle text content
+      const textContent = typeof lastMessage?.content === 'string' ? lastMessage.content : 'Hello';
+      messageContent = { role: 'user', content: `${systemPrompt}\n\nUser: ${textContent}` };
+    }
+
     const command = new InvokeModelCommand({
       modelId: this.modelId,
       body: JSON.stringify({
         anthropic_version: "bedrock-2023-05-31",
-        messages: [
-          { role: 'user', content: `${systemPrompt}\n\nUser: ${messages[messages.length - 1]?.content || 'Hello'}` }
-        ],
+        messages: [messageContent],
         tools: claudeTools.length > 0 ? claudeTools : undefined,
-                tool_choice: claudeTools.length > 0 ? { type: "any" } : undefined,
+        tool_choice: claudeTools.length > 0 ? { type: "any" } : undefined,
         max_tokens: 2000,
         temperature: 0.9,
       }),
