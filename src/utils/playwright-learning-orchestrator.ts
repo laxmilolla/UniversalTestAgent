@@ -1603,8 +1603,16 @@ Look for common popup patterns:
 - Terms acceptance dialogs
 - Privacy notices
 
-IMPORTANT: Generate ONLY valid CSS selectors. Do NOT use jQuery-style selectors like :contains().
-Use standard CSS selectors like: button, .btn-continue, button[class*='continue'], #accept-btn
+IMPORTANT: Generate SPECIFIC CSS selectors, not generic ones. Do NOT use jQuery-style selectors like :contains().
+Use specific CSS selectors like: 
+- button[class*='continue'] (for buttons with "continue" in class)
+- .btn-continue (for buttons with specific class)
+- button:has-text("Continue") (if supported)
+- #accept-btn (for buttons with specific ID)
+- button[aria-label*='continue'] (for buttons with aria-label)
+- .modal button, .popup button (for buttons inside specific containers)
+
+AVOID generic selectors like just "button" - they will fail!
 
 Return ONLY a JSON response in this exact format:
 {
