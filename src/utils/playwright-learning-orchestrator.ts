@@ -147,16 +147,14 @@ export class PlaywrightLearningOrchestrator {
                     await new Promise(resolve => setTimeout(resolve, 5000)); // Fallback wait
                 }
 
-                // Detect and dismiss any UI obstacles (modals, popups, banners, etc.) - TEMPORARILY DISABLED FOR TESTING
-                console.log('⚠️ Skipping UI obstacle dismissal for testing...');
-                // await this.dismissUIObstacles();
+                // Detect and dismiss any UI obstacles (modals, popups, banners, etc.)
+                await this.dismissUIObstacles();
 
-                // Verify UI is accessible before proceeding - TEMPORARILY DISABLED FOR TESTING
-                console.log('⚠️ Skipping UI accessibility verification for testing...');
-                // const isUIAccessible = await this.verifyUIAccessible();
-                // if (!isUIAccessible) {
-                //     throw new Error('CRITICAL: UI still blocked by popup - learning aborted for reliability');
-                // }
+                // Verify UI is accessible before proceeding
+                const isUIAccessible = await this.verifyUIAccessible();
+                if (!isUIAccessible) {
+                    throw new Error('CRITICAL: UI still blocked by popup - learning aborted for reliability');
+                }
 
                 console.log('✅ UI verified as accessible - proceeding with learning');
 
@@ -364,7 +362,7 @@ async analyzeRealUI(pageContent: string, pageText: string, screenshot: any, exis
         
         // Phase 2: Enhanced HTML pattern detection (Backup)
         console.log('Phase 2: Enhanced HTML Pattern Detection...');
-        const patternDetector = new UniversalPatternDetector();
+            const patternDetector = new UniversalPatternDetector();
         const htmlPatterns = patternDetector.discoverUIPatterns(pageContent);
         console.log('🎯 HTML Patterns:', htmlPatterns);
         
@@ -2017,7 +2015,7 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
             
             console.log('⚠️ DEBUG: Could not extract screenshot path');
             return '';
-        } catch (error) {
+                            } catch (error) {
             console.error('❌ Error extracting screenshot path:', error);
             return '';
         }
@@ -2154,15 +2152,15 @@ Return ONLY a JSON response in this exact format:
                     // Verify popup is gone
                     const verifyResult = await this.mcpClient.callTools([{
                         id: 'verify-popup-gone-' + Date.now(),
-                        name: 'playwright_evaluate',
-                        parameters: {
+                name: 'playwright_evaluate',
+                parameters: {
                             expression: `document.querySelector('${popupAnalysis.buttonSelector}') === null`
-                        }
-                    }]);
-                    
+                }
+            }]);
+            
                     if (verifyResult[0]?.result?.[0]?.value === true) {
                         console.log('✅ Popup verification: Successfully dismissed');
-                    } else {
+            } else {
                         console.log('⚠️ Popup verification: May still be present');
                     }
                     

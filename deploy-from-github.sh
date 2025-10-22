@@ -16,11 +16,24 @@ chmod 400 "$KEY_PATH"
 
 echo "📥 Cloning repository on EC2..."
 ssh -i "$KEY_PATH" "$EC2_USER@$EC2_HOST" "
+    # Backup .env file if it exists
+    if [ -f ~/$PROJECT_NAME/.env ]; then
+        echo '💾 Backing up .env file...'
+        cp ~/$PROJECT_NAME/.env ~/.env.backup
+    fi
+    
     # Remove existing project directory
     rm -rf ~/$PROJECT_NAME
     
     # Clone fresh from GitHub
     git clone $GITHUB_REPO ~/$PROJECT_NAME
+    
+    # Restore .env file if backup exists
+    if [ -f ~/.env.backup ]; then
+        echo '🔄 Restoring .env file...'
+        cp ~/.env.backup ~/$PROJECT_NAME/.env
+        rm ~/.env.backup
+    fi
     
     # Navigate to project directory
     cd ~/$PROJECT_NAME
