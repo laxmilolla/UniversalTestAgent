@@ -434,21 +434,33 @@ private async performPlaywrightDOMAnalysis(): Promise<any> {
         
         // Use native Playwright MCP tools for reliable element detection
         const queries = [
-            // Generic selectors that should catch most elements
+            // Focus on table headers and data elements first
+            { name: 'tableHeaders', selector: 'th, .table-header, .column-header, .header-cell, [data-column], .sortable-header' },
+            { name: 'tableRows', selector: 'tr, .table-row, .data-row, .row' },
+            { name: 'tableCells', selector: 'td, .table-cell, .cell, .data-cell' },
+            
+            // Look for actual filter elements in common locations
+            { name: 'filterSelects', selector: '.filter select, .sidebar select, .filter-panel select, .filter-section select, .filter-group select' },
+            { name: 'filterInputs', selector: '.filter input, .sidebar input, .filter-panel input, .filter-section input' },
+            { name: 'filterButtons', selector: '.filter button, .sidebar button, .filter-panel button, .filter-section button' },
+            
+            // Search elements
+            { name: 'searchInputs', selector: 'input[type="search"], input[placeholder*="search"], input[placeholder*="Search"], .search-input, .search-box, input[aria-label*="search"]' },
+            
+            // Action buttons
+            { name: 'actionButtons', selector: 'button:contains("Add"), button:contains("View"), button:contains("Export"), button:contains("Download"), .action-button, .primary-button' },
+            
+            // Pagination
+            { name: 'pagination', selector: '.pagination, .page-controls, .pager, .page-navigation, select[name*="page"], select[name*="rows"], .page-size' },
+            
+            // Tabs
+            { name: 'tabs', selector: '.tab, .tab-button, [role="tab"], .nav-tabs .nav-link, .tab-list .tab-item' },
+            
+            // Generic fallbacks
             { name: 'buttons', selector: 'button, input[type="button"], input[type="submit"], .btn, .button, [role="button"]' },
-            { name: 'forms', selector: 'form, .form, fieldset' },
-            { name: 'tables', selector: 'table, .table, [role="table"]' },
             { name: 'dropdowns', selector: 'select, .dropdown, .select, [role="combobox"]' },
             { name: 'checkboxes', selector: 'input[type="checkbox"], .checkbox, [role="checkbox"]' },
-            { name: 'searchBoxes', selector: 'input[type="search"], input[placeholder*="search"], input[placeholder*="Search"], .search-input, .search-box' },
-            { name: 'filters', selector: '.sidebar, .filter-panel, .filter-container, .filter-section, .filter-sidebar, .left-panel, .right-panel, aside, .panel, .controls' },
-            { name: 'navigation', selector: '.nav, .navigation, .menu, .tabs, .breadcrumb, .pagination, nav, .breadcrumbs, .pager' },
-            { name: 'charts', selector: '.chart, .graph, canvas, svg, [role="img"]' },
-            // More specific selectors for common patterns
-            { name: 'sortableColumns', selector: 'th, .table-header, .column-header, [data-sortable], .sortable' },
-            { name: 'actionButtons', selector: 'button[class*="action"], button[class*="primary"], .action-button, .primary-button' },
-            { name: 'pagination', selector: '.pagination, .page-controls, .pager, .page-navigation, select[name*="page"], select[name*="rows"]' },
-            { name: 'tabs', selector: '.tab, .tab-button, [role="tab"], .nav-tabs .nav-link, .tab-list .tab-item' }
+            { name: 'tables', selector: 'table, .table, [role="table"]' }
         ];
         
         for (const query of queries) {

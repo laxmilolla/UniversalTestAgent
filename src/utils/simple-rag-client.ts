@@ -294,6 +294,15 @@ UI Elements: ${JSON.stringify(uiAnalysis, null, 1)}
 Database Records: ${JSON.stringify(data.slice(0, 5), null, 1)}
 Field Names: ${this.fieldNames.slice(0, 20).join(', ')}
 
+IMPORTANT: Only create mappings for TSV fields that have corresponding UI elements visible on the website. 
+Do NOT create mappings for TSV fields that don't exist as UI elements (like avg_read_length, file_size, md5sum, etc.).
+
+Look at the UI Elements and only map TSV fields that match actual UI elements like:
+- Table columns (Case ID, Breed, Sex, Diagnosis, etc.)
+- Filter dropdowns (Breed, Sex, Stage of Disease, etc.)
+- Search boxes
+- Sortable columns
+
 Return JSON:
 {
   "mappings": [{"dbField": "field", "uiElement": "element", "type": "input", "selector": "#field", "validation": "required"}],
