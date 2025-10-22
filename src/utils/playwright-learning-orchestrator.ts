@@ -408,15 +408,15 @@ private async performPlaywrightDOMAnalysis(): Promise<any> {
     try {
         // Use native Playwright MCP tools for reliable element detection
         const queries = [
-            { name: 'buttons', selector: 'button' },
-            { name: 'forms', selector: 'form' },
-            { name: 'tables', selector: 'table' },
-            { name: 'dropdowns', selector: 'select' },
-            { name: 'checkboxes', selector: 'input[type="checkbox"]' },
-            { name: 'searchBoxes', selector: 'input[type="search"], input[placeholder*="search"]' },
-            { name: 'filters', selector: '.sidebar, .filter-panel, .filter-container' },
-            { name: 'navigation', selector: '.nav, .navigation, .menu, .tabs' },
-            { name: 'charts', selector: '.chart, .graph, canvas, svg' }
+            { name: 'buttons', selector: 'button, input[type="button"], input[type="submit"], .btn, .button, [role="button"], .MuiButton-root, .ant-btn' },
+            { name: 'forms', selector: 'form, .form, .MuiForm-root, .ant-form' },
+            { name: 'tables', selector: 'table, .table, .MuiTable-root, .data-table, .ant-table' },
+            { name: 'dropdowns', selector: 'select, .dropdown, .select, .MuiSelect-root, .ant-select, [role="combobox"], .filter-dropdown' },
+            { name: 'checkboxes', selector: 'input[type="checkbox"], .checkbox, .MuiCheckbox-root, .ant-checkbox' },
+            { name: 'searchBoxes', selector: 'input[type="search"], input[placeholder*="search"], .search-input, .search-box, .MuiInputBase-root input' },
+            { name: 'filters', selector: '.sidebar, .filter-panel, .filter-container, .filter-section, .filter-sidebar, .left-panel, .right-panel, .ant-filter' },
+            { name: 'navigation', selector: '.nav, .navigation, .menu, .tabs, .breadcrumb, .pagination, .MuiTabs-root, .ant-menu, .ant-tabs' },
+            { name: 'charts', selector: '.chart, .graph, canvas, svg, .MuiChart-root, .recharts-wrapper, .ant-chart' }
         ];
         
         for (const query of queries) {
@@ -433,6 +433,17 @@ private async performPlaywrightDOMAnalysis(): Promise<any> {
                 
                 const queryResult = result[0]?.result || [];
                 console.log(`🔍 Found ${queryResult.length} ${query.name}`);
+                
+                // Log details of what was found for debugging
+                if (queryResult.length > 0) {
+                    console.log(`🔍 ${query.name} details:`, queryResult.map((el: any, i: number) => ({
+                        index: i,
+                        tagName: el.tagName,
+                        className: el.className,
+                        id: el.id,
+                        text: el.textContent?.trim().substring(0, 50) || ''
+                    })));
+                }
                 
                 elements[query.name] = queryResult.map((el: any, index: number) => {
                     const selector = el.id ? `#${el.id}` : 
