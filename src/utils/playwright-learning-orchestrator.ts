@@ -434,15 +434,29 @@ private async performPlaywrightDOMAnalysis(): Promise<any> {
         
         // Use native Playwright MCP tools for reliable element detection
         const queries = [
-            { name: 'buttons', selector: 'button, input[type="button"], input[type="submit"], .btn, .button, [role="button"], .MuiButton-root, .ant-btn, [data-testid*="button"], [class*="button"], [class*="btn"], [aria-label*="button"]' },
-            { name: 'forms', selector: 'form, .form, .MuiForm-root, .ant-form, [data-testid*="form"], [class*="form"], fieldset' },
-            { name: 'tables', selector: 'table, .table, .MuiTable-root, .data-table, .ant-table, [data-testid*="table"], [class*="table"], [role="table"], [aria-label*="table"]' },
-            { name: 'dropdowns', selector: 'select, .dropdown, .select, .MuiSelect-root, .ant-select, [role="combobox"], .filter-dropdown, [data-testid*="select"], [data-testid*="dropdown"], [class*="select"], [class*="dropdown"], [aria-haspopup="listbox"]' },
-            { name: 'checkboxes', selector: 'input[type="checkbox"], .checkbox, .MuiCheckbox-root, .ant-checkbox, [data-testid*="checkbox"], [class*="checkbox"], [role="checkbox"]' },
-            { name: 'searchBoxes', selector: 'input[type="search"], input[placeholder*="search"], .search-input, .search-box, .MuiInputBase-root input, [data-testid*="search"], [class*="search"], input[type="text"][placeholder*="Search"], input[type="text"][placeholder*="Filter"]' },
-            { name: 'filters', selector: '.sidebar, .filter-panel, .filter-container, .filter-section, .filter-sidebar, .left-panel, .right-panel, .ant-filter, [data-testid*="filter"], [class*="filter"], [class*="sidebar"], [role="complementary"], aside, .panel, .controls' },
-            { name: 'navigation', selector: '.nav, .navigation, .menu, .tabs, .breadcrumb, .pagination, .MuiTabs-root, .ant-menu, .ant-tabs, [data-testid*="nav"], [class*="nav"], [class*="menu"], [role="navigation"], nav, .breadcrumbs, .pager' },
-            { name: 'charts', selector: '.chart, .graph, canvas, svg, .MuiChart-root, .recharts-wrapper, .ant-chart, [data-testid*="chart"], [class*="chart"], [class*="graph"], [role="img"]' }
+            // Sortable table columns (like Case ID with sort indicators)
+            { name: 'sortableColumns', selector: 'th[data-sortable], th.sortable, th[onclick], th[role="button"], .sortable-header, [data-testid*="sort"], th:has(.sort-icon), th:has(.sort-arrow), th:has([class*="sort"])' },
+            
+            // Filter dropdowns in sidebar (like Breed, Sex, Diagnosis filters)
+            { name: 'filterDropdowns', selector: '.filter-section select, .filter-panel select, .sidebar select, .filter-dropdown, [data-testid*="filter"] select, .filter-item select, .filter-group select, .filter-control select' },
+            
+            // Filter checkboxes (for multi-select filters)
+            { name: 'filterCheckboxes', selector: '.filter-section input[type="checkbox"], .filter-panel input[type="checkbox"], .sidebar input[type="checkbox"], .filter-item input[type="checkbox"], .filter-group input[type="checkbox"]' },
+            
+            // Search boxes (main search and table search)
+            { name: 'searchBoxes', selector: 'input[type="search"], input[placeholder*="search"], input[placeholder*="Search"], .search-input, .search-box, input[aria-label*="search"], input[aria-label*="Search"]' },
+            
+            // Data tables (main content area)
+            { name: 'dataTables', selector: 'table.data-table, table[role="table"], .data-table, .results-table, .main-table, table:has(th), table:has(tbody)' },
+            
+            // Action buttons (Add Files, View in Browser, etc.)
+            { name: 'actionButtons', selector: 'button:contains("Add Files"), button:contains("View"), button:contains("Export"), button:contains("Download"), .action-button, .primary-button' },
+            
+            // Pagination controls
+            { name: 'pagination', selector: '.pagination, .page-controls, .pager, [data-testid*="pagination"], .page-navigation, select[name*="page"], select[name*="rows"]' },
+            
+            // Tab navigation (Cases, Samples, Case Files, Study Files)
+            { name: 'tabs', selector: '.tab, .tab-button, [role="tab"], .nav-tabs .nav-link, .tab-list .tab-item, [data-testid*="tab"]' }
         ];
         
         for (const query of queries) {
@@ -1833,24 +1847,106 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
                     return;
                 }
                 
-                testCases.push({
-                    name: `test_interactive_${index + 1}`,
-                    description: `Test interaction with ${elementText}`,
-                    steps: [
-                        `Navigate to the page`,
-                        `Locate ${elementText}`,
-                        `Interact with ${elementText}`,
-                        `Verify expected behavior`
-                    ],
-                    selectors: [element.selector],
-                    category: 'functionality',
-                    type: element.type || 'interactive',
-                    priority: 'medium',
-                    source: element.source || 'ui-analysis',
-                    websiteUrl: this.currentWebsiteUrl
-                    // REMOVED: Default dataField, testValues
-                    // These MUST come from actual TSV data, not defaults
-                });
+                // Generate specific test cases based on element type
+                if (element.type === 'sortableColumns') {
+                    testCases.push({
+                        name: `Sort Test - ${elementText}`,
+                        description: `Test that ${elementText} sorting works correctly`,
+                        steps: [
+                            'Navigate to the page',
+                            `Click on ${elementText} sort element`,
+                            'Verify ascending sort is applied',
+                            'Click again to test descending sort',
+                            'Verify descending sort is applied',
+                            'Check that data is properly sorted',
+                            'Verify sort indicators are displayed correctly'
+                        ],
+                        selectors: [element.selector],
+                        category: 'Sorting',
+                        type: 'sort_test',
+                        priority: 'high',
+                        source: element.source || 'ui-analysis',
+                        websiteUrl: this.currentWebsiteUrl,
+                        expectedResults: [
+                            'Sort element is clickable',
+                            'Ascending sort works correctly',
+                            'Descending sort works correctly',
+                            'Data is properly ordered',
+                            'Sort indicators show current sort direction',
+                            'Sort state persists during navigation'
+                        ]
+                    });
+                } else if (element.type === 'filterDropdowns' || element.type === 'filterCheckboxes') {
+                    testCases.push({
+                        name: `Filter Test - ${elementText}`,
+                        description: `Test that ${elementText} filter works correctly and returns expected results`,
+                        steps: [
+                            'Navigate to the page',
+                            `Click on ${elementText} filter element`,
+                            'Select a test value from the filter options',
+                            'Verify filtered results are displayed',
+                            'Check that all displayed records match the selected filter value',
+                            'Verify result count matches expected count'
+                        ],
+                        selectors: [element.selector],
+                        category: 'Search & Filter',
+                        type: 'filter_test',
+                        priority: 'high',
+                        source: element.source || 'ui-analysis',
+                        websiteUrl: this.currentWebsiteUrl,
+                        expectedResults: [
+                            'Filter element is clickable and responsive',
+                            'Selected value is properly highlighted',
+                            'Results are filtered correctly',
+                            'All displayed records match the selected filter value',
+                            'Result count is accurate',
+                            'No unrelated records are displayed'
+                        ]
+                    });
+                } else if (element.type === 'searchBoxes') {
+                    testCases.push({
+                        name: `Search Test - ${elementText}`,
+                        description: `Test that search functionality works correctly`,
+                        steps: [
+                            'Navigate to the page',
+                            `Enter a test search term in ${elementText}`,
+                            'Verify search results are displayed',
+                            'Check that results match the search term',
+                            'Clear search and verify all results return'
+                        ],
+                        selectors: [element.selector],
+                        category: 'Search & Filter',
+                        type: 'search_test',
+                        priority: 'medium',
+                        source: element.source || 'ui-analysis',
+                        websiteUrl: this.currentWebsiteUrl,
+                        expectedResults: [
+                            'Search box accepts input',
+                            'Search results are displayed correctly',
+                            'Results match the search term',
+                            'Search can be cleared',
+                            'All results return when search is cleared'
+                        ]
+                    });
+                } else {
+                    // Generic test case for other interactive elements
+                    testCases.push({
+                        name: `test_interactive_${index + 1}`,
+                        description: `Test interaction with ${elementText}`,
+                        steps: [
+                            'Navigate to the page',
+                            `Locate ${elementText}`,
+                            `Interact with ${elementText}`,
+                            'Verify expected behavior'
+                        ],
+                        selectors: [element.selector],
+                        category: 'functionality',
+                        type: element.type || 'interactive',
+                        priority: 'medium',
+                        source: element.source || 'ui-analysis',
+                        websiteUrl: this.currentWebsiteUrl
+                    });
+                }
             });
         } else {
             console.log('🎯 No interactive elements found for test cases');
