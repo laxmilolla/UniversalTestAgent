@@ -628,7 +628,7 @@ private async performFallbackDOMAnalysis(): Promise<any> {
         }
         
         // Calculate total elements
-        elements.totalElements = Object.values(elements).reduce((sum, arr) => {
+        elements.totalElements = Object.values(elements).reduce((sum: number, arr: any) => {
             return Array.isArray(arr) ? sum + arr.length : sum;
         }, 0);
         
