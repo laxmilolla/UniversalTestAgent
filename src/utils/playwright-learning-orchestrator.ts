@@ -398,134 +398,126 @@ private async performPlaywrightDOMAnalysis(): Promise<any> {
             name: 'playwright_evaluate',
             parameters: {
                 expression: `
-                    console.log('🔍 Starting DOM element detection...');
-                    
-                    // Comprehensive element detection
-                    const elements = {
-                        filters: [],
-                        dropdowns: [],
-                        checkboxes: [],
-                        searchBoxes: [],
-                        buttons: [],
-                        forms: [],
-                        tables: [],
-                        navigation: [],
-                        charts: []
-                    };
-                    
-                    // Helper function to create element info
-                    function createElementInfo(el, type, additionalInfo = {}) {
-                        const selector = el.id ? '#' + el.id : 
-                                       el.className ? '.' + el.className.split(' ')[0] : 
-                                       el.tagName.toLowerCase();
+                    try {
+                        console.log('🔍 Starting simplified DOM element detection...');
+                        
+                        // Simple element detection
+                        const elements = {
+                            filters: [],
+                            dropdowns: [],
+                            checkboxes: [],
+                            searchBoxes: [],
+                            buttons: [],
+                            forms: [],
+                            tables: [],
+                            navigation: [],
+                            charts: []
+                        };
+                        
+                        // Helper function to create simple element info
+                        function createElementInfo(el, type) {
+                            const selector = el.id ? '#' + el.id : 
+                                           el.className ? '.' + el.className.split(' ')[0] : 
+                                           el.tagName.toLowerCase();
+                            
+                            return {
+                                selector: selector,
+                                type: type,
+                                text: el.textContent ? el.textContent.trim().substring(0, 100) : '',
+                                placeholder: el.placeholder || '',
+                                ariaLabel: el.getAttribute('aria-label') || '',
+                                dataTestId: el.getAttribute('data-testid') || '',
+                                source: 'playwright-dom'
+                            };
+                        }
+                        
+                        // 1. BUTTONS (most important for testing)
+                        document.querySelectorAll('button').forEach(el => {
+                            elements.buttons.push(createElementInfo(el, 'button'));
+                        });
+                        
+                        // 2. FORMS
+                        document.querySelectorAll('form').forEach(el => {
+                            elements.forms.push(createElementInfo(el, 'form'));
+                        });
+                        
+                        // 3. TABLES
+                        document.querySelectorAll('table').forEach(el => {
+                            const headers = Array.from(el.querySelectorAll('th')).map(th => th.textContent ? th.textContent.trim() : '').filter(Boolean);
+                            elements.tables.push({
+                                ...createElementInfo(el, 'table'),
+                                columns: headers,
+                                rowCount: el.querySelectorAll('tbody tr').length
+                            });
+                        });
+                        
+                        // 4. DROPDOWNS
+                        document.querySelectorAll('select').forEach(el => {
+                            elements.dropdowns.push(createElementInfo(el, 'dropdown'));
+                        });
+                        
+                        // 5. CHECKBOXES
+                        document.querySelectorAll('input[type="checkbox"]').forEach(el => {
+                            elements.checkboxes.push(createElementInfo(el, 'checkbox'));
+                        });
+                        
+                        // 6. SEARCH BOXES
+                        document.querySelectorAll('input[type="search"], input[placeholder*="search"]').forEach(el => {
+                            elements.searchBoxes.push(createElementInfo(el, 'search'));
+                        });
+                        
+                        // 7. FILTERS
+                        document.querySelectorAll('.sidebar, .filter-panel, .filter-container').forEach(el => {
+                            elements.filters.push(createElementInfo(el, 'filter'));
+                        });
+                        
+                        // 8. NAVIGATION
+                        document.querySelectorAll('.nav, .navigation, .menu, .tabs').forEach(el => {
+                            elements.navigation.push(createElementInfo(el, 'navigation'));
+                        });
+                        
+                        // 9. CHARTS
+                        document.querySelectorAll('.chart, .graph, canvas, svg').forEach(el => {
+                            elements.charts.push(createElementInfo(el, 'chart'));
+                        });
+                        
+                        // Calculate total elements
+                        let totalElements = 0;
+                        Object.values(elements).forEach(arr => {
+                            if (Array.isArray(arr)) {
+                                totalElements += arr.length;
+                            }
+                        });
+                        
+                        console.log('🔍 Simplified DOM Analysis Results:', {
+                            totalElements: totalElements,
+                            breakdown: Object.keys(elements).map(key => ({ [key]: elements[key].length }))
+                        });
                         
                         return {
-                            selector: selector,
-                            type: type,
-                            text: el.textContent?.trim().substring(0, 100) || '',
-                            placeholder: el.placeholder || '',
-                            ariaLabel: el.getAttribute('aria-label') || '',
-                            dataTestId: el.getAttribute('data-testid') || '',
-                            source: 'playwright-dom',
-                            ...additionalInfo
+                            ...elements,
+                            totalElements: totalElements,
+                            analysisMethod: 'playwright-dom-simplified',
+                            timestamp: new Date().toISOString()
+                        };
+                        
+                    } catch (error) {
+                        console.error('🔍 DOM analysis error:', error);
+                        return {
+                            filters: [],
+                            dropdowns: [],
+                            checkboxes: [],
+                            searchBoxes: [],
+                            buttons: [],
+                            forms: [],
+                            tables: [],
+                            navigation: [],
+                            charts: [],
+                            totalElements: 0,
+                            analysisMethod: 'playwright-dom-error',
+                            error: error.message
                         };
                     }
-                    
-                    // 1. FILTER PANELS AND SIDE BARS
-                    document.querySelectorAll('.sidebar, .filter-panel, .filter-container, .filter-section, .filter-sidebar, .left-panel, .right-panel').forEach(el => {
-                        elements.filters.push(createElementInfo(el, 'filter-panel', {
-                            position: 'sidebar',
-                            childCount: el.children.length
-                        }));
-                    });
-                    
-                    // 2. DROPDOWNS AND SELECTS
-                    document.querySelectorAll('select, .MuiSelect-root, [role="combobox"], .dropdown, .select-dropdown, .filter-dropdown').forEach(el => {
-                        const options = Array.from(el.querySelectorAll('option')).map(opt => opt.textContent?.trim()).filter(Boolean);
-                        elements.dropdowns.push(createElementInfo(el, 'dropdown', {
-                            options: options,
-                            optionCount: options.length
-                        }));
-                    });
-                    
-                    // 3. CHECKBOXES
-                    document.querySelectorAll('input[type="checkbox"], .MuiCheckbox-root, .checkbox, .filter-checkbox').forEach(el => {
-                        elements.checkboxes.push(createElementInfo(el, 'checkbox', {
-                            checked: el.checked || false,
-                            label: el.nextElementSibling?.textContent?.trim() || ''
-                        }));
-                    });
-                    
-                    // 4. SEARCH BOXES
-                    document.querySelectorAll('input[type="search"], .search-input, .filter-search, input[placeholder*="search"], input[placeholder*="Search"], .search-box').forEach(el => {
-                        elements.searchBoxes.push(createElementInfo(el, 'search', {
-                            inputType: el.type || 'text'
-                        }));
-                    });
-                    
-                    // 5. BUTTONS
-                    document.querySelectorAll('button, .btn, .MuiButton-root, [role="button"], input[type="button"], input[type="submit"]').forEach(el => {
-                        elements.buttons.push(createElementInfo(el, 'button', {
-                            buttonType: el.type || 'button',
-                            disabled: el.disabled || false
-                        }));
-                    });
-                    
-                    // 6. FORMS
-                    document.querySelectorAll('form, .form, .MuiForm-root').forEach(el => {
-                        const inputs = Array.from(el.querySelectorAll('input, select, textarea')).length;
-                        elements.forms.push(createElementInfo(el, 'form', {
-                            inputCount: inputs,
-                            method: el.method || 'get',
-                            action: el.action || ''
-                        }));
-                    });
-                    
-                    // 7. TABLES
-                    document.querySelectorAll('table, .table, .MuiTable-root, .data-table').forEach(el => {
-                        const rows = el.querySelectorAll('tr').length;
-                        const cols = el.querySelectorAll('th, td').length;
-                        const headers = Array.from(el.querySelectorAll('th')).map(th => th.textContent?.trim()).filter(Boolean);
-                        elements.tables.push(createElementInfo(el, 'table', {
-                            rowCount: rows,
-                            columnCount: cols,
-                            headers: headers,
-                            sortable: el.querySelectorAll('th[data-sortable], .sortable').length > 0
-                        }));
-                    });
-                    
-                    // 8. NAVIGATION
-                    document.querySelectorAll('.nav, .navigation, .menu, .tabs, .breadcrumb, .pagination, .MuiTabs-root').forEach(el => {
-                        const items = Array.from(el.querySelectorAll('a, button, .nav-item')).map(item => item.textContent?.trim()).filter(Boolean);
-                        elements.navigation.push(createElementInfo(el, 'navigation', {
-                            itemCount: items.length,
-                            items: items
-                        }));
-                    });
-                    
-                    // 9. CHARTS AND VISUALIZATIONS
-                    document.querySelectorAll('.chart, .graph, .visualization, .donut-chart, .bar-chart, .pie-chart, canvas, svg').forEach(el => {
-                        elements.charts.push(createElementInfo(el, 'chart', {
-                            chartType: el.className.includes('donut') ? 'donut' : 
-                                      el.className.includes('bar') ? 'bar' : 
-                                      el.className.includes('pie') ? 'pie' : 'unknown'
-                        }));
-                    });
-                    
-                    // Calculate totals
-                    const totalElements = Object.values(elements).reduce((sum, arr) => sum + arr.length, 0);
-                    
-                    console.log('🎯 DOM Analysis Complete:', {
-                        totalElements: totalElements,
-                        breakdown: Object.keys(elements).map(key => ({ [key]: elements[key].length }))
-                    });
-                    
-                    return {
-                        ...elements,
-                        totalElements: totalElements,
-                        analysisMethod: 'playwright-dom',
-                        timestamp: new Date().toISOString()
-                    };
                 `
             },
             id: 'dom-analysis-' + Date.now()
