@@ -386,6 +386,7 @@ async analyzeRealUI(pageContent: string, pageText: string, screenshot: any, exis
 // New method to perform comprehensive Playwright DOM analysis
 private async performPlaywrightDOMAnalysis(): Promise<any> {
     console.log('🔍 Starting Playwright DOM analysis...');
+    console.log('🔍 About to call playwright_evaluate with DOM detection script...');
     
     try {
         // Use Playwright to find all interactive elements directly from the DOM
@@ -526,13 +527,120 @@ private async performPlaywrightDOMAnalysis(): Promise<any> {
             id: 'dom-analysis-' + Date.now()
         }]);
         
+        console.log('🔍 RAW DOM Result:', JSON.stringify(domResult, null, 2));
+        console.log('🔍 DOM Result Length:', domResult.length);
+        console.log('🔍 First Result:', domResult[0]);
+        console.log('🔍 Result Content:', domResult[0]?.result);
+        
+        console.log('✅ playwright_evaluate succeeded');
+        console.log('🔍 Result structure:', Object.keys(domResult[0] || {}));
+        
         const domAnalysis = domResult[0]?.result?.[0] || {};
+        
+        if (!domAnalysis || Object.keys(domAnalysis).length === 0) {
+            console.error('❌ DOM analysis returned empty object');
+            console.error('🔍 Trying fallback approach...');
+            
+            // Fallback: Try simpler queries
+            console.log('🔍 Attempting fallback with simpler queries...');
+            return await this.performFallbackDOMAnalysis();
+        }
+        
         console.log('✅ Playwright DOM analysis completed:', domAnalysis);
         
         return domAnalysis;
         
     } catch (error) {
         console.error('❌ Playwright DOM analysis failed:', error);
+        console.error('🔍 Error details:', error.message, error.stack);
+        
+        // Try fallback approach
+        console.log('🔍 Attempting fallback DOM analysis...');
+        return await this.performFallbackDOMAnalysis();
+    }
+}
+
+// Fallback DOM analysis using simpler queries
+private async performFallbackDOMAnalysis(): Promise<any> {
+    console.log('🔍 Starting fallback DOM analysis with simpler queries...');
+    
+    const elements = {
+        filters: [],
+        dropdowns: [],
+        checkboxes: [],
+        searchBoxes: [],
+        buttons: [],
+        forms: [],
+        tables: [],
+        navigation: [],
+        charts: [],
+        totalElements: 0,
+        analysisMethod: 'playwright-dom-fallback'
+    };
+    
+    try {
+        // Try individual queries for each element type
+        const queries = [
+            { name: 'buttons', selector: 'button, .btn, [role="button"]' },
+            { name: 'forms', selector: 'form, .form' },
+            { name: 'tables', selector: 'table, .table' },
+            { name: 'dropdowns', selector: 'select, [role="combobox"]' },
+            { name: 'checkboxes', selector: 'input[type="checkbox"]' },
+            { name: 'searchBoxes', selector: 'input[type="search"], input[placeholder*="search"]' },
+            { name: 'filters', selector: '.sidebar, .filter-panel, .filter-container' },
+            { name: 'navigation', selector: '.nav, .navigation, .menu, .tabs' },
+            { name: 'charts', selector: '.chart, .graph, canvas, svg' }
+        ];
+        
+        for (const query of queries) {
+            try {
+                console.log(`🔍 Querying ${query.name} with selector: ${query.selector}`);
+                
+                const result = await this.mcpClient.callTools([{
+                    name: 'playwright_evaluate',
+                    parameters: {
+                        expression: `
+                            const elements = document.querySelectorAll('${query.selector}');
+                            return Array.from(elements).map(el => ({
+                                selector: el.id ? '#' + el.id : 
+                                         el.className ? '.' + el.className.split(' ')[0] : 
+                                         el.tagName.toLowerCase(),
+                                text: el.textContent?.trim().substring(0, 100) || '',
+                                placeholder: el.placeholder || '',
+                                ariaLabel: el.getAttribute('aria-label') || '',
+                                dataTestId: el.getAttribute('data-testid') || '',
+                                source: 'playwright-dom-fallback'
+                            }));
+                        `
+                    },
+                    id: `fallback-${query.name}-${Date.now()}`
+                }]);
+                
+                const queryResult = result[0]?.result?.[0] || [];
+                elements[query.name] = queryResult;
+                
+                console.log(`✅ Found ${queryResult.length} ${query.name}`);
+                
+            } catch (queryError) {
+                console.error(`❌ Failed to query ${query.name}:`, queryError.message);
+                elements[query.name] = [];
+            }
+        }
+        
+        // Calculate total elements
+        elements.totalElements = Object.values(elements).reduce((sum, arr) => {
+            return Array.isArray(arr) ? sum + arr.length : sum;
+        }, 0);
+        
+        console.log('✅ Fallback DOM analysis completed:', {
+            totalElements: elements.totalElements,
+            breakdown: Object.keys(elements).map(key => ({ [key]: Array.isArray(elements[key]) ? elements[key].length : 0 }))
+        });
+        
+        return elements;
+        
+    } catch (error) {
+        console.error('❌ Fallback DOM analysis also failed:', error);
         return {
             filters: [],
             dropdowns: [],
@@ -544,7 +652,7 @@ private async performPlaywrightDOMAnalysis(): Promise<any> {
             navigation: [],
             charts: [],
             totalElements: 0,
-            analysisMethod: 'playwright-dom-failed',
+            analysisMethod: 'playwright-dom-fallback-failed',
             error: error.message
         };
     }
