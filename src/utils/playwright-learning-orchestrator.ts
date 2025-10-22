@@ -376,10 +376,14 @@ async analyzeRealUI(pageContent: string, pageText: string, screenshot: any, exis
         
     } catch (error) {
         console.error('Error in Playwright DOM analysis:', error);
-        // Fallback to HTML-only analysis
+        // Fallback to HTML-only analysis with enhanced detection
         const patternDetector = new UniversalPatternDetector();
         const htmlPatterns = patternDetector.discoverUIPatterns(pageContent);
-        return this.convertHTMLPatternsToResult(htmlPatterns);
+        
+        // Enhance HTML patterns with simple regex-based detection
+        const enhancedPatterns = this.enhanceHTMLPatterns(htmlPatterns, pageContent);
+        
+        return this.convertHTMLPatternsToResult(enhancedPatterns);
     }
 }
 
@@ -734,32 +738,106 @@ private combineDOMAndHTMLAnalysis(domAnalysis: any, htmlPatterns: any): any {
         confidence: result.confidence
     });
     
-    // Group elements for frontend display and test case generation
-    const groupedResult = {
-        ...result,
-        totalElements: totalElements,
-        
-        // Grouped elements for test case generation
-        interactiveElements: [
-            ...result.buttons,
-            ...result.forms,
-            ...result.dropdowns,
-            ...result.checkboxes,
-            ...result.searchBoxes
-        ],
-        
-        dataComponents: [
-            ...result.tables,
-            ...result.charts
-        ],
-        
-        navigationElements: [
-            ...result.navigation,
-            ...result.filters
-        ]
-    };
+        // Group elements for frontend display and test case generation
+        const groupedResult = {
+            ...result,
+            totalElements: totalElements,
+            
+            // Grouped elements for test case generation - INCLUDE TABLES as interactive elements
+            interactiveElements: [
+                ...result.buttons,
+                ...result.forms,
+                ...result.dropdowns,
+                ...result.checkboxes,
+                ...result.searchBoxes,
+                ...result.tables.map((table: any) => ({
+                    ...table,
+                    type: 'table',
+                    interactive: true
+                }))
+            ],
+            
+            dataComponents: [
+                ...result.tables,
+                ...result.charts
+            ],
+            
+            navigationElements: [
+                ...result.navigation,
+                ...result.filters
+            ]
+        };
     
     return groupedResult;
+}
+
+// Enhanced HTML pattern detection using simple regex
+private enhanceHTMLPatterns(htmlPatterns: any, pageContent: string): any {
+    console.log('🔍 Enhancing HTML patterns with regex detection...');
+    
+    const enhanced = { ...htmlPatterns };
+    
+    // Simple button detection using regex
+    const buttonRegex = /<button[^>]*>([^<]*)<\/button>/gi;
+    const buttonMatches = pageContent.match(buttonRegex) || [];
+    
+    if (buttonMatches.length > 0) {
+        console.log(`🔍 Found ${buttonMatches.length} buttons via regex`);
+        enhanced.buttons = buttonMatches.map((match, index) => {
+            const textMatch = match.match(/>([^<]*)</);
+            const text = textMatch ? textMatch[1].trim() : `Button ${index + 1}`;
+            return {
+                selector: `button:nth-child(${index + 1})`,
+                type: 'button',
+                text: text,
+                ariaLabel: '',
+                source: 'html-regex'
+            };
+        });
+    }
+    
+    // Simple form detection
+    const formRegex = /<form[^>]*>[\s\S]*?<\/form>/gi;
+    const formMatches = pageContent.match(formRegex) || [];
+    
+    if (formMatches.length > 0) {
+        console.log(`🔍 Found ${formMatches.length} forms via regex`);
+        enhanced.forms = formMatches.map((match, index) => {
+            const inputMatches = match.match(/<input[^>]*>/gi) || [];
+            return {
+                selector: `form:nth-child(${index + 1})`,
+                inputs: inputMatches.length,
+                submitButton: match.includes('type="submit"') ? 'submit' : '',
+                source: 'html-regex'
+            };
+        });
+    }
+    
+    // Simple input detection
+    const inputRegex = /<input[^>]*type=["']?(text|search|email|password)["']?[^>]*>/gi;
+    const inputMatches = pageContent.match(inputRegex) || [];
+    
+    if (inputMatches.length > 0) {
+        console.log(`🔍 Found ${inputMatches.length} inputs via regex`);
+        enhanced.search = inputMatches.map((match, index) => {
+            const typeMatch = match.match(/type=["']?([^"'\s>]+)["']?/);
+            const type = typeMatch ? typeMatch[1] : 'text';
+            return {
+                selector: `input:nth-child(${index + 1})`,
+                type: type,
+                source: 'html-regex'
+            };
+        });
+    }
+    
+    console.log('🔍 Enhanced patterns:', {
+        buttons: enhanced.buttons?.length || 0,
+        forms: enhanced.forms?.length || 0,
+        search: enhanced.search?.length || 0,
+        tables: enhanced.tables?.length || 0
+    });
+    
+    return enhanced;
 }
 
 // New method to combine HTML and screenshot analysis
