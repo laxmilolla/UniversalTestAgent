@@ -666,12 +666,15 @@ Look for common popup patterns:
 - Terms acceptance dialogs
 - Privacy notices
 
+IMPORTANT: Generate ONLY valid CSS selectors. Do NOT use jQuery-style selectors like :contains().
+Use standard CSS selectors like: button, .btn-continue, button[class*='continue'], #accept-btn
+
 Return ONLY a JSON response in this exact format:
 {
   "hasPopup": true/false,
   "popupType": "warning|consent|verification|terms|government|other",
   "buttonText": "Continue|Accept|OK|I Agree|etc",
-  "buttonSelector": "CSS selector like button:contains('Continue') or .btn-continue",
+  "buttonSelector": "Valid CSS selector like button[class*='continue'] or .btn-continue or button",
   "confidence": 0.0-1.0,
   "description": "Brief description of what you see"
 }`;
