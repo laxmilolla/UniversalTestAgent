@@ -624,6 +624,7 @@ Return JSON in this format:
   }
 
   private async dismissUIObstacles(): Promise<void> {
+    console.log('🚨 IMMEDIATE: dismissUIObstacles method called');
     console.log('🔍 ENTRY: dismissUIObstacles method called');
     console.log('🔍 Universal AI-powered popup detection starting...');
     
