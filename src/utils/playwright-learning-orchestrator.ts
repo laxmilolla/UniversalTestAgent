@@ -628,9 +628,13 @@ private async performFallbackDOMAnalysis(): Promise<any> {
         }
         
         // Calculate total elements
-        elements.totalElements = Object.values(elements).reduce((sum: number, arr: any) => {
-            return Array.isArray(arr) ? sum + arr.length : sum;
-        }, 0);
+        let totalElements = 0;
+        Object.values(elements).forEach((arr: any) => {
+            if (Array.isArray(arr)) {
+                totalElements += arr.length;
+            }
+        });
+        elements.totalElements = totalElements;
         
         console.log('✅ Fallback DOM analysis completed:', {
             totalElements: elements.totalElements,
