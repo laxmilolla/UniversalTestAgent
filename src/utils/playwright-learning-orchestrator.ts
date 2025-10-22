@@ -389,170 +389,117 @@ async analyzeRealUI(pageContent: string, pageText: string, screenshot: any, exis
 
 // New method to perform comprehensive Playwright DOM analysis
 private async performPlaywrightDOMAnalysis(): Promise<any> {
-    console.log('🔍 Starting Playwright DOM analysis...');
-    console.log('🔍 About to call playwright_evaluate with DOM detection script...');
+    console.log('🔍 Starting Playwright DOM analysis with native MCP tools...');
+    
+    const elements = {
+        filters: [],
+        dropdowns: [],
+        checkboxes: [],
+        searchBoxes: [],
+        buttons: [],
+        forms: [],
+        tables: [],
+        navigation: [],
+        charts: [],
+        totalElements: 0,
+        analysisMethod: 'playwright-native-tools'
+    };
     
     try {
-        // Use Playwright to find all interactive elements directly from the DOM
-        const domResult = await this.mcpClient.callTools([{
-            name: 'playwright_evaluate',
-            parameters: {
-                expression: `
-                    try {
-                        console.log('🔍 Starting simplified DOM element detection...');
-                        
-                        // Simple element detection
-                        const elements = {
-                            filters: [],
-                            dropdowns: [],
-                            checkboxes: [],
-                            searchBoxes: [],
-                            buttons: [],
-                            forms: [],
-                            tables: [],
-                            navigation: [],
-                            charts: []
-                        };
-                        
-                        // Helper function to create simple element info
-                        function createElementInfo(el, type) {
-                            const selector = el.id ? '#' + el.id : 
-                                           el.className ? '.' + el.className.split(' ')[0] : 
-                                           el.tagName.toLowerCase();
-                            
-                            return {
-                                selector: selector,
-                                type: type,
-                                text: el.textContent ? el.textContent.trim().substring(0, 100) : '',
-                                placeholder: el.placeholder || '',
-                                ariaLabel: el.getAttribute('aria-label') || '',
-                                dataTestId: el.getAttribute('data-testid') || '',
-                                source: 'playwright-dom'
-                            };
-                        }
-                        
-                        // 1. BUTTONS (most important for testing)
-                        document.querySelectorAll('button').forEach(el => {
-                            elements.buttons.push(createElementInfo(el, 'button'));
-                        });
-                        
-                        // 2. FORMS
-                        document.querySelectorAll('form').forEach(el => {
-                            elements.forms.push(createElementInfo(el, 'form'));
-                        });
-                        
-                        // 3. TABLES
-                        document.querySelectorAll('table').forEach(el => {
-                            const headers = Array.from(el.querySelectorAll('th')).map(th => th.textContent ? th.textContent.trim() : '').filter(Boolean);
-                            elements.tables.push({
-                                ...createElementInfo(el, 'table'),
-                                columns: headers,
-                                rowCount: el.querySelectorAll('tbody tr').length
-                            });
-                        });
-                        
-                        // 4. DROPDOWNS
-                        document.querySelectorAll('select').forEach(el => {
-                            elements.dropdowns.push(createElementInfo(el, 'dropdown'));
-                        });
-                        
-                        // 5. CHECKBOXES
-                        document.querySelectorAll('input[type="checkbox"]').forEach(el => {
-                            elements.checkboxes.push(createElementInfo(el, 'checkbox'));
-                        });
-                        
-                        // 6. SEARCH BOXES
-                        document.querySelectorAll('input[type="search"], input[placeholder*="search"]').forEach(el => {
-                            elements.searchBoxes.push(createElementInfo(el, 'search'));
-                        });
-                        
-                        // 7. FILTERS
-                        document.querySelectorAll('.sidebar, .filter-panel, .filter-container').forEach(el => {
-                            elements.filters.push(createElementInfo(el, 'filter'));
-                        });
-                        
-                        // 8. NAVIGATION
-                        document.querySelectorAll('.nav, .navigation, .menu, .tabs').forEach(el => {
-                            elements.navigation.push(createElementInfo(el, 'navigation'));
-                        });
-                        
-                        // 9. CHARTS
-                        document.querySelectorAll('.chart, .graph, canvas, svg').forEach(el => {
-                            elements.charts.push(createElementInfo(el, 'chart'));
-                        });
-                        
-                        // Calculate total elements
-                        let totalElements = 0;
-                        Object.values(elements).forEach(arr => {
-                            if (Array.isArray(arr)) {
-                                totalElements += arr.length;
-                            }
-                        });
-                        
-                        console.log('🔍 Simplified DOM Analysis Results:', {
-                            totalElements: totalElements,
-                            breakdown: Object.keys(elements).map(key => ({ [key]: elements[key].length }))
-                        });
-                        
+        // Use native Playwright MCP tools for reliable element detection
+        const queries = [
+            { name: 'buttons', selector: 'button' },
+            { name: 'forms', selector: 'form' },
+            { name: 'tables', selector: 'table' },
+            { name: 'dropdowns', selector: 'select' },
+            { name: 'checkboxes', selector: 'input[type="checkbox"]' },
+            { name: 'searchBoxes', selector: 'input[type="search"], input[placeholder*="search"]' },
+            { name: 'filters', selector: '.sidebar, .filter-panel, .filter-container' },
+            { name: 'navigation', selector: '.nav, .navigation, .menu, .tabs' },
+            { name: 'charts', selector: '.chart, .graph, canvas, svg' }
+        ];
+        
+        for (const query of queries) {
+            try {
+                console.log(`🔍 Querying ${query.name} with selector: ${query.selector}`);
+                
+                const result = await this.mcpClient.callTools([{
+                    name: 'playwright_query_selector_all',
+                    parameters: {
+                        selector: query.selector
+                    },
+                    id: `native-${query.name}-${Date.now()}`
+                }]);
+                
+                const queryResult = result[0]?.result || [];
+                console.log(`🔍 Found ${queryResult.length} ${query.name}`);
+                
+                elements[query.name] = queryResult.map((el: any, index: number) => {
+                    const selector = el.id ? `#${el.id}` : 
+                                   el.className ? `.${el.className.split(' ')[0]}` : 
+                                   `${query.selector}:nth-child(${index + 1})`;
+                    
+                    const elementInfo = {
+                        selector: selector,
+                        type: query.name.slice(0, -1), // Remove 's' from plural
+                        text: el.textContent?.trim().substring(0, 100) || '',
+                        placeholder: el.placeholder || '',
+                        ariaLabel: el.getAttribute?.('aria-label') || '',
+                        dataTestId: el.getAttribute?.('data-testid') || '',
+                        source: 'playwright-native-tools'
+                    };
+                    
+                    // Add specific properties for tables
+                    if (query.name === 'tables') {
+                        const headers = Array.from(el.querySelectorAll?.('th') || []).map((th: any) => th.textContent?.trim()).filter(Boolean);
                         return {
-                            ...elements,
-                            totalElements: totalElements,
-                            analysisMethod: 'playwright-dom-simplified',
-                            timestamp: new Date().toISOString()
-                        };
-                        
-                    } catch (error) {
-                        console.error('🔍 DOM analysis error:', error);
-                        return {
-                            filters: [],
-                            dropdowns: [],
-                            checkboxes: [],
-                            searchBoxes: [],
-                            buttons: [],
-                            forms: [],
-                            tables: [],
-                            navigation: [],
-                            charts: [],
-                            totalElements: 0,
-                            analysisMethod: 'playwright-dom-error',
-                            error: error.message
+                            ...elementInfo,
+                            columns: headers,
+                            rowCount: el.querySelectorAll?.('tbody tr')?.length || 0
                         };
                     }
-                `
-            },
-            id: 'dom-analysis-' + Date.now()
-        }]);
-        
-        console.log('🔍 RAW DOM Result:', JSON.stringify(domResult, null, 2));
-        console.log('🔍 DOM Result Length:', domResult.length);
-        console.log('🔍 First Result:', domResult[0]);
-        console.log('🔍 Result Content:', domResult[0]?.result);
-        
-        console.log('✅ playwright_evaluate succeeded');
-        console.log('🔍 Result structure:', Object.keys(domResult[0] || {}));
-        
-        const domAnalysis = domResult[0]?.result?.[0] || {};
-        
-        if (!domAnalysis || Object.keys(domAnalysis).length === 0) {
-            console.error('❌ DOM analysis returned empty object');
-            console.error('🔍 Trying fallback approach...');
-            
-            // Fallback: Try simpler queries
-            console.log('🔍 Attempting fallback with simpler queries...');
-            return await this.performFallbackDOMAnalysis();
+                    
+                    return elementInfo;
+                });
+                
+            } catch (queryError) {
+                console.error(`❌ Failed to query ${query.name}:`, queryError);
+                elements[query.name] = [];
+            }
         }
         
-        console.log('✅ Playwright DOM analysis completed:', domAnalysis);
+        // Calculate total elements
+        let totalElements = 0;
+        Object.values(elements).forEach((arr: any) => {
+            if (Array.isArray(arr)) {
+                totalElements += arr.length;
+            }
+        });
+        elements.totalElements = totalElements;
         
-        return domAnalysis;
+        console.log('✅ Native Playwright DOM analysis completed:', {
+            totalElements: elements.totalElements,
+            breakdown: Object.keys(elements).map(key => ({ [key]: Array.isArray(elements[key]) ? elements[key].length : 0 }))
+        });
+        
+        return elements;
         
     } catch (error) {
-        console.error('❌ Playwright DOM analysis failed:', error);
-        console.error('🔍 Error details:', error.message, error.stack);
-        
-        // Try fallback approach
-        console.log('🔍 Attempting fallback DOM analysis...');
-        return await this.performFallbackDOMAnalysis();
+        console.error('❌ Native Playwright DOM analysis failed:', error);
+        return {
+            filters: [],
+            dropdowns: [],
+            checkboxes: [],
+            searchBoxes: [],
+            buttons: [],
+            forms: [],
+            tables: [],
+            navigation: [],
+            charts: [],
+            totalElements: 0,
+            analysisMethod: 'playwright-native-error',
+            error: error.message
+        };
     }
 }
 
