@@ -666,42 +666,50 @@ Return JSON in this format:
       
       // Step 3: Use AI to analyze the page for popups
       console.log('🧠 Analyzing page with AI for popups...');
-      const prompt = `You are analyzing a webpage screenshot and text to detect popups that need to be dismissed before testing can proceed.
+      const prompt = `You are analyzing webpage text content to detect popups that need to be dismissed before testing can proceed.
+
+CRITICAL INSTRUCTIONS:
+1. ONLY identify popups that are EXPLICITLY MENTIONED in the provided text content
+2. ONLY suggest button selectors for buttons that are ACTUALLY VISIBLE in the text
+3. Do NOT make up or assume buttons that aren't explicitly mentioned
+4. Look for actual button text like "Continue", "Accept", "Dismiss", "Close", "OK", "I Agree"
 
 Page Text Content: ${pageText.substring(0, 2000)}...
 
-Analyze this page and determine:
-1. Are there any popups, modals, warning dialogs, or blocking elements visible?
-2. If yes, what is the dismissal button text and CSS selector?
+Analyze this text content and determine:
+1. Are there any popups, modals, warning dialogs, or blocking elements mentioned?
+2. If yes, what is the EXACT dismissal button text as it appears in the text?
 3. What type of popup is it? (warning, consent, verification, terms, government notice, etc.)
 
-Look for common popup patterns:
+Look for these specific patterns in the text:
 - Warning dialogs with "Continue", "Accept", "OK" buttons
 - Cookie consent banners
 - Age verification popups
-- Government warnings
+- Government warnings (like "This warning banner provides privacy and security notices")
 - Terms acceptance dialogs
 - Privacy notices
+- JavaScript enablement warnings
 
-IMPORTANT: Generate SPECIFIC CSS selectors, not generic ones. Do NOT use jQuery-style selectors like :contains().
+IMPORTANT: Generate SPECIFIC CSS selectors based on ACTUAL button text found in the content. Do NOT use jQuery-style selectors like :contains().
 Use specific CSS selectors like: 
+- button:has-text("Continue") (for buttons with exact text "Continue")
 - button[class*='continue'] (for buttons with "continue" in class)
 - .btn-continue (for buttons with specific class)
-- button:has-text("Continue") (if supported)
 - #accept-btn (for buttons with specific ID)
 - button[aria-label*='continue'] (for buttons with aria-label)
 - .modal button, .popup button (for buttons inside specific containers)
 
 AVOID generic selectors like just "button" - they will fail!
+AVOID making up selectors for buttons that don't exist in the text!
 
 Return ONLY a JSON response in this exact format:
 {
   "hasPopup": true/false,
-  "popupType": "warning|consent|verification|terms|government|other",
-  "buttonText": "Continue|Accept|OK|I Agree|etc",
-  "buttonSelector": "Valid CSS selector like button[class*='continue'] or .btn-continue or button",
+  "popupType": "warning|consent|verification|terms|government|javascript_warning|other",
+  "buttonText": "EXACT button text as it appears in the content (e.g., 'Continue', 'Accept', 'OK')",
+  "buttonSelector": "Valid CSS selector based on actual button text found",
   "confidence": 0.0-1.0,
-  "description": "Brief description of what you see"
+  "description": "Brief description of what you see in the text"
 }`;
 
       // Send both image and text to AI for analysis
