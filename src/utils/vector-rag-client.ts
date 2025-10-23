@@ -161,6 +161,18 @@ export class VectorRAGClient {
             throw new Error(`Failed to create embedding: ${error.message}. Pure RAG system cannot proceed without embeddings.`);
         }
     }
+
+    private async createAndStoreEmbedding(text: string, metadata: any): Promise<void> {
+        const embedding = await this.createEmbedding(text);
+        
+        this.vectorStore.set(embedding.id, {
+            text: text,
+            embedding: embedding.vector,
+            metadata: metadata
+        });
+        
+        console.log(`✅ Stored embedding: ${embedding.id} (${metadata.type})`);
+    }
     
     private async saveVectorStore(): Promise<void> {
         const data = {
