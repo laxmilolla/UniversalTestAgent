@@ -1236,8 +1236,18 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
             // Use the existing UniversalPatternDetector
             const patternDetector = new UniversalPatternDetector();
             
+            // Convert raw TSV string data to file format if needed (same as analyzeTSVFiles)
+            let processedTSVFiles = tsvFiles;
+            if (tsvFiles && tsvFiles.length > 0 && typeof tsvFiles[0] === 'string') {
+                console.log('📝 Converting raw TSV string data to file format in mapDatabaseToRealUI...');
+                processedTSVFiles = tsvFiles.map((tsvData, index) => ({
+                    name: `tsv_data_${index}.tsv`,
+                    content: tsvData
+                }));
+            }
+            
             // Discover data patterns from current TSV files (not cached)
-            const dataPatterns = patternDetector.discoverDataPatterns(tsvFiles || []);
+            const dataPatterns = patternDetector.discoverDataPatterns(processedTSVFiles || []);
             
             // Convert hybrid UI analysis to UI patterns (instead of HTML parsing)
             const uiPatterns = this.convertHybridUIToPatterns(uiAnalysis);
