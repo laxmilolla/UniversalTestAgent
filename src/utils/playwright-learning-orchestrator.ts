@@ -616,21 +616,21 @@ private async performPlaywrightDOMAnalysis(): Promise<any> {
         };
         
         // Map elements to appropriate categories
-        if (elements.selectElements) {
-            result.dropdowns = elements.selectElements;
+        if ((elements as any).selectElements) {
+            result.dropdowns = (elements as any).selectElements;
         }
-        if (elements.inputElements) {
-            result.searchBoxes = elements.inputElements;
+        if ((elements as any).inputElements) {
+            result.searchBoxes = (elements as any).inputElements;
         }
-        if (elements.clickableElements) {
-            result.buttons = elements.clickableElements;
+        if ((elements as any).clickableElements) {
+            result.buttons = (elements as any).clickableElements;
         }
-        if (elements.tableHeaders) {
-            result.tables = elements.tableHeaders;
+        if ((elements as any).tableHeaders) {
+            result.tables = (elements as any).tableHeaders;
         }
-        if (elements.textElements) {
+        if ((elements as any).textElements) {
             // Add text elements to appropriate categories based on content
-            elements.textElements.forEach((el: any) => {
+            (elements as any).textElements.forEach((el: any) => {
                 if (el.text.toLowerCase().includes('breed') || el.text.toLowerCase().includes('sex') || el.text.toLowerCase().includes('case')) {
                     result.filters.push(el);
                 }
