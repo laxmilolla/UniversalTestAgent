@@ -909,7 +909,7 @@ Return ONLY a JSON response in this exact format:
       console.log('✅ UI Verification: UI appears accessible');
       return true;
       
-    } catch (error) {
+              } catch (error) {
       console.log('⚠️ UI Verification failed:', error);
       return false;
     }
@@ -928,14 +928,14 @@ Return ONLY a JSON response in this exact format:
         console.log(`🔍 Trying selector: ${selector}`);
         
         // Click to open filter
-        await this.mcpClient.callTools([{
+              await this.mcpClient.callTools([{
           id: 'click-filter-' + Date.now(),
           name: 'playwright_click',
           parameters: { selector: selector }
         }]);
         
         // Wait a bit for dropdown to open
-        await new Promise(resolve => setTimeout(resolve, 1000));
+              await new Promise(resolve => setTimeout(resolve, 1000));
         
         // Try to find and select the filter value
         const filterApplied = await this.selectFilterValue(selector, filterValue, fieldName);
@@ -965,8 +965,8 @@ Return ONLY a JSON response in this exact format:
         if (filterApplied) {
           console.log(`✅ Filter applied with content selector: ${selector}`);
           return true;
-        }
-      } catch (error) {
+          }
+        } catch (error) {
         console.log(`❌ Content selector ${selector} failed:`, error);
       }
     }
@@ -1008,11 +1008,11 @@ Return ONLY a JSON response in this exact format:
         await this.mcpClient.callTools([{
           id: 'fill-filter-' + Date.now(),
           name: 'playwright_fill',
-          parameters: { 
+        parameters: {
             selector: selector,
             value: filterValue
-          }
-        }]);
+        }
+      }]);
         console.log(`✅ Filled filter with value: ${filterValue}`);
         return true;
       } catch (error) {
@@ -1050,9 +1050,9 @@ Return ONLY a JSON response in this exact format:
         }]);
         console.log(`✅ Results loaded with selector: ${selector}`);
         break;
-      } catch (error) {
+    } catch (error) {
         // Try next selector
-      }
+    }
     }
     
     // Additional wait for any animations/loading

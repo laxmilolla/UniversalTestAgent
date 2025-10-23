@@ -1738,7 +1738,7 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
         // Convert checkboxes to filters
         if (uiAnalysis.checkboxes && uiAnalysis.checkboxes.length > 0) {
             uiAnalysis.checkboxes.forEach(checkbox => {
-                filters.push({
+                    filters.push({
                     selector: checkbox.selector,
                     type: 'checkbox',
                     options: checkbox.options || []
@@ -1749,7 +1749,7 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
         // Convert screenshot-detected filters
         if (uiAnalysis.filters && uiAnalysis.filters.length > 0) {
             uiAnalysis.filters.forEach(filter => {
-                filters.push({
+                    filters.push({
                     selector: `[data-filter="${filter.label}"]`,
                     type: filter.type,
                     options: filter.options
@@ -1970,6 +1970,78 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
             return 'Case ID';
         } else if (lowerText.includes('study') && lowerText.includes('code')) {
             return 'Study Code';
+        } else if (lowerText.includes('disease') && lowerText.includes('term')) {
+            return 'disease_term';
+        } else if (lowerText.includes('primary') && lowerText.includes('disease') && lowerText.includes('site')) {
+            return 'primary_disease_site';
+        } else if (lowerText.includes('disease') && lowerText.includes('phase')) {
+            return 'disease_phase';
+        } else if (lowerText.includes('anatomic') && lowerText.includes('site')) {
+            return 'anatomic_site';
+        } else if (lowerText.includes('age') && lowerText.includes('diagnosis')) {
+            return 'age_at_diagnosis';
+        } else if (lowerText.includes('participant') && lowerText.includes('age')) {
+            return 'participant_age_at_collection';
+        } else if (lowerText.includes('sample') && lowerText.includes('tumor') && lowerText.includes('status')) {
+            return 'sample_tumor_status';
+        } else if (lowerText.includes('sample') && lowerText.includes('description')) {
+            return 'sample_description';
+        } else if (lowerText.includes('file') && lowerText.includes('type')) {
+            return 'file_type';
+        } else if (lowerText.includes('library') && lowerText.includes('selection')) {
+            return 'library_selection';
+        } else if (lowerText.includes('library') && lowerText.includes('strategy')) {
+            return 'library_strategy';
+        } else if (lowerText.includes('library') && lowerText.includes('source')) {
+            return 'library_source';
+        } else if (lowerText.includes('instrument') && lowerText.includes('model')) {
+            return 'instrument_model';
+        } else if (lowerText.includes('avg') && lowerText.includes('read') && lowerText.includes('length')) {
+            return 'avg_read_length';
+        } else if (lowerText.includes('sequence') && lowerText.includes('alignment')) {
+            return 'sequence_alignment_software';
+        } else if (lowerText.includes('diagnosis') && lowerText.includes('icd')) {
+            return 'diagnosis_icd_o';
+        } else if (lowerText.includes('alternate') && lowerText.includes('participant')) {
+            return 'alternate_participant_id';
+        } else if (lowerText.includes('alternate') && lowerText.includes('sample')) {
+            return 'alternate_sample_id';
+        } else if (lowerText.includes('file') && lowerText.includes('size')) {
+            return 'file_size';
+        } else if (lowerText.includes('md5sum')) {
+            return 'md5sum';
+        } else if (lowerText.includes('number') && lowerText.includes('bp')) {
+            return 'number_of_bp';
+        } else if (lowerText.includes('number') && lowerText.includes('reads')) {
+            return 'number_of_reads';
+        } else if (lowerText.includes('study') && lowerText.includes('name')) {
+            return 'study_name';
+        } else if (lowerText.includes('study') && lowerText.includes('short') && lowerText.includes('title')) {
+            return 'study_short_title';
+        } else if (lowerText.includes('study') && lowerText.includes('acronym')) {
+            return 'study_acronym';
+        } else if (lowerText.includes('study') && lowerText.includes('description')) {
+            return 'study_description';
+        } else if (lowerText.includes('consent')) {
+            return 'consent';
+        } else if (lowerText.includes('consent') && lowerText.includes('number')) {
+            return 'consent_number';
+        } else if (lowerText.includes('external') && lowerText.includes('url')) {
+            return 'external_url';
+        } else if (lowerText.includes('experimental') && lowerText.includes('strategy')) {
+            return 'experimental_strategy_and_data_subtype';
+        } else if (lowerText.includes('study') && lowerText.includes('data') && lowerText.includes('types')) {
+            return 'study_data_types';
+        } else if (lowerText.includes('race')) {
+            return 'race';
+        } else if (lowerText.includes('ethnicity')) {
+            return 'ethnicity';
+        } else if (lowerText.includes('platform')) {
+            return 'platform';
+        } else if (lowerText.includes('reference') && lowerText.includes('genome')) {
+            return 'reference_genome_assembly';
+        } else if (lowerText.includes('design') && lowerText.includes('description')) {
+            return 'design_description';
         }
         
         // Fallback: try to clean up the text
@@ -1987,19 +2059,30 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
                 return this.generateGenericTestValues(fieldName);
             }
             
-            // Extract unique values for this field
+            // Generate field name variations to try different cases
+            const fieldVariations = this.generateFieldNameVariations(fieldName);
+            
+            // Extract unique values for this field, trying different variations
             const fieldValues = new Set<string>();
             
-            tsvData.forEach(record => {
-                if (record[fieldName] && record[fieldName].trim()) {
-                    fieldValues.add(record[fieldName].trim());
+            for (const variation of fieldVariations) {
+                tsvData.forEach(record => {
+                    if (record[variation] && record[variation].trim()) {
+                        fieldValues.add(record[variation].trim());
+                    }
+                });
+                
+                // If we found values with this variation, we can stop
+                if (fieldValues.size > 0) {
+                    console.log(`✅ Found values using field variation: ${variation}`);
+                    break;
                 }
-            });
+            }
             
             const uniqueValues = Array.from(fieldValues);
             
             if (uniqueValues.length === 0) {
-                console.warn(`⚠️ No values found for field: ${fieldName}`);
+                console.warn(`⚠️ No values found for field: ${fieldName} (tried variations: ${fieldVariations.join(', ')})`);
                 return this.generateGenericTestValues(fieldName);
             }
             
@@ -2015,9 +2098,137 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
         }
     }
 
+    // Generate field name variations to handle different casing and formats
+    private generateFieldNameVariations(fieldName: string): string[] {
+        const variations = new Set<string>();
+        
+        // Add the original field name
+        variations.add(fieldName);
+        
+        // Add lowercase version
+        variations.add(fieldName.toLowerCase());
+        
+        // Add uppercase version
+        variations.add(fieldName.toUpperCase());
+        
+        // Add snake_case version
+        const snakeCase = fieldName.toLowerCase().replace(/\s+/g, '_');
+        variations.add(snakeCase);
+        
+        // Add camelCase version
+        const camelCase = fieldName.replace(/\s+(.)/g, (_, char) => char.toUpperCase()).replace(/\s+/g, '');
+        variations.add(camelCase.charAt(0).toLowerCase() + camelCase.slice(1));
+        
+        // Add PascalCase version
+        const pascalCase = fieldName.replace(/\s+(.)/g, (_, char) => char.toUpperCase()).replace(/\s+/g, '');
+        variations.add(pascalCase.charAt(0).toUpperCase() + pascalCase.slice(1));
+        
+        // Add Title Case version
+        const titleCase = fieldName.replace(/\b\w/g, char => char.toUpperCase());
+        variations.add(titleCase);
+        
+        // Add UPPER_SNAKE_CASE version
+        const upperSnakeCase = fieldName.toUpperCase().replace(/\s+/g, '_');
+        variations.add(upperSnakeCase);
+        
+        // Add kebab-case version
+        const kebabCase = fieldName.toLowerCase().replace(/\s+/g, '-');
+        variations.add(kebabCase);
+        
+        // Add specific OSA04 field variations
+        if (fieldName.toLowerCase().includes('disease') && fieldName.toLowerCase().includes('term')) {
+            variations.add('disease_term');
+            variations.add('Disease Term');
+            variations.add('DISEASE_TERM');
+        }
+        
+        if (fieldName.toLowerCase().includes('primary') && fieldName.toLowerCase().includes('disease') && fieldName.toLowerCase().includes('site')) {
+            variations.add('primary_disease_site');
+            variations.add('Primary Disease Site');
+            variations.add('PRIMARY_DISEASE_SITE');
+        }
+        
+        return Array.from(variations);
+    }
+
     // Generate generic test values based on field name when TSV data is not available
     private generateGenericTestValues(fieldName: string): string[] {
         const lowerFieldName = fieldName.toLowerCase();
+        
+        // OSA04-specific field values
+        if (lowerFieldName.includes('disease') && lowerFieldName.includes('term')) {
+            return ['Osteosarcoma', 'Ewing Sarcoma', 'Rhabdomyosarcoma'];
+        } else if (lowerFieldName.includes('primary') && lowerFieldName.includes('disease') && lowerFieldName.includes('site')) {
+            return ['Bone', 'Soft Tissue', 'Central Nervous System'];
+        } else if (lowerFieldName.includes('disease') && lowerFieldName.includes('phase')) {
+            return ['Primary', 'Recurrent', 'Metastatic'];
+        } else if (lowerFieldName.includes('anatomic') && lowerFieldName.includes('site')) {
+            return ['Femur', 'Tibia', 'Humerus'];
+        } else if (lowerFieldName.includes('age') && lowerFieldName.includes('diagnosis')) {
+            return ['5', '10', '15'];
+        } else if (lowerFieldName.includes('participant') && lowerFieldName.includes('age')) {
+            return ['6', '11', '16'];
+        } else if (lowerFieldName.includes('sample') && lowerFieldName.includes('tumor') && lowerFieldName.includes('status')) {
+            return ['Primary', 'Recurrent', 'Metastatic'];
+        } else if (lowerFieldName.includes('sample') && lowerFieldName.includes('description')) {
+            return ['Tumor Sample A', 'Tumor Sample B', 'Tumor Sample C'];
+        } else if (lowerFieldName.includes('file') && lowerFieldName.includes('type')) {
+            return ['BAM', 'FASTQ', 'VCF'];
+        } else if (lowerFieldName.includes('library') && lowerFieldName.includes('selection')) {
+            return ['PCR', 'Random', 'Hybrid Selection'];
+        } else if (lowerFieldName.includes('library') && lowerFieldName.includes('strategy')) {
+            return ['WGS', 'WXS', 'RNA-Seq'];
+        } else if (lowerFieldName.includes('library') && lowerFieldName.includes('source')) {
+            return ['Genomic DNA', 'RNA', 'cDNA'];
+        } else if (lowerFieldName.includes('instrument') && lowerFieldName.includes('model')) {
+            return ['Illumina HiSeq 2000', 'Illumina HiSeq 2500', 'Illumina NovaSeq'];
+        } else if (lowerFieldName.includes('avg') && lowerFieldName.includes('read') && lowerFieldName.includes('length')) {
+            return ['100', '150', '250'];
+        } else if (lowerFieldName.includes('sequence') && lowerFieldName.includes('alignment')) {
+            return ['BWA', 'STAR', 'HISAT2'];
+        } else if (lowerFieldName.includes('diagnosis') && lowerFieldName.includes('icd')) {
+            return ['C41.9', 'C49.9', 'C71.9'];
+        } else if (lowerFieldName.includes('alternate') && lowerFieldName.includes('participant')) {
+            return ['ALT_P001', 'ALT_P002', 'ALT_P003'];
+        } else if (lowerFieldName.includes('alternate') && lowerFieldName.includes('sample')) {
+            return ['ALT_S001', 'ALT_S002', 'ALT_S003'];
+        } else if (lowerFieldName.includes('file') && lowerFieldName.includes('size')) {
+            return ['1024000', '2048000', '4096000'];
+        } else if (lowerFieldName.includes('md5sum')) {
+            return ['a1b2c3d4e5f6', 'f6e5d4c3b2a1', '123456789abc'];
+        } else if (lowerFieldName.includes('number') && lowerFieldName.includes('bp')) {
+            return ['1000000', '2000000', '3000000'];
+        } else if (lowerFieldName.includes('number') && lowerFieldName.includes('reads')) {
+            return ['100000', '200000', '300000'];
+        } else if (lowerFieldName.includes('study') && lowerFieldName.includes('name')) {
+            return ['OSA04 Study', 'Pediatric Osteosarcoma', 'Childhood Cancer Study'];
+        } else if (lowerFieldName.includes('study') && lowerFieldName.includes('short') && lowerFieldName.includes('title')) {
+            return ['OSA04', 'PED-OSA', 'CCS-001'];
+        } else if (lowerFieldName.includes('study') && lowerFieldName.includes('acronym')) {
+            return ['OSA04', 'PEDOSA', 'CCS001'];
+        } else if (lowerFieldName.includes('study') && lowerFieldName.includes('description')) {
+            return ['Pediatric Osteosarcoma Study', 'Childhood Cancer Research', 'Oncology Study'];
+        } else if (lowerFieldName.includes('consent')) {
+            return ['Consent A', 'Consent B', 'Consent C'];
+        } else if (lowerFieldName.includes('consent') && lowerFieldName.includes('number')) {
+            return ['CONS001', 'CONS002', 'CONS003'];
+        } else if (lowerFieldName.includes('external') && lowerFieldName.includes('url')) {
+            return ['https://example1.com', 'https://example2.com', 'https://example3.com'];
+        } else if (lowerFieldName.includes('experimental') && lowerFieldName.includes('strategy')) {
+            return ['WGS', 'WXS', 'RNA-Seq'];
+        } else if (lowerFieldName.includes('study') && lowerFieldName.includes('data') && lowerFieldName.includes('types')) {
+            return ['Genomic', 'Clinical', 'Imaging'];
+        } else if (lowerFieldName.includes('race')) {
+            return ['White', 'Black', 'Asian'];
+        } else if (lowerFieldName.includes('ethnicity')) {
+            return ['Hispanic', 'Non-Hispanic', 'Unknown'];
+        } else if (lowerFieldName.includes('platform')) {
+            return ['Illumina', 'PacBio', 'Oxford Nanopore'];
+        } else if (lowerFieldName.includes('reference') && lowerFieldName.includes('genome')) {
+            return ['GRCh38', 'GRCh37', 'hg19'];
+        } else if (lowerFieldName.includes('design') && lowerFieldName.includes('description')) {
+            return ['Case-Control', 'Cohort', 'Cross-Sectional'];
+        }
         
         // Generate values based on field type patterns
         if (lowerFieldName.includes('id') || lowerFieldName.includes('code')) {
