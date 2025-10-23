@@ -1040,7 +1040,7 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
         try {
             // Use ONLY LLM + RAG for mapping
             console.log('\n🔍 Step 1: LLM Semantic Mapping...');
-            const llmMappings = await this.analyzeTSVtoUIMapping(uiAnalysis, pageContent || '');
+            const llmMappings = await this.analyzeTSVtoUIMappingWithRAG(uiAnalysis, pageContent || '');
             
             console.log(`📋 LLM Mappings Result:`, {
                 hasMappings: !!llmMappings,
@@ -1217,7 +1217,87 @@ Return JSON:
         console.log(`📥 LLM found ${result.mappings.length} mappings`);
         this.storeLLMResponse('Pure AI Semantic Mapping', prompt, result, result);
         
+        return result;
+    }
+
+    // NEW METHOD: RAG-Powered Semantic Mapping
+    private async analyzeTSVtoUIMappingWithRAG(uiAnalysis: any, pageText: string): Promise<any> {
+        console.log('\n🧠 LLM: RAG-POWERED SEMANTIC MAPPING');
+        
+        try {
+            // Step 1: Query RAG for TSV knowledge
+            const tsvKnowledge = await this.vectorRAG.queryTSVKnowledge(
+                "What are all the TSV fields, their types, and sample values?"
+            );
+            
+            // Step 2: Query RAG for UI knowledge
+            const uiKnowledge = await this.vectorRAG.queryUIKnowledge(
+                "What are all the UI interactive elements, their labels, and behaviors?"
+            );
+            
+            console.log(`📊 RAG Context: ${tsvKnowledge.length} TSV items, ${uiKnowledge.length} UI items`);
+            
+            // Step 3: Send compact context to LLM
+            const prompt = `You are analyzing a data exploration website.
+
+TSV DATABASE KNOWLEDGE (from RAG):
+${JSON.stringify(tsvKnowledge.slice(0, 5), null, 2)}
+
+UI EXPLORATION KNOWLEDGE (from RAG):
+${JSON.stringify(uiKnowledge.slice(0, 5), null, 2)}
+
+TASK: Create semantic mappings between UI elements and TSV fields.
+- Match UI labels to TSV field names
+- Compare UI result counts with TSV record counts
+- Identify data mismatches
+- Generate test cases
+
+Return JSON:
+{
+  "mappings": [
+    {
+      "uiLabel": "Breed",
+      "uiSelector": "#breed-dropdown",
+      "tsvField": "breed",
+      "tsvFile": "sample.tsv",
+      "confidence": 0.95,
+      "reasoning": "Exact match between UI options and TSV values",
+      "dataMismatch": "UI shows 50 results, TSV has 48 records (2 missing)"
+    }
+  ],
+  "testCases": [
+    {
+      "name": "Validate Breed filter",
+      "uiAction": "Select Breed='Golden Retriever'",
+      "tsvFilter": "breed='Golden Retriever'",
+      "expectedCount": 48,
+      "validationType": "count_match"
+    }
+  ]
+}`;
+
+            const response = await this.bedrockClient.generateResponse([{
+                role: 'user',
+                content: prompt
+            }], []);
+            
+            const result = this.parseJSONResponse(response.content);
+            
+            // Step 4: Store mappings back in RAG
+            if (result.mappings) {
+                for (const mapping of result.mappings) {
+                    await this.vectorRAG.storeMappingResult(mapping);
+                }
+            }
+            
+            this.storeLLMResponse('RAG-Powered Mapping', prompt, result, result);
+            
             return result;
+            
+        } catch (error: any) {
+            console.error('❌ RAG-powered mapping failed:', error);
+            throw new Error(`RAG-powered mapping failed: ${error.message}. NO FALLBACK AVAILABLE.`);
+        }
     }
 
     // NEW METHOD: Pure LLM test generation

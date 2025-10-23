@@ -49,6 +49,28 @@ export class VectorRAGClient {
                 sampleRecords: records.slice(0, 10)
             };
             
+            // Store field-level knowledge
+            for (const header of headers) {
+                const uniqueValues = [...new Set(records.map(r => r[header]))];
+                const fieldDescription = `Field ${header} in ${file.name} contains ${uniqueValues.length} unique values: ${uniqueValues.slice(0, 5).join(', ')}. Total records: ${records.length}`;
+                
+                await this.createAndStoreEmbedding(fieldDescription, {
+                    type: 'tsv_field',
+                    fieldName: header,
+                    fileName: file.name,
+                    uniqueValues: uniqueValues.slice(0, 100) // Store top 100
+                });
+            }
+            
+            // Store relationships
+            const relationships = this.detectRelationships(records, headers);
+            for (const rel of relationships) {
+                await this.createAndStoreEmbedding(
+                    `${rel.from} relates to ${rel.to} (${rel.type})`,
+                    { type: 'relationship', ...rel }
+                );
+            }
+            
             console.log(`  ├─ Headers: ${this.tsvMetadata[file.name].headers.join(', ')}`);
             
             // Create embeddings (NO SIMULATION - real Bedrock calls)
@@ -386,14 +408,45 @@ export class VectorRAGClient {
         return types;
     }
     
-    private extractUniqueValues(records: any[]): any {
-        const uniqueValues: any = {};
-        const headers = Object.keys(records[0]);
-        headers.forEach(header => {
-            const values = [...new Set(records.map(r => r[header]).filter(v => v))];
-            uniqueValues[header] = values.slice(0, 100);
-        });
-        return uniqueValues;
+    private detectRelationships(records: any[], headers: string[]): any[] {
+        const relationships: any[] = [];
+        
+        // Simple relationship detection based on common patterns
+        for (let i = 0; i < headers.length; i++) {
+            for (let j = i + 1; j < headers.length; j++) {
+                const field1 = headers[i];
+                const field2 = headers[j];
+                
+                // Check for foreign key relationships (field1_id -> field1)
+                if (field1.endsWith('_id') && field2 === field1.replace('_id', '')) {
+                    relationships.push({
+                        from: field1,
+                        to: field2,
+                        type: 'foreign_key'
+                    });
+                }
+                
+                // Check for dependency relationships
+                if (field1.includes('_id') && !field2.includes('_id')) {
+                    relationships.push({
+                        from: field1,
+                        to: field2,
+                        type: 'dependency'
+                    });
+                }
+                
+                // Check for hierarchy relationships
+                if (field1.includes('type') && field2.includes('subtype')) {
+                    relationships.push({
+                        from: field1,
+                        to: field2,
+                        type: 'hierarchy'
+                    });
+                }
+            }
+        }
+        
+        return relationships;
     }
     
     private recordsToText(records: any[]): string {

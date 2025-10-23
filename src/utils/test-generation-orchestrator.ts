@@ -15,39 +15,84 @@ export class TestGenerationOrchestrator {
     private playwrightLearningOrchestrator: any  // Get RAG client dynamically from this
   ) {}
 
-  // Main test generation method - now uses Learning Phase test cases
+  // Main test generation method - now uses RAG queries
   async generateTestCases(learningResults: LearningResults, testOptions?: any): Promise<{success: boolean, testCases?: TestCase[], statistics?: any, error?: string}> {
     try {
-      console.log('Using test cases from Learning Phase...');
+      console.log('🔍 RAG-Centric Test Generation...');
       
-      // Get test cases from Learning Phase (already generated with TSV validation fields)
-      const learningTestCases = learningResults.analysis.mapping.testCases || [];
+      // Get RAG client from playwright orchestrator
+      const vectorRAG = (this.playwrightLearningOrchestrator as any).vectorRAG;
+      if (!vectorRAG) {
+        throw new Error('VectorRAG client not available. Cannot perform RAG-centric test generation.');
+      }
       
-      if (learningTestCases.length === 0) {
-        console.warn('No test cases found in Learning Phase results');
+      // Query RAG for all mappings
+      const mappings = await vectorRAG.queryMappings("Get all UI to TSV mappings");
+      console.log(`📊 Found ${mappings.length} mappings in RAG`);
+      
+      // Query RAG for test cases
+      const suggestedTests = await vectorRAG.queryUIKnowledge("What test cases should be generated?");
+      console.log(`📋 Found ${suggestedTests.length} suggested tests in RAG`);
+      
+      if (mappings.length === 0) {
+        console.warn('No mappings found in RAG');
         return {
           success: false,
-          error: 'No test cases found in Learning Phase results'
+          error: 'No mappings found in RAG vector store'
         };
       }
       
-      // Convert Learning Phase test cases to TestCase format with validation
-      const testCases = learningTestCases
-        .filter(tc => {
-          // STRICT VALIDATION: Only include test cases with valid TSV validation fields
-          const hasValidDataField = (tc as any).dataField && (tc as any).dataField !== 'undefined';
-          const hasValidTestValues = (tc as any).testValues && Array.isArray((tc as any).testValues) && (tc as any).testValues.length > 0;
-          const hasValidSelectors = tc.selectors && Array.isArray(tc.selectors) && tc.selectors.length > 0 && 
-                                   !tc.selectors.some(s => s === 'undefined' || s.includes('undefined'));
-          
-          if (!hasValidDataField) {
-            console.warn(`⚠️ Skipping test case "${tc.name}": No valid dataField`);
-            return false;
-          }
-          if (!hasValidTestValues) {
-            console.warn(`⚠️ Skipping test case "${tc.name}": No valid testValues`);
-            return false;
-          }
+      // Generate tests based on RAG knowledge
+      const testCases = suggestedTests.map(test => ({
+        name: test.name || `Test ${test.metadata?.uiLabel || 'Unknown'}`,
+        dataField: test.metadata?.tsvField || 'unknown',
+        uiSelector: test.metadata?.uiSelector || 'unknown',
+        testValues: test.metadata?.sampleValues || ['test'],
+        expectedCount: test.metadata?.expectedCount || 0,
+        steps: this.generateTestSteps(test)
+      }));
+      
+      console.log(`✅ Generated ${testCases.length} test cases from RAG`);
+      
+      return {
+        success: true,
+        testCases: testCases,
+        statistics: {
+          totalTestCases: testCases.length,
+          mappingsUsed: mappings.length,
+          ragQueries: 2
+        }
+      };
+      
+    } catch (error: any) {
+      console.error('❌ RAG-centric test generation failed:', error);
+      return {
+        success: false,
+        error: `RAG-centric test generation failed: ${error.message}`
+      };
+    }
+  }
+
+  private generateTestSteps(test: any): any[] {
+    // Generate test steps based on RAG knowledge
+    return [
+      {
+        action: 'click',
+        selector: test.metadata?.uiSelector || 'unknown',
+        description: `Click on ${test.metadata?.uiLabel || 'element'}`
+      },
+      {
+        action: 'select',
+        value: test.metadata?.sampleValues?.[0] || 'test',
+        description: `Select value "${test.metadata?.sampleValues?.[0] || 'test'}"`
+      },
+      {
+        action: 'validate',
+        expectedCount: test.metadata?.expectedCount || 0,
+        description: `Validate result count matches expected ${test.metadata?.expectedCount || 0}`
+      }
+    ];
+  }
           if (!hasValidSelectors) {
             console.warn(`⚠️ Skipping test case "${tc.name}": No valid selectors`);
             return false;
