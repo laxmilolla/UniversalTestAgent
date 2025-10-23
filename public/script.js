@@ -1676,6 +1676,23 @@ class LLMBandwidthInspector {
     }
     
     addLiveCall(llmCall) {
+        // Validate llmCall structure
+        if (!llmCall || typeof llmCall !== 'object') {
+            console.warn('⚠️ Invalid LLM call received:', llmCall);
+            return;
+        }
+        
+        // Set defaults for missing properties
+        if (!llmCall.id) {
+            llmCall.id = `llm-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        }
+        if (!llmCall.type) {
+            llmCall.type = llmCall.operation || 'unknown';
+        }
+        if (!llmCall.duration) {
+            llmCall.duration = 0;
+        }
+        
         // Avoid duplicates
         if (this.llmCalls.some(call => call.id === llmCall.id)) return;
         
@@ -1893,6 +1910,7 @@ class LLMBandwidthInspector {
     }
     
     formatCallType(type) {
+        if (!type) return 'Unknown';
         return type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
     }
     

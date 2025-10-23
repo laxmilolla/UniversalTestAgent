@@ -265,6 +265,16 @@ export class PlaywrightLearningOrchestrator {
             this.storeLLMResponse('Database Analysis', 'Analyzing TSV files for database structure', dbAnalysis, dbAnalysis);
             
             // Phase: RAG Vector Indexing (REQUIRED)
+            console.log('\n🔍 Validating TSV files before RAG indexing...');
+            if (!tsvFiles || tsvFiles.length === 0) {
+                throw new Error('No TSV files provided to performCompleteLearning. Cannot proceed.');
+            }
+
+            console.log(`📊 TSV Files to index: ${tsvFiles.length}`);
+            tsvFiles.forEach((file, index) => {
+                console.log(`  ${index + 1}. ${file.name || 'unnamed'} - ${file.content?.length || 0} chars`);
+            });
+
             this.logStep('15', 'RAG', 'Vector Embedding Creation',
                 { tsvFiles: tsvFiles.length },
                 'Creating vector embeddings for semantic search...');
@@ -272,6 +282,8 @@ export class PlaywrightLearningOrchestrator {
             try {
                 await this.vectorRAG.indexTSVData(tsvFiles);
             } catch (error: any) {
+                console.error('❌ RAG indexing failed:', error);
+                console.error('Stack trace:', error.stack);
                 throw new Error(`RAG indexing failed: ${error.message}. Pure AI system cannot proceed.`);
             }
 
@@ -1266,6 +1278,7 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
 
     async mapDatabaseToRealUI(dbAnalysis: any, uiAnalysis: any, tsvFiles: any[] = [], pageContent?: string): Promise<any> {
         console.log('\n=== PURE AI MAPPING (No Pattern Matching, No Hardcoding) ===');
+        console.log(`📊 Input: ${tsvFiles?.length || 0} TSV files, ${uiAnalysis?.interactiveElements?.length || 0} UI elements`);
         
         if (!tsvFiles || tsvFiles.length === 0) {
             throw new Error('No TSV files provided. Pure AI system requires data to learn from. NO FALLBACK AVAILABLE.');
@@ -1273,31 +1286,55 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
         
         try {
             // Use ONLY LLM + RAG for mapping
+            console.log('\n🔍 Step 1: LLM Semantic Mapping...');
             const llmMappings = await this.analyzeTSVtoUIMapping(uiAnalysis, pageContent || '');
             
+            console.log(`📋 LLM Mappings Result:`, {
+                hasMappings: !!llmMappings,
+                mappingsArray: !!llmMappings?.mappings,
+                mappingsCount: llmMappings?.mappings?.length || 0
+            });
+            
             if (!llmMappings || !llmMappings.mappings || llmMappings.mappings.length === 0) {
+                console.error('❌ LLM failed to generate mappings:', llmMappings);
                 throw new Error('LLM failed to generate any mappings. Pure AI system cannot proceed without LLM analysis.');
             }
             
             // Generate test cases using ONLY LLM
+            console.log('\n🔍 Step 2: LLM Test Case Generation...');
             const testCases = await this.generateTestCasesWithLLM(uiAnalysis, llmMappings.mappings);
             
+            console.log(`📋 Test Cases Result:`, {
+                hasTestCases: !!testCases,
+                isArray: Array.isArray(testCases),
+                testCasesCount: testCases?.length || 0,
+                firstTestCase: testCases?.[0]
+            });
+            
             if (!testCases || testCases.length === 0) {
+                console.error('❌ LLM failed to generate test cases:', testCases);
                 throw new Error('LLM failed to generate test cases. Pure AI system requires LLM-generated tests.');
             }
             
-            console.log(`✅ Pure AI Mapping Complete: ${llmMappings.mappings.length} mappings, ${testCases.length} test cases`);
-                
-                return {
+            const result = {
                 mappings: llmMappings.mappings,
                 testCases: testCases,
                 validationRules: this.extractValidationRulesFromLLM(llmMappings),
-                    missingMappings: [],
+                missingMappings: [],
                 dataRelationships: llmMappings.dataRelationships || []
             };
             
+            console.log(`\n✅ Pure AI Mapping Complete:`, {
+                mappings: result.mappings.length,
+                testCases: result.testCases.length,
+                validationRules: result.validationRules.length
+            });
+            
+            return result;
+            
         } catch (error: any) {
-            console.error('❌ Pure AI mapping failed:', error.message);
+            console.error('❌ Pure AI mapping failed:', error);
+            console.error('Stack trace:', error.stack);
             throw new Error(`Pure AI system failure: ${error.message}. NO FALLBACK AVAILABLE. Fix the issue and try again.`);
         }
     }
@@ -1476,13 +1513,18 @@ Return JSON array of test cases:
 
     // Store LLM response for tracking
     private storeLLMResponse(operation: string, prompt: string, response: any, parsedResponse: any) {
+        const startTime = Date.now();
         const llmCall = {
+            id: `llm-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            type: operation, // Changed from 'operation' to 'type'
             timestamp: new Date().toISOString(),
-            operation,
+            duration: 0, // Will be updated when response completes
+            status: 'completed',
             prompt: prompt.substring(0, 500) + '...',
             response: typeof response === 'string' ? response.substring(0, 500) + '...' : response,
             parsedResponse,
-            status: 'completed'
+            tokenCount: Math.ceil(prompt.length / 4),
+            model: process.env.BEDROCK_MODEL_ID
         };
         
         // Store in global tracker

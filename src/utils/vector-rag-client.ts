@@ -80,8 +80,14 @@ export class VectorRAGClient {
         console.log('\n' + '='.repeat(80));
         console.log('✅ RAG: VECTOR STORE COMPLETE');
         console.log(`  ├─ Total Embeddings: ${this.vectorStore.size}`);
+        console.log(`  ├─ TSV Metadata Files: ${this.tsvMetadata.size}`);
         console.log(`  └─ S3 Bucket: ${process.env.S3_BUCKET_NAME}`);
         console.log('='.repeat(80) + '\n');
+
+        // Verify the vector store is not empty
+        if (this.vectorStore.size === 0) {
+            throw new Error('Vector store is empty after indexing. RAG system cannot proceed with no data.');
+        }
     }
     
     async searchRelevantData(query: string, topK?: number): Promise<any[]> {
