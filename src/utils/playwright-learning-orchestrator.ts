@@ -1224,6 +1224,15 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
         console.log('\n=== UNIVERSAL PATTERN MATCHING & TEST GENERATION ===');
         
         try {
+            // DEBUG: Log the tsvFiles parameter
+            console.log('🔍 DEBUG - tsvFiles parameter:', tsvFiles);
+            console.log('🔍 DEBUG - tsvFiles length:', tsvFiles?.length || 0);
+            console.log('🔍 DEBUG - tsvFiles type:', typeof tsvFiles);
+            if (tsvFiles && tsvFiles.length > 0) {
+                console.log('🔍 DEBUG - tsvFiles[0] type:', typeof tsvFiles[0]);
+                console.log('🔍 DEBUG - tsvFiles[0] content preview:', tsvFiles[0]?.substring?.(0, 100) || 'No content');
+            }
+            
             // Use the existing UniversalPatternDetector
             const patternDetector = new UniversalPatternDetector();
             
