@@ -433,34 +433,40 @@ private async performPlaywrightDOMAnalysis(): Promise<any> {
         }
         
         // Use native Playwright MCP tools for reliable element detection
+        // First, let's get the actual page content to understand the structure
+        let pageContent = '';
+        try {
+            const contentResult = await mcp_playwright_get_visible_text();
+            pageContent = contentResult.text || '';
+            console.log('📄 Page content preview:', pageContent.substring(0, 500));
+        } catch (error) {
+            console.log('⚠️ Could not get page content:', error);
+        }
+
         const queries = [
-            // Focus on table headers and data elements first
-            { name: 'tableHeaders', selector: 'th, .table-header, .column-header, .header-cell, [data-column], .sortable-header' },
-            { name: 'tableRows', selector: 'tr, .table-row, .data-row, .row' },
-            { name: 'tableCells', selector: 'td, .table-cell, .cell, .data-cell' },
+            // Look for elements that contain actual text content (not generic selectors)
+            { name: 'textElements', selector: '*:not(script):not(style):not(meta):not(link)' },
             
-            // Look for actual filter elements in common locations
-            { name: 'filterSelects', selector: '.filter select, .sidebar select, .filter-panel select, .filter-section select, .filter-group select' },
-            { name: 'filterInputs', selector: '.filter input, .sidebar input, .filter-panel input, .filter-section input' },
-            { name: 'filterButtons', selector: '.filter button, .sidebar button, .filter-panel button, .filter-section button' },
+            // Focus on elements that might contain the filter labels we see
+            { name: 'labelElements', selector: 'label, .label, .field-label, .filter-label, .control-label' },
             
-            // Search elements
-            { name: 'searchInputs', selector: 'input[type="search"], input[placeholder*="search"], input[placeholder*="Search"], .search-input, .search-box, input[aria-label*="search"]' },
+            // Look for select elements (dropdowns) that might be the filters
+            { name: 'selectElements', selector: 'select' },
             
-            // Action buttons
-            { name: 'actionButtons', selector: 'button:contains("Add"), button:contains("View"), button:contains("Export"), button:contains("Download"), .action-button, .primary-button' },
+            // Look for input elements that might be search boxes
+            { name: 'inputElements', selector: 'input' },
             
-            // Pagination
-            { name: 'pagination', selector: '.pagination, .page-controls, .pager, .page-navigation, select[name*="page"], select[name*="rows"], .page-size' },
+            // Look for table headers that might contain sortable columns
+            { name: 'tableHeaders', selector: 'th, .table-header, .column-header, .header-cell' },
             
-            // Tabs
-            { name: 'tabs', selector: '.tab, .tab-button, [role="tab"], .nav-tabs .nav-link, .tab-list .tab-item' },
+            // Look for clickable elements that might be buttons
+            { name: 'clickableElements', selector: 'button, a, [onclick], [role="button"]' },
             
-            // Generic fallbacks
-            { name: 'buttons', selector: 'button, input[type="button"], input[type="submit"], .btn, .button, [role="button"]' },
-            { name: 'dropdowns', selector: 'select, .dropdown, .select, [role="combobox"]' },
-            { name: 'checkboxes', selector: 'input[type="checkbox"], .checkbox, [role="checkbox"]' },
-            { name: 'tables', selector: 'table, .table, [role="table"]' }
+            // Look for elements with specific text content
+            { name: 'breedElements', selector: '*:contains("Breed"), *:contains("breed")' },
+            { name: 'sexElements', selector: '*:contains("Sex"), *:contains("sex")' },
+            { name: 'caseIdElements', selector: '*:contains("Case ID"), *:contains("case"), *:contains("ID")' },
+            { name: 'searchElements', selector: '*:contains("Search"), *:contains("search")' }
         ];
         
         for (const query of queries) {
@@ -1851,8 +1857,10 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
                     return;
                 }
                 
-                // Generate specific test cases based on element type
-                if (element.type === 'sortableColumns') {
+                // Generate specific test cases based on element type and content
+                // Check if this looks like a sortable column header
+                if (element.type === 'tableHeaders' || element.type === 'sortableColumns' || 
+                    (element.text && (element.text.includes('Case ID') || element.text.includes('Breed') || element.text.includes('Sex')))) {
                     testCases.push({
                         name: `Sort Test - ${elementText}`,
                         description: `Test that ${elementText} sorting works correctly`,
@@ -1880,7 +1888,8 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
                             'Sort state persists during navigation'
                         ]
                     });
-                } else if (element.type === 'filterDropdowns' || element.type === 'filterCheckboxes') {
+                } else if (element.type === 'selectElements' || element.type === 'filterDropdowns' || element.type === 'filterCheckboxes' ||
+                          (element.text && (element.text.includes('Breed') || element.text.includes('Sex') || element.text.includes('Filter')))) {
                     testCases.push({
                         name: `Filter Test - ${elementText}`,
                         description: `Test that ${elementText} filter works correctly and returns expected results`,
@@ -1907,7 +1916,8 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
                             'No unrelated records are displayed'
                         ]
                     });
-                } else if (element.type === 'searchBoxes') {
+                } else if (element.type === 'searchBoxes' || element.type === 'inputElements' || element.type === 'searchInputs' ||
+                          (element.text && element.text.toLowerCase().includes('search'))) {
                     testCases.push({
                         name: `Search Test - ${elementText}`,
                         description: `Test that search functionality works correctly`,
@@ -1934,22 +1944,22 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
                     });
                 } else {
                     // Generic test case for other interactive elements
-                    testCases.push({
-                        name: `test_interactive_${index + 1}`,
+                testCases.push({
+                    name: `test_interactive_${index + 1}`,
                         description: `Test interaction with ${elementText}`,
-                        steps: [
+                    steps: [
                             'Navigate to the page',
                             `Locate ${elementText}`,
                             `Interact with ${elementText}`,
                             'Verify expected behavior'
-                        ],
-                        selectors: [element.selector],
-                        category: 'functionality',
-                        type: element.type || 'interactive',
-                        priority: 'medium',
-                        source: element.source || 'ui-analysis',
-                        websiteUrl: this.currentWebsiteUrl
-                    });
+                    ],
+                    selectors: [element.selector],
+                    category: 'functionality',
+                    type: element.type || 'interactive',
+                    priority: 'medium',
+                    source: element.source || 'ui-analysis',
+                    websiteUrl: this.currentWebsiteUrl
+                });
                 }
             });
         } else {
