@@ -186,13 +186,14 @@ export class VectorRAGClient {
     
     async getFieldData(fieldName: string): Promise<any> {
         for (const [fileName, metadata] of Object.entries(this.tsvMetadata)) {
-            if (metadata.headers.includes(fieldName)) {
+            const meta = metadata as any;
+            if (meta.headers.includes(fieldName)) {
                 return {
                     fileName,
                     fieldName,
-                    type: metadata.fieldTypes[fieldName],
-                    uniqueValues: metadata.uniqueValues[fieldName],
-                    sampleRecords: metadata.sampleRecords
+                    type: meta.fieldTypes[fieldName],
+                    uniqueValues: meta.uniqueValues[fieldName],
+                    sampleRecords: meta.sampleRecords
                 };
             }
         }
