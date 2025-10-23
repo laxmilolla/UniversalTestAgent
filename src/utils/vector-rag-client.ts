@@ -41,35 +41,20 @@ export class VectorRAGClient {
             console.log(`  ├─ Total Records: ${records.length}`);
             
             // Store metadata
+            const headers = Object.keys(records[0] || {});
+            const uniqueValuesMap: any = {};
+            headers.forEach(header => {
+                const values = [...new Set(records.map(r => r[header]).filter(v => v))];
+                uniqueValuesMap[header] = values.slice(0, 100);
+            });
+            
             this.tsvMetadata[file.name] = {
-                headers: Object.keys(records[0] || {}),
+                headers: headers,
                 recordCount: records.length,
                 fieldTypes: this.detectFieldTypes(records),
-                uniqueValues: this.extractUniqueValues(records),
+                uniqueValues: uniqueValuesMap,
                 sampleRecords: records.slice(0, 10)
             };
-            
-            // Store field-level knowledge
-            for (const header of headers) {
-                const uniqueValues = [...new Set(records.map(r => r[header]))];
-                const fieldDescription = `Field ${header} in ${file.name} contains ${uniqueValues.length} unique values: ${uniqueValues.slice(0, 5).join(', ')}. Total records: ${records.length}`;
-                
-                await this.createAndStoreEmbedding(fieldDescription, {
-                    type: 'tsv_field',
-                    fieldName: header,
-                    fileName: file.name,
-                    uniqueValues: uniqueValues.slice(0, 100) // Store top 100
-                });
-            }
-            
-            // Store relationships
-            const relationships = this.detectRelationships(records, headers);
-            for (const rel of relationships) {
-                await this.createAndStoreEmbedding(
-                    `${rel.from} relates to ${rel.to} (${rel.type})`,
-                    { type: 'relationship', ...rel }
-                );
-            }
             
             console.log(`  ├─ Headers: ${this.tsvMetadata[file.name].headers.join(', ')}`);
             
