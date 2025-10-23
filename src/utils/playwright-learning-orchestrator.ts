@@ -1844,6 +1844,7 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
         // Generate test cases for interactive elements
         if (uiAnalysis.interactiveElements && uiAnalysis.interactiveElements.length > 0) {
             console.log('🎯 Found interactive elements for test cases:', uiAnalysis.interactiveElements.length);
+            console.log('🎯 Interactive elements details:', JSON.stringify(uiAnalysis.interactiveElements, null, 2));
             uiAnalysis.interactiveElements.forEach((element: any, index: number) => {
                 // ENHANCED VALIDATION: Handle tables and other elements
                 if (!element.selector) {
@@ -1861,10 +1862,13 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
                     return;
                 }
                 
+                console.log(`🎯 Processing element ${index}: type="${element.type}", text="${element.text}", selector="${element.selector}"`);
+                
                 // Generate specific test cases based on element type and content
                 // Check if this looks like a sortable column header
                 if (element.type === 'tableHeaders' || element.type === 'sortableColumns' || 
                     (element.text && (element.text.includes('Case ID') || element.text.includes('Breed') || element.text.includes('Sex')))) {
+                    console.log(`✅ Creating sort test for element: ${elementText}`);
                     testCases.push({
                         name: `Sort Test - ${elementText}`,
                         description: `Test that ${elementText} sorting works correctly`,
@@ -1894,6 +1898,7 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
                     });
                 } else if (element.type === 'selectElements' || element.type === 'filterDropdowns' || element.type === 'filterCheckboxes' ||
                           (element.text && (element.text.includes('Breed') || element.text.includes('Sex') || element.text.includes('Filter')))) {
+                    console.log(`✅ Creating filter test for element: ${elementText}`);
                     testCases.push({
                         name: `Filter Test - ${elementText}`,
                         description: `Test that ${elementText} filter works correctly and returns expected results`,
@@ -1922,6 +1927,7 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
                     });
                 } else if (element.type === 'searchBoxes' || element.type === 'inputElements' || element.type === 'searchInputs' ||
                           (element.text && element.text.toLowerCase().includes('search'))) {
+                    console.log(`✅ Creating search test for element: ${elementText}`);
                     testCases.push({
                         name: `Search Test - ${elementText}`,
                         description: `Test that search functionality works correctly`,
@@ -1947,6 +1953,7 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
                         ]
                     });
                 } else {
+                    console.log(`✅ Creating generic test for element: ${elementText}`);
                     // Generic test case for other interactive elements
                 testCases.push({
                     name: `test_interactive_${index + 1}`,
