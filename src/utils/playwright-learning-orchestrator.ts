@@ -1180,9 +1180,23 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
         console.log('\n=== UNIVERSAL DATA PATTERN DETECTION ===');
         
         try {
+            // Convert raw TSV string data to file format if needed
+            let processedTSVFiles = tsvFiles;
+            
+            // Check if we have raw TSV string data instead of file objects
+            if (tsvFiles && tsvFiles.length > 0 && typeof tsvFiles[0] === 'string') {
+                console.log('📝 Converting raw TSV string data to file format...');
+                processedTSVFiles = tsvFiles.map((tsvData, index) => ({
+                    name: `tsv_data_${index}.tsv`,
+                    content: tsvData
+                }));
+            }
+            
+            console.log('📊 Processing TSV files:', processedTSVFiles.length);
+            
             // Use the existing UniversalPatternDetector
             const patternDetector = new UniversalPatternDetector();
-            const dataPatterns = patternDetector.discoverDataPatterns(tsvFiles);
+            const dataPatterns = patternDetector.discoverDataPatterns(processedTSVFiles);
             
             console.log('🎯 Discovered Data Patterns:', dataPatterns);
             
