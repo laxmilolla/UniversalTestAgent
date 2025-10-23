@@ -205,6 +205,159 @@ export class VectorRAGClient {
         }
         throw new Error(`Field "${fieldName}" not found in any TSV file. Cannot generate test data.`);
     }
+
+    // NEW METHODS FOR UI DATA INDEXING
+
+    async indexUIExplorationData(explorationResults: any[]): Promise<void> {
+        console.log(`📱 Indexing ${explorationResults.length} UI exploration results into RAG...`);
+        
+        for (const result of explorationResults) {
+            try {
+                // Create embeddings for UI element descriptions
+                const elementDescription = `${result.elementType} labeled "${result.label}" with selector "${result.selector}". Available options: ${result.allOptions?.join(', ') || 'none'}.`;
+                
+                await this.createAndStoreEmbedding(elementDescription, {
+                    type: 'ui_element',
+                    elementType: result.elementType,
+                    label: result.label,
+                    selector: result.selector,
+                    allOptions: result.allOptions || [],
+                    sampledTests: result.sampledTests || []
+                });
+
+                // Create embeddings for each observed behavior
+                if (result.sampledTests) {
+                    for (const test of result.sampledTests) {
+                        const behaviorDescription = `When selecting "${test.option}" in ${result.label} dropdown, result count changed from ${test.changes?.resultCount?.before || 'unknown'} to ${test.changes?.resultCount?.after || 'unknown'}.`;
+                        
+                        await this.createAndStoreEmbedding(behaviorDescription, {
+                            type: 'ui_behavior',
+                            elementLabel: result.label,
+                            selectedOption: test.option,
+                            resultCountChange: test.changes?.resultCount,
+                            cascadingChanges: test.changes?.cascadingChanges || {},
+                            urlChange: test.changes?.urlChange
+                        });
+                    }
+                }
+
+                // Create embeddings for cascading effects
+                if (result.sampledTests) {
+                    for (const test of result.sampledTests) {
+                        if (test.changes?.cascadingChanges) {
+                            for (const [affectedElement, change] of Object.entries(test.changes.cascadingChanges)) {
+                                const cascadingDescription = `Selecting "${test.option}" in ${result.label} dropdown causes cascading change to ${affectedElement}: ${JSON.stringify(change)}.`;
+                                
+                                await this.createAndStoreEmbedding(cascadingDescription, {
+                                    type: 'cascading_effect',
+                                    sourceElement: result.label,
+                                    sourceOption: test.option,
+                                    affectedElement: affectedElement,
+                                    change: change
+                                });
+                            }
+                        }
+                    }
+                }
+
+            } catch (error: any) {
+                console.error(`❌ Failed to index UI exploration result for ${result.label}:`, error);
+                throw new Error(`RAG UI indexing failed for ${result.label}. NO FALLBACK AVAILABLE.`);
+            }
+        }
+        
+        await this.saveVectorStore();
+        console.log(`✅ UI exploration data indexed successfully`);
+    }
+
+    async queryTSVKnowledge(question: string): Promise<any[]> {
+        console.log(`🔍 Querying RAG for TSV knowledge: "${question}"`);
+        
+        try {
+            const results = await this.searchRelevantData(question, 10);
+            
+            // Filter for TSV-related results
+            const tsvResults = results.filter(result => 
+                result.metadata?.type === 'tsv_field' || 
+                result.metadata?.type === 'relationship' ||
+                result.metadata?.type === 'tsv_record'
+            );
+            
+            console.log(`✅ Found ${tsvResults.length} relevant TSV knowledge items`);
+            return tsvResults;
+            
+        } catch (error: any) {
+            console.error(`❌ Failed to query TSV knowledge:`, error);
+            throw new Error(`RAG TSV query failed. NO FALLBACK AVAILABLE.`);
+        }
+    }
+
+    async queryUIKnowledge(question: string): Promise<any[]> {
+        console.log(`🔍 Querying RAG for UI knowledge: "${question}"`);
+        
+        try {
+            const results = await this.searchRelevantData(question, 10);
+            
+            // Filter for UI-related results
+            const uiResults = results.filter(result => 
+                result.metadata?.type === 'ui_element' || 
+                result.metadata?.type === 'ui_behavior' ||
+                result.metadata?.type === 'cascading_effect'
+            );
+            
+            console.log(`✅ Found ${uiResults.length} relevant UI knowledge items`);
+            return uiResults;
+            
+        } catch (error: any) {
+            console.error(`❌ Failed to query UI knowledge:`, error);
+            throw new Error(`RAG UI query failed. NO FALLBACK AVAILABLE.`);
+        }
+    }
+
+    async queryMappings(question: string): Promise<any[]> {
+        console.log(`🔍 Querying RAG for mappings: "${question}"`);
+        
+        try {
+            const results = await this.searchRelevantData(question, 10);
+            
+            // Filter for mapping results
+            const mappingResults = results.filter(result => 
+                result.metadata?.type === 'ui_tsv_mapping'
+            );
+            
+            console.log(`✅ Found ${mappingResults.length} relevant mappings`);
+            return mappingResults;
+            
+        } catch (error: any) {
+            console.error(`❌ Failed to query mappings:`, error);
+            throw new Error(`RAG mapping query failed. NO FALLBACK AVAILABLE.`);
+        }
+    }
+
+    async storeMappingResult(mapping: any): Promise<void> {
+        console.log(`💾 Storing mapping result: ${mapping.uiLabel} → ${mapping.tsvField}`);
+        
+        try {
+            const mappingDescription = `UI element "${mapping.uiLabel}" (${mapping.uiSelector}) maps to TSV field "${mapping.tsvField}" in file "${mapping.tsvFile}" with confidence ${mapping.confidence}. ${mapping.reasoning || ''}`;
+            
+            await this.createAndStoreEmbedding(mappingDescription, {
+                type: 'ui_tsv_mapping',
+                uiLabel: mapping.uiLabel,
+                uiSelector: mapping.uiSelector,
+                tsvField: mapping.tsvField,
+                tsvFile: mapping.tsvFile,
+                confidence: mapping.confidence,
+                reasoning: mapping.reasoning,
+                dataMismatch: mapping.dataMismatch
+            });
+            
+            console.log(`✅ Mapping stored successfully`);
+            
+        } catch (error: any) {
+            console.error(`❌ Failed to store mapping:`, error);
+            throw new Error(`RAG mapping storage failed. NO FALLBACK AVAILABLE.`);
+        }
+    }
     
     // Helper methods
     private parseTSV(content: string): any[] {

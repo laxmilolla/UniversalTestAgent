@@ -4,6 +4,8 @@ import { FileProcessor } from './file-processor';
 import { SimpleRAGClient } from './simple-rag-client';
 import { VectorRAGClient } from './vector-rag-client';
 import { EnvironmentValidator } from './environment-validator';
+import { UIStateCapturer } from './ui-state-capturer';
+import { ActiveUIExplorer } from './active-ui-explorer';
 
 const fs = require('fs');
 
@@ -390,15 +392,15 @@ async analyzeRealUI(pageContent: string, pageText: string, screenshot: any, exis
     console.log('\n=== PLAYWRIGHT DOM ANALYSIS ===');
         
     try {
-        // Phase 1: Playwright DOM-based element detection (Most Reliable)
-        console.log('Phase 1: Playwright DOM Element Detection...');
-        const domAnalysis = await this.performPlaywrightDOMAnalysis();
-        console.log('🎯 DOM Elements Found:', domAnalysis);
+        // Phase 1: Active UI Exploration (replaces static DOM analysis)
+        console.log('Phase 1: Active UI Exploration...');
+        const uiAnalysis = await this.performActiveUIExploration();
+        console.log('🎯 UI Elements Explored:', uiAnalysis);
         
-        // Pure AI system: Use ONLY DOM analysis - NO HTML backup
-        console.log('✅ Pure AI DOM Analysis Complete:', domAnalysis);
+        // Pure AI system: Use ONLY active exploration - NO HTML backup
+        console.log('✅ Pure AI Active Exploration Complete:', uiAnalysis);
         
-        return domAnalysis;
+        return uiAnalysis;
         
     } catch (error) {
         console.error('❌ Pure AI System Failure: Playwright DOM analysis failed:', error);
@@ -407,294 +409,62 @@ async analyzeRealUI(pageContent: string, pageText: string, screenshot: any, exis
     }
 }
 
-// New method to perform comprehensive Playwright DOM analysis
-private async performPlaywrightDOMAnalysis(): Promise<any> {
-    console.log('🔍 Starting Playwright DOM analysis with native MCP tools...');
-    
-    const elements = {
-        filters: [],
-        dropdowns: [],
-        checkboxes: [],
-        searchBoxes: [],
-        buttons: [],
-        forms: [],
-        tables: [],
-        navigation: [],
-        charts: [],
-        totalElements: 0,
-        analysisMethod: 'playwright-native-tools'
-    };
-    
-    try {
-        // First, let's debug what elements are actually on the page
-        console.log('🔍 Debugging: Getting all elements on the page...');
-        try {
-            const debugResult = await this.mcpClient.callTools([{
-                name: 'playwright_query_selector_all',
-                parameters: {
-                    selector: '*'
-                },
-                id: `debug-all-elements-${Date.now()}`
-            }]);
-            
-            const allElements = debugResult[0]?.result || [];
-            console.log(`🔍 Total elements on page: ${allElements.length}`);
-            
-            // Log unique tag names
-            const tagNames = [...new Set(allElements.map((el: any) => el.tagName))];
-            console.log('🔍 Unique tag names found:', tagNames.slice(0, 20)); // Show first 20
-            
-            // Log unique class names (first 20)
-            const classNames = [...new Set(allElements.flatMap((el: any) => el.className ? el.className.split(' ') : []))].filter(Boolean);
-            console.log('🔍 Sample class names found:', classNames.slice(0, 20));
-            
-        } catch (debugError) {
-            console.error('❌ Debug query failed:', debugError);
-        }
+    // NEW METHOD: Active UI Exploration (replaces static DOM analysis)
+    private async performActiveUIExploration(): Promise<any> {
+        console.log('🔍 Starting Active UI Exploration...');
         
-        // Use native Playwright MCP tools for reliable element detection
-        // First, let's get the actual page content to understand the structure
-        let pageContent = '';
-        try {
-            const contentResult = await this.mcpClient.callTools([{
-                name: 'playwright_get_visible_text',
-                parameters: {},
-                id: `get-content-${Date.now()}`
-            }]);
-            pageContent = contentResult[0]?.result?.text || '';
-            console.log('📄 Page content preview:', pageContent.substring(0, 500));
-        } catch (error) {
-            console.log('⚠️ Could not get page content:', error);
-        }
-
-        const queries = [
-            // Look for elements that contain actual text content (not generic selectors)
-            { name: 'textElements', selector: '*:not(script):not(style):not(meta):not(link)' },
-            
-            // Focus on elements that might contain the filter labels we see
-            { name: 'labelElements', selector: 'label, .label, .field-label, .filter-label, .control-label' },
-            
-            // Look for select elements (dropdowns) that might be the filters
-            { name: 'selectElements', selector: 'select' },
-            
-            // Look for input elements that might be search boxes
-            { name: 'inputElements', selector: 'input' },
-            
-            // Look for table headers that might contain sortable columns
-            { name: 'tableHeaders', selector: 'th, .table-header, .column-header, .header-cell' },
-            
-            // Look for clickable elements that might be buttons
-            { name: 'clickableElements', selector: 'button, a, [onclick], [role="button"]' },
-            
-            // Generic interactive element detection (no specific field names)
-            { name: 'labeledInputs', selector: 'label + input, label + select' },
-            { name: 'dataAttributes', selector: '[data-field], [data-column], [data-key]' },
-            { name: 'ariaLabels', selector: '[aria-label], [aria-labelledby]' },
-            { name: 'tableHeaders', selector: 'th, thead td, [role="columnheader"]' }
-        ];
+        const explorer = new ActiveUIExplorer(
+            this.mcpClient,
+            new UIStateCapturer(this.mcpClient),
+            this.vectorRAG
+        );
         
-        for (const query of queries) {
-            try {
-                console.log(`🔍 Querying ${query.name} with selector: ${query.selector}`);
-                
-                const result = await this.mcpClient.callTools([{
-                    name: 'playwright_query_selector_all',
-                    parameters: {
-                        selector: query.selector
-                    },
-                    id: `native-${query.name}-${Date.now()}`
-                }]);
-                
-                const queryResult = result[0]?.result || [];
-                console.log(`🔍 Found ${queryResult.length} ${query.name}`);
-                
-                // Log details of what was found for debugging
-                if (queryResult.length > 0) {
-                    console.log(`🔍 ${query.name} details:`, queryResult.map((el: any, i: number) => ({
-                        index: i,
-                        tagName: el.tagName,
-                        className: el.className,
-                        id: el.id,
-                        text: el.textContent?.trim().substring(0, 50) || ''
-                    })));
-                } else {
-                    console.log(`🔍 ${query.name}: No elements found`);
-                }
-                
-                elements[query.name] = queryResult.map((el: any, index: number) => {
-                    const selector = el.id ? `#${el.id}` : 
-                                   el.className ? `.${el.className.split(' ')[0]}` : 
-                                   `${query.selector}:nth-child(${index + 1})`;
-                    
-                    // Get text content from multiple sources
-                    const textContent = el.textContent?.trim() || 
-                                      el.innerText?.trim() || 
-                                      el.getAttribute?.('title') || 
-                                      el.getAttribute?.('alt') || 
-                                      el.getAttribute?.('aria-label') || 
-                                      el.placeholder || 
-                                      '';
-                    
-                    const elementInfo = {
-                        selector: selector,
-                        type: query.name.slice(0, -1), // Remove 's' from plural
-                        text: textContent.substring(0, 100),
-                        placeholder: el.placeholder || '',
-                        ariaLabel: el.getAttribute?.('aria-label') || '',
-                        dataTestId: el.getAttribute?.('data-testid') || '',
-                        source: 'playwright-native-tools',
-                        tagName: el.tagName,
-                        className: el.className
-                    };
-                    
-                    // Add specific properties for tables
-                    if (query.name === 'tables') {
-                        const headers = Array.from(el.querySelectorAll?.('th') || []).map((th: any) => th.textContent?.trim()).filter(Boolean);
-                        return {
-                            ...elementInfo,
-                            columns: headers,
-                            rowCount: el.querySelectorAll?.('tbody tr')?.length || 0
-                        };
-                    }
-                    
-                    return elementInfo;
-                });
-                
-            } catch (queryError) {
-                console.error(`❌ Failed to query ${query.name}:`, queryError);
-                elements[query.name] = [];
-            }
-        }
+        // Explore UI and store in RAG
+        const explorationResults = await explorer.exploreAllElements();
         
-        // Pure AI system: NO FALLBACKS - fail explicitly if insufficient elements found
-        const totalFound: number = Object.values(elements)
-            .filter((arr: any) => Array.isArray(arr))
-            .reduce((sum: number, arr: any[]) => sum + arr.length, 0);
+        console.log(`✅ Explored ${explorationResults.length} UI elements`);
         
-        if (totalFound < 3) {
-            console.error(`❌ Pure AI System Failure: Only ${totalFound} UI elements detected.`);
-            console.error('❌ This indicates either:');
-            console.error('   1. The target website is not accessible');
-            console.error('   2. The website has no interactive elements');
-            console.error('   3. The selectors are not matching the website structure');
-            console.error('❌ NO FALLBACK AVAILABLE - Fix the root cause and try again.');
-            throw new Error(`Pure AI system failure: Only ${totalFound} UI elements detected. Website may be inaccessible or have no interactive elements. NO FALLBACK AVAILABLE.`);
-        }
-        
-        // Calculate total elements
-        let totalElements = 0;
-        Object.values(elements).forEach((arr: any) => {
-            if (Array.isArray(arr)) {
-                totalElements += arr.length;
-            }
-        });
-        elements.totalElements = totalElements;
-        
-        // Map elements to the expected result structure
+        // Convert exploration results to the expected format
         const result = {
-            filters: [],
-            dropdowns: [],
-            checkboxes: [],
-            searchBoxes: [],
+            filters: explorationResults.filter(r => r.elementType === 'dropdown').map(r => ({
+                selector: r.selector,
+                type: 'filter',
+                text: r.label,
+                source: 'active-exploration',
+                allOptions: r.allOptions,
+                sampledTests: r.sampledTests
+            })),
+            dropdowns: explorationResults.filter(r => r.elementType === 'dropdown').map(r => ({
+                selector: r.selector,
+                type: 'dropdown',
+                text: r.label,
+                source: 'active-exploration',
+                allOptions: r.allOptions,
+                sampledTests: r.sampledTests
+            })),
+            searchBoxes: explorationResults.filter(r => r.elementType === 'searchBox').map(r => ({
+                selector: r.selector,
+                type: 'searchBox',
+                text: r.label,
+                source: 'active-exploration',
+                allOptions: r.allOptions,
+                sampledTests: r.sampledTests
+            })),
             buttons: [],
             forms: [],
             tables: [],
             navigation: [],
             charts: [],
-            totalElements: 0,
-            analysisMethod: 'playwright-native-tools',
-            domElements: 0,
+            totalElements: explorationResults.length,
+            analysisMethod: 'active-exploration',
+            domElements: explorationResults.length,
             htmlElements: 0,
-            confidence: 0.9
+            confidence: 0.95,
+            explorationResults: explorationResults
         };
-        
-        // Map elements to appropriate categories with better logic
-        if ((elements as any).selectElements) {
-            result.dropdowns = (elements as any).selectElements;
-        }
-        if ((elements as any).inputElements) {
-            result.searchBoxes = (elements as any).inputElements;
-        }
-        if ((elements as any).clickableElements) {
-            result.buttons = (elements as any).clickableElements;
-        }
-        if ((elements as any).tableHeaders) {
-            result.tables = (elements as any).tableHeaders;
-        }
-        if ((elements as any).textElements) {
-            // Add text elements to appropriate categories based on content
-            (elements as any).textElements.forEach((el: any) => {
-                // Generic text element detection (no specific field names)
-                if (el.text && el.text.length > 0) {
-                    result.filters.push(el);
-                }
-            });
-        }
-        
-        // Also map any other detected elements
-        if ((elements as any).labeledInputs) {
-            result.searchBoxes = result.searchBoxes.concat((elements as any).labeledInputs);
-        }
-        if ((elements as any).dataAttributes) {
-            result.filters = result.filters.concat((elements as any).dataAttributes);
-        }
-        if ((elements as any).ariaLabels) {
-            result.filters = result.filters.concat((elements as any).ariaLabels);
-        }
-        
-        // Pure AI system: NO FALLBACKS - elements must be properly categorized
-        // If categorization fails, the system should fail explicitly
-        const totalCategorized = result.filters.length + result.dropdowns.length + result.checkboxes.length + 
-                                result.searchBoxes.length + result.buttons.length + result.forms.length + 
-                                result.tables.length + result.navigation.length + result.charts.length;
-        
-        if (totalCategorized < 3) {
-            console.error(`❌ Pure AI System Failure: Only ${totalCategorized} elements properly categorized out of ${elements.totalElements} detected.`);
-            console.error('❌ This indicates the element categorization logic is not working properly.');
-            console.error('❌ NO FALLBACK AVAILABLE - Fix the categorization logic.');
-            throw new Error(`Pure AI system failure: Element categorization failed. ${totalCategorized} categorized out of ${elements.totalElements} detected. NO FALLBACK AVAILABLE.`);
-        }
-        
-        // Calculate total elements
-        result.totalElements = result.filters.length + result.dropdowns.length + result.checkboxes.length + 
-                              result.searchBoxes.length + result.buttons.length + result.forms.length + 
-                              result.tables.length + result.navigation.length + result.charts.length;
-        
-        console.log('✅ Native Playwright DOM analysis completed:', {
-            totalElements: result.totalElements,
-            breakdown: {
-                filters: result.filters.length,
-                dropdowns: result.dropdowns.length,
-                checkboxes: result.checkboxes.length,
-                searchBoxes: result.searchBoxes.length,
-                buttons: result.buttons.length,
-                forms: result.forms.length,
-                tables: result.tables.length,
-                navigation: result.navigation.length,
-                charts: result.charts.length
-            }
-        });
         
         return result;
-        
-    } catch (error) {
-        console.error('❌ Native Playwright DOM analysis failed:', error);
-        return {
-            filters: [],
-            dropdowns: [],
-            checkboxes: [],
-            searchBoxes: [],
-            buttons: [],
-            forms: [],
-            tables: [],
-            navigation: [],
-            charts: [],
-            totalElements: 0,
-            analysisMethod: 'playwright-native-error',
-            error: error.message
-        };
     }
-}
 
 // Fallback DOM analysis using native Playwright MCP tools
 private async performFallbackDOMAnalysis(): Promise<any> {
