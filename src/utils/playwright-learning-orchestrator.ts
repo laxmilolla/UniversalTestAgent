@@ -608,7 +608,7 @@ private async performPlaywrightDOMAnalysis(): Promise<any> {
             confidence: 0.9
         };
         
-        // Map elements to appropriate categories
+        // Map elements to appropriate categories with better logic
         if ((elements as any).selectElements) {
             result.dropdowns = (elements as any).selectElements;
         }
@@ -629,6 +629,30 @@ private async performPlaywrightDOMAnalysis(): Promise<any> {
                     result.filters.push(el);
                 }
             });
+        }
+        
+        // Also map any other detected elements
+        if ((elements as any).labeledInputs) {
+            result.searchBoxes = result.searchBoxes.concat((elements as any).labeledInputs);
+        }
+        if ((elements as any).dataAttributes) {
+            result.filters = result.filters.concat((elements as any).dataAttributes);
+        }
+        if ((elements as any).ariaLabels) {
+            result.filters = result.filters.concat((elements as any).ariaLabels);
+        }
+        
+        // Pure AI system: NO FALLBACKS - elements must be properly categorized
+        // If categorization fails, the system should fail explicitly
+        const totalCategorized = result.filters.length + result.dropdowns.length + result.checkboxes.length + 
+                                result.searchBoxes.length + result.buttons.length + result.forms.length + 
+                                result.tables.length + result.navigation.length + result.charts.length;
+        
+        if (totalCategorized < 3) {
+            console.error(`❌ Pure AI System Failure: Only ${totalCategorized} elements properly categorized out of ${elements.totalElements} detected.`);
+            console.error('❌ This indicates the element categorization logic is not working properly.');
+            console.error('❌ NO FALLBACK AVAILABLE - Fix the categorization logic.');
+            throw new Error(`Pure AI system failure: Element categorization failed. ${totalCategorized} categorized out of ${elements.totalElements} detected. NO FALLBACK AVAILABLE.`);
         }
         
         // Calculate total elements
