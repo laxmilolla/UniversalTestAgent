@@ -27,12 +27,7 @@ export class UIStateCapturer {
         
         try {
             // 1. Get current URL
-            const urlResult = await this.mcpClient.callTools([{
-                name: 'playwright_get_url',
-                parameters: {},
-                id: `get-url-${Date.now()}`
-            }]);
-            const url = urlResult[0]?.result?.url || '';
+            const url = this.getCurrentUrl();
             const queryParams = this.parseQueryParams(url);
 
             // 2. Get result count text
@@ -139,7 +134,7 @@ export class UIStateCapturer {
             for (const selector of selectors) {
                 try {
                     const result = await this.mcpClient.callTools([{
-                        name: 'playwright_query_selector_all',
+                        name: 'query_selector_all',
                         parameters: { selector },
                         id: `get-count-${Date.now()}`
                     }]);
@@ -183,7 +178,7 @@ export class UIStateCapturer {
             for (const selector of dropdownSelectors) {
                 try {
                     const result = await this.mcpClient.callTools([{
-                        name: 'playwright_query_selector_all',
+                        name: 'query_selector_all',
                         parameters: { selector },
                         id: `get-dropdowns-${Date.now()}`
                     }]);
@@ -225,7 +220,7 @@ export class UIStateCapturer {
     private async getTableRowCount(): Promise<number> {
         try {
             const result = await this.mcpClient.callTools([{
-                name: 'playwright_query_selector_all',
+                name: 'query_selector_all',
                 parameters: { selector: 'table tbody tr' },
                 id: `get-table-rows-${Date.now()}`
             }]);
@@ -249,6 +244,20 @@ export class UIStateCapturer {
         } catch (error) {
             console.error('Error taking screenshot:', error);
             return `screenshot-error-${Date.now()}.png`;
+        }
+    }
+
+    private getCurrentUrl(): string {
+        try {
+            const page = this.mcpClient.getPage();
+            if (page && typeof page.url === 'function') {
+                return page.url();
+            }
+            // Fallback: try to get URL from MCP tools if page not available
+            return '';
+        } catch (error) {
+            console.error('Error getting current URL:', error);
+            return '';
         }
     }
 

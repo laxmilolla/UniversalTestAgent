@@ -5,6 +5,7 @@ import { MCPToolDefinition, ToolCall, ToolResult } from './types';
 export class MCPPlaywrightClient {
   private client: Client | null = null;
   private tools: MCPToolDefinition[] = [];
+  private page: any = null; // Playwright Page object
 
   async connect(): Promise<void> {
     try {
@@ -93,6 +94,14 @@ export class MCPPlaywrightClient {
     }
 
     return results;
+  }
+
+  getPage(): any {
+    return this.page;
+  }
+
+  setPage(page: any): void {
+    this.page = page;
   }
 
   disconnect(): void {

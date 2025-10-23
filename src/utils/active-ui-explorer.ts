@@ -203,6 +203,20 @@ export class ActiveUIExplorer {
         }
     }
 
+    private async getCurrentUrl(): Promise<string> {
+        try {
+            const page = this.mcpClient.getPage();
+            if (page && typeof page.url === 'function') {
+                return page.url();
+            }
+            // Fallback: try to get URL from MCP tools if page not available
+            return '';
+        } catch (error) {
+            console.error('Error getting current URL:', error);
+            return '';
+        }
+    }
+
     private async discoverDropdowns(): Promise<DiscoveredElement[]> {
         const dropdowns: DiscoveredElement[] = [];
         
@@ -216,11 +230,11 @@ export class ActiveUIExplorer {
             ];
             
             for (const selector of selectors) {
-                const result = await this.mcpClient.callTools([{
-                    name: 'playwright_query_selector_all',
-                    parameters: { selector },
-                    id: `discover-dropdowns-${Date.now()}`
-                }]);
+            const result = await this.mcpClient.callTools([{
+                name: 'query_selector_all',
+                parameters: { selector },
+                id: `discover-dropdowns-${Date.now()}`
+            }]);
                 
                 const elements = result[0]?.result || [];
                 for (const element of elements) {
@@ -257,11 +271,11 @@ export class ActiveUIExplorer {
             ];
             
             for (const selector of selectors) {
-                const result = await this.mcpClient.callTools([{
-                    name: 'playwright_query_selector_all',
-                    parameters: { selector },
-                    id: `discover-search-${Date.now()}`
-                }]);
+            const result = await this.mcpClient.callTools([{
+                name: 'query_selector_all',
+                parameters: { selector },
+                id: `discover-search-${Date.now()}`
+            }]);
                 
                 const elements = result[0]?.result || [];
                 for (const element of elements) {
@@ -293,7 +307,7 @@ export class ActiveUIExplorer {
     private async getDropdownOptions(selector: string): Promise<string[]> {
         try {
             const result = await this.mcpClient.callTools([{
-                name: 'playwright_query_selector_all',
+                name: 'query_selector_all',
                 parameters: { selector: `${selector} option` },
                 id: `get-options-${Date.now()}`
             }]);
