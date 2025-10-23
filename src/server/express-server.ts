@@ -29,6 +29,12 @@ const io = new SocketIOServer(server, {
 // Make Socket.IO globally accessible for LLM Inspector
 (global as any).io = io;
 
+// Socket.IO connection handlers for real-time monitoring
+io.on('connection', (socket) => {
+    console.log('📡 Monitoring client connected');
+    socket.on('disconnect', () => console.log('📡 Client disconnected'));
+});
+
 const PORT = process.env.PORT || 8080;
 
 // Initialize clients

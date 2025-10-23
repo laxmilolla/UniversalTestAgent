@@ -1,16 +1,17 @@
-import * as fs from 'fs';
 import { BedrockClient } from '../chatbot/bedrock-client';
 import { MCPPlaywrightClient } from '../chatbot/mcp-client';
 import { FileProcessor } from './file-processor';
 import { SimpleRAGClient } from './simple-rag-client';
-import { UniversalPatternDetector, DataPatterns, UIPatterns } from './universal-pattern-detector';
-import { UniversalPatternMatcher, TestableConnections } from './universal-pattern-matcher';
-import { UniversalTestGenerator, UniversalTestCase } from './universal-test-generator';
+import { VectorRAGClient } from './vector-rag-client';
+import { EnvironmentValidator } from './environment-validator';
+
+const fs = require('fs');
 
 export class PlaywrightLearningOrchestrator {
     private bedrockClient: BedrockClient;
     private mcpClient: MCPPlaywrightClient;
     private ragClient: SimpleRAGClient;
+    private vectorRAG: VectorRAGClient; // NEW
     private currentWebsiteUrl: string = '';
     private executionTrace: any[] = []; // Add this line
     private readonly timeout = 120000; // 120 seconds instead of 60
@@ -21,10 +22,16 @@ export class PlaywrightLearningOrchestrator {
     private llmCallTracker: any[] = [];
 
     constructor(bedrockClient: BedrockClient, mcpClient: MCPPlaywrightClient) {
+        // Validate environment FIRST
+        EnvironmentValidator.validate();
+        
         this.bedrockClient = bedrockClient;
         this.mcpClient = mcpClient;
         this.ragClient = new SimpleRAGClient(bedrockClient); // Add this line
+        this.vectorRAG = new VectorRAGClient(bedrockClient); // NEW
         this.executionTrace = []; // Initialize trace
+        
+        console.log('✅ Orchestrator initialized in PURE AI mode');
     }
 
     // Expose RAG client for test orchestrator
@@ -257,6 +264,21 @@ export class PlaywrightLearningOrchestrator {
             const dbAnalysis = await this.analyzeTSVFiles(tsvFiles);
             this.storeLLMResponse('Database Analysis', 'Analyzing TSV files for database structure', dbAnalysis, dbAnalysis);
             
+            // Phase: RAG Vector Indexing (REQUIRED)
+            this.logStep('15', 'RAG', 'Vector Embedding Creation',
+                { tsvFiles: tsvFiles.length },
+                'Creating vector embeddings for semantic search...');
+
+            try {
+                await this.vectorRAG.indexTSVData(tsvFiles);
+            } catch (error: any) {
+                throw new Error(`RAG indexing failed: ${error.message}. Pure AI system cannot proceed.`);
+            }
+
+            this.logStep('16', 'RAG', 'Vector Store Complete',
+                { embeddings: 'completed' },
+                'Vector embeddings created and saved to S3');
+            
             this.logStep('14', 'LLM', 'RAG Mapping Analysis', 
                 { uiElements: uiAnalysis.totalElements, dbFields: dbAnalysis.totalFields }, 
                 'Generating mappings with RAG...');
@@ -363,8 +385,8 @@ async analyzeRealUI(pageContent: string, pageText: string, screenshot: any, exis
         
         // Phase 2: Enhanced HTML pattern detection (Backup)
         console.log('Phase 2: Enhanced HTML Pattern Detection...');
-            const patternDetector = new UniversalPatternDetector();
-        const htmlPatterns = patternDetector.discoverUIPatterns(pageContent);
+        console.log('⚠️ UniversalPatternDetector removed - using simple fallback');
+        const htmlPatterns = { filters: [], dropdowns: [], searchBoxes: [], buttons: [], forms: [], tables: [] };
         console.log('🎯 HTML Patterns:', htmlPatterns);
         
         // Phase 3: Combine DOM and HTML analysis
@@ -378,8 +400,8 @@ async analyzeRealUI(pageContent: string, pageText: string, screenshot: any, exis
     } catch (error) {
         console.error('Error in Playwright DOM analysis:', error);
         // Fallback to HTML-only analysis with enhanced detection
-        const patternDetector = new UniversalPatternDetector();
-        const htmlPatterns = patternDetector.discoverUIPatterns(pageContent);
+        console.log('⚠️ UniversalPatternDetector removed - using simple fallback');
+        const htmlPatterns = { filters: [], dropdowns: [], searchBoxes: [], buttons: [], forms: [], tables: [] };
         
         // Enhance HTML patterns with simple regex-based detection
         const enhancedPatterns = this.enhanceHTMLPatterns(htmlPatterns, pageContent);
@@ -1195,9 +1217,9 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
             
             console.log('📊 Processing TSV files:', processedTSVFiles.length);
             
-            // Use the existing UniversalPatternDetector
-            const patternDetector = new UniversalPatternDetector();
-            const dataPatterns = patternDetector.discoverDataPatterns(processedTSVFiles);
+            // Use simple data analysis instead of UniversalPatternDetector
+            console.log('⚠️ UniversalPatternDetector removed - using simple data analysis');
+            const dataPatterns = this.simpleDataAnalysis(processedTSVFiles);
             
             // Store parsed TSV data for dynamic test value extraction
             this.currentTSVData = [];
@@ -1225,7 +1247,7 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
             // Convert to the expected format for compatibility
             const result = {
                 totalFields: Object.values(dataPatterns).flat().length,
-                fieldNames: Object.values(dataPatterns).flat().map(f => f.name),
+                fieldNames: Object.values(dataPatterns).flat().map((f: any) => f.name),
                 fieldTypes: this.extractFieldTypes(dataPatterns),
                 relationships: this.extractRelationships(dataPatterns),
                 businessRules: this.extractBusinessRules(dataPatterns),
@@ -1243,384 +1265,223 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
     }
 
     async mapDatabaseToRealUI(dbAnalysis: any, uiAnalysis: any, tsvFiles: any[] = [], pageContent?: string): Promise<any> {
-        console.log('\n=== UNIVERSAL PATTERN MATCHING & TEST GENERATION ===');
+        console.log('\n=== PURE AI MAPPING (No Pattern Matching, No Hardcoding) ===');
+        
+        if (!tsvFiles || tsvFiles.length === 0) {
+            throw new Error('No TSV files provided. Pure AI system requires data to learn from. NO FALLBACK AVAILABLE.');
+        }
         
         try {
-            // DEBUG: Log the tsvFiles parameter
-            console.log('🔍 DEBUG - tsvFiles parameter:', tsvFiles);
-            console.log('🔍 DEBUG - tsvFiles length:', tsvFiles?.length || 0);
-            console.log('🔍 DEBUG - tsvFiles type:', typeof tsvFiles);
-            if (tsvFiles && tsvFiles.length > 0) {
-                console.log('🔍 DEBUG - tsvFiles[0] type:', typeof tsvFiles[0]);
-                console.log('🔍 DEBUG - tsvFiles[0] content preview:', tsvFiles[0]?.substring?.(0, 100) || 'No content');
+            // Use ONLY LLM + RAG for mapping
+            const llmMappings = await this.analyzeTSVtoUIMapping(uiAnalysis, pageContent || '');
+            
+            if (!llmMappings || !llmMappings.mappings || llmMappings.mappings.length === 0) {
+                throw new Error('LLM failed to generate any mappings. Pure AI system cannot proceed without LLM analysis.');
             }
             
-            // Use the existing UniversalPatternDetector
-            const patternDetector = new UniversalPatternDetector();
+            // Generate test cases using ONLY LLM
+            const testCases = await this.generateTestCasesWithLLM(uiAnalysis, llmMappings.mappings);
             
-            // Convert raw TSV string data to file format if needed (same as analyzeTSVFiles)
-            let processedTSVFiles = tsvFiles;
-            if (tsvFiles && tsvFiles.length > 0 && typeof tsvFiles[0] === 'string') {
-                console.log('📝 Converting raw TSV string data to file format in mapDatabaseToRealUI...');
-                processedTSVFiles = tsvFiles.map((tsvData, index) => ({
-                    name: `tsv_data_${index}.tsv`,
-                    content: tsvData
-                }));
+            if (!testCases || testCases.length === 0) {
+                throw new Error('LLM failed to generate test cases. Pure AI system requires LLM-generated tests.');
             }
             
-            // Discover data patterns from current TSV files (not cached)
-            const dataPatterns = patternDetector.discoverDataPatterns(processedTSVFiles || []);
-            
-            // Convert hybrid UI analysis to UI patterns (instead of HTML parsing)
-            const uiPatterns = this.convertHybridUIToPatterns(uiAnalysis);
-            
-            console.log('🎯 Data Patterns:', dataPatterns);
-            console.log('🎯 UI Patterns (from hybrid analysis):', uiPatterns);
-            
-            // If no TSV data, generate mappings from UI analysis structure
-            if (tsvFiles.length === 0) {
-                console.log('🎯 No TSV data - generating mappings from UI analysis structure');
-                console.log('🎯 UI Analysis structure:', JSON.stringify(uiAnalysis, null, 2));
-                
-                const uiBasedMappings = this.generateMappingsFromUIAnalysis(uiAnalysis);
-                const uiBasedTestCases = this.generateTestCasesFromUIAnalysis(uiAnalysis);
-                
-                console.log('🎯 Generated mappings:', uiBasedMappings);
-                console.log('🎯 Generated test cases:', uiBasedTestCases);
+            console.log(`✅ Pure AI Mapping Complete: ${llmMappings.mappings.length} mappings, ${testCases.length} test cases`);
                 
                 return {
-                    mappings: uiBasedMappings,
-                    testCases: uiBasedTestCases,
-                    validationRules: this.extractValidationRulesFromUI(uiAnalysis),
+                mappings: llmMappings.mappings,
+                testCases: testCases,
+                validationRules: this.extractValidationRulesFromLLM(llmMappings),
                     missingMappings: [],
-                    dataRelationships: this.extractDataRelationshipsFromUI(uiAnalysis)
-                };
-            }
-            
-            // Use the existing UniversalPatternMatcher
-            const patternMatcher = new UniversalPatternMatcher();
-            const connections = patternMatcher.matchPatterns(dataPatterns, uiPatterns);
-            
-            console.log('🎯 Pattern Connections:', connections);
-            
-            // Use the existing UniversalTestGenerator
-            const testGenerator = new UniversalTestGenerator();
-            const universalTests = testGenerator.generateTests(connections);
-            
-            console.log('🎯 Generated Universal Tests:', universalTests.length);
-            
-            // Convert to the expected format for compatibility
-            const result = {
-                mappings: this.convertConnectionsToMappings(connections),
-                testCases: this.convertUniversalTestsToTestCases(universalTests),
-                validationRules: this.extractValidationRules(connections),
-                missingMappings: [],
-                dataRelationships: this.extractDataRelationships(dataPatterns)
+                dataRelationships: llmMappings.dataRelationships || []
             };
             
-            console.log('🎯 Universal Pattern Matching result:', result);
+        } catch (error: any) {
+            console.error('❌ Pure AI mapping failed:', error.message);
+            throw new Error(`Pure AI system failure: ${error.message}. NO FALLBACK AVAILABLE. Fix the issue and try again.`);
+        }
+    }
+
+    // NEW METHOD: Pure LLM semantic mapping
+    private async analyzeTSVtoUIMapping(uiAnalysis: any, pageText: string): Promise<any> {
+        console.log('\n🧠 LLM: PURE SEMANTIC MAPPING (No Hardcoding)');
+        
+        // Extract UI elements
+        const uiElementTexts = [
+            ...uiAnalysis.filters?.map((f: any) => f.text) || [],
+            ...uiAnalysis.dropdowns?.map((d: any) => d.text) || [],
+            ...uiAnalysis.tables?.flatMap((t: any) => t.columns) || []
+        ].filter(Boolean);
+        
+        if (uiElementTexts.length === 0) {
+            throw new Error('No UI elements detected. Cannot perform LLM mapping.');
+        }
+        
+        console.log(`📋 UI Elements: ${uiElementTexts.length}`);
+        
+        // Query RAG for each element
+        const relevantData = new Map();
+        for (const elementText of uiElementTexts) {
+            try {
+                const records = await this.vectorRAG.searchRelevantData(elementText, 10);
+                relevantData.set(elementText, records);
+            } catch (error: any) {
+                console.warn(`⚠️  No RAG data for "${elementText}": ${error.message}`);
+            }
+        }
+        
+        // Get metadata
+        const tsvMetadata = this.vectorRAG.getTSVMetadata();
+        
+        // Build LLM prompt
+        const prompt = `You are an AI analyzing a data exploration website. Create semantic mappings between TSV database fields and UI elements.
+
+TSV DATABASE STRUCTURE:
+${Object.entries(tsvMetadata).map(([file, meta]: [string, any]) => 
+    `File: ${file}
+Headers: ${meta.headers.join(', ')}
+Records: ${meta.recordCount}
+Sample: ${JSON.stringify(meta.sampleRecords.slice(0, 2))}`
+).join('\n\n')}
+
+UI ELEMENTS DETECTED:
+${JSON.stringify(uiAnalysis, null, 2)}
+
+RELEVANT TSV DATA (from vector search):
+${Array.from(relevantData.entries()).map(([ui, records]) => 
+    `"${ui}" → ${JSON.stringify(records.slice(0, 2))}`
+).join('\n')}
+
+TASK: Create mappings with confidence scores. NO GUESSING - only map if confident.
+
+Return JSON:
+{
+  "mappings": [
+    {
+      "tsvField": "exact_field_name",
+      "tsvFile": "file.tsv",
+      "uiElement": "exact_ui_text",
+      "uiSelector": "css_selector",
+      "confidence": 0.95,
+      "reasoning": "detailed_explanation",
+      "sampleValues": ["actual", "values"],
+      "testType": "filter|search|sort"
+    }
+  ],
+  "learnings": ["what I learned"],
+  "dataRelationships": ["field relationships discovered"]
+}`;
+        
+        console.log(`📤 Sending to LLM (${Math.ceil(prompt.length / 4)} tokens)...`);
+        
+        const response = await this.bedrockClient.generateResponse([{ 
+            role: 'user', 
+            content: prompt 
+        }], []);
+        
+        const result = this.parseJSONResponse(response.content);
+        
+        if (!result || !result.mappings) {
+            throw new Error('LLM returned invalid response format. Expected {mappings: [...]}');
+        }
+        
+        console.log(`📥 LLM found ${result.mappings.length} mappings`);
+        this.storeLLMResponse('Pure AI Semantic Mapping', prompt, result, result);
+        
             return result;
-            
+    }
+
+    // NEW METHOD: Pure LLM test generation
+    private async generateTestCasesWithLLM(uiAnalysis: any, mappings: any[]): Promise<any[]> {
+        console.log('\n🧠 LLM: PURE TEST CASE GENERATION (No Templates)');
+        
+        // Get actual test data from RAG
+        const testData = await Promise.all(
+            mappings.map(async (m: any) => {
+                try {
+                    const fieldData = await this.vectorRAG.getFieldData(m.tsvField);
+                    return { ...m, ...fieldData };
+                } catch {
+                    return m;
+                }
+            })
+        );
+        
+        const prompt = `Generate comprehensive test cases based on REAL data mappings.
+
+MAPPINGS WITH ACTUAL DATA:
+${JSON.stringify(testData, null, 2)}
+
+Generate test cases using ACTUAL VALUES from the data. Include:
+1. Filter tests with real categorical values
+2. Search tests with real searchable terms  
+3. Sort tests for sortable columns
+4. Data validation against TSV gold standard
+
+Return JSON array of test cases:
+[{
+  "name": "descriptive_name",
+  "description": "what_this_tests",
+  "type": "filter|search|sort",
+  "dataField": "tsv_field_name",
+  "testValues": ["actual", "data", "values"],
+  "steps": ["step1", "step2"],
+  "selectors": {"field": "css_selector"},
+  "expectedBehavior": "what_should_happen",
+  "validationCriteria": "how_to_validate"
+}]`;
+        
+        console.log(`📤 Sending to LLM...`);
+        
+        const response = await this.bedrockClient.generateResponse([{ 
+            role: 'user', 
+            content: prompt 
+        }], []);
+        
+        const testCases = this.parseJSONResponse(response.content);
+        
+        if (!Array.isArray(testCases)) {
+            throw new Error('LLM returned invalid test cases format. Expected array.');
+        }
+        
+        console.log(`📥 LLM generated ${testCases.length} test cases`);
+        this.storeLLMResponse('Pure AI Test Generation', prompt, testCases, testCases);
+        
+        return testCases;
+    }
+
+    // Helper method to parse JSON responses from LLM
+    private parseJSONResponse(content: string): any {
+        try {
+            // Try to extract JSON from the response
+            const jsonMatch = content.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
+            if (jsonMatch) {
+                return JSON.parse(jsonMatch[0]);
+            }
+            return JSON.parse(content);
         } catch (error) {
-            console.error('Universal Pattern Matching failed:', error);
-            return {
-                mappings: [],
-                testCases: [],
-                validationRules: [],
-                missingMappings: [],
-                dataRelationships: []
-            };
+            console.error('Failed to parse LLM JSON response:', error);
+            throw new Error('LLM returned invalid JSON format. NO FALLBACK AVAILABLE.');
         }
     }
 
-    // Helper methods for Universal Pattern Detection integration
-    
-    private extractFieldTypes(dataPatterns: DataPatterns): any {
-        const fieldTypes: any = {};
-        
-        // Map categorical fields to string type
-        dataPatterns.categorical.forEach(field => {
-            fieldTypes[field.name] = 'string';
-        });
-        
-        // Map numerical fields to number type
-        dataPatterns.numerical.forEach(field => {
-            fieldTypes[field.name] = 'number';
-        });
-        
-        // Map identifier fields to string type
-        dataPatterns.identifiers.forEach(field => {
-            fieldTypes[field.name] = 'string';
-        });
-        
-        // Map searchable fields to string type
-        dataPatterns.searchable.forEach(field => {
-            fieldTypes[field.name] = 'string';
-        });
-        
-        // Map temporal fields to date type
-        dataPatterns.temporal.forEach(field => {
-            fieldTypes[field.name] = 'date';
-        });
-        
-        // Map sortable fields to their detected type
-        dataPatterns.sortable.forEach(field => {
-            fieldTypes[field.name] = field.type || 'string';
-        });
-        
-        return fieldTypes;
-    }
-    
-    private extractRelationships(dataPatterns: DataPatterns): string[] {
-        const relationships: string[] = [];
-        
-        // Extract relationships from identifier fields
-        dataPatterns.identifiers.forEach(field => {
-            if (field.relationships) {
-                relationships.push(...field.relationships);
-            }
-        });
-        
-        // Extract relationships from categorical fields
-        dataPatterns.categorical.forEach(field => {
-            if (field.relationships) {
-                relationships.push(...field.relationships);
-            }
-        });
-        
-        return [...new Set(relationships)]; // Remove duplicates
-    }
-    
-    private extractBusinessRules(dataPatterns: DataPatterns): string[] {
-        const businessRules: string[] = [];
-        
-        // Extract business rules from all field types
-        Object.values(dataPatterns).flat().forEach(field => {
-            if (field.businessRules) {
-                businessRules.push(...field.businessRules);
-            }
-        });
-        
-        return [...new Set(businessRules)]; // Remove duplicates
-    }
-    
-    private convertConnectionsToMappings(connections: TestableConnections): any[] {
-        const mappings: any[] = [];
-        
-        // Convert categorical filter connections
-        connections.categoricalToFilters.forEach(conn => {
-            mappings.push({
-                dbField: conn.dataField,
-                uiElement: conn.uiElement,
-                type: 'categorical_filter',
-                selector: conn.uiElement,
-                confidence: conn.confidence
-            });
-        });
-        
-        // Convert search connections
-        connections.searchableToSearch.forEach(conn => {
-            mappings.push({
-                dbField: conn.dataField,
-                uiElement: conn.uiElement,
-                type: 'search',
-                selector: conn.uiElement,
-                confidence: conn.confidence
-            });
-        });
-        
-        // Convert numerical filter connections
-        connections.numericalToFilters.forEach(conn => {
-            mappings.push({
-                dbField: conn.dataField,
-                uiElement: conn.uiElement,
-                type: 'numerical_filter',
-                selector: conn.uiElement,
-                confidence: conn.confidence
-            });
-        });
-        
-        // Convert sort connections
-        connections.sortableToSort.forEach(conn => {
-            mappings.push({
-                dbField: conn.dataField,
-                uiElement: conn.uiElement,
-                type: 'sort',
-                selector: conn.uiElement,
-                confidence: conn.confidence
-            });
-        });
-        
-        return mappings;
-    }
-    
-    private convertUniversalTestsToTestCases(universalTests: UniversalTestCase[]): any[] {
-        return universalTests.map(test => ({
-            name: test.name,
-            description: test.description,
-            steps: test.steps,
-            selectors: test.selectors,
-            category: test.category,
-            priority: test.priority,
-            type: test.type,
-            // ADD TSV VALIDATION FIELDS:
-            dataField: test.dataField,
-            testValues: test.testValues,
-            uiElement: test.uiElement,
-            websiteUrl: this.currentWebsiteUrl || 'https://example.com',
-            expectedResults: test.expectedResults,
-            confidence: test.confidence
-        }));
-    }
-    
-    private extractValidationRules(connections: TestableConnections): string[] {
-        const validationRules: string[] = [];
-        
-        // Extract validation rules from all connections
-        Object.values(connections).flat().forEach(conn => {
-            if (conn.testValues && conn.testValues.length > 0) {
-                validationRules.push(`Validate ${conn.dataField} with test values: ${conn.testValues.join(', ')}`);
-            }
-        });
-        
-        return validationRules;
-    }
-    
-    private extractDataRelationships(dataPatterns: DataPatterns): string[] {
-        const relationships: string[] = [];
-        
-        // Extract relationships from identifier fields
-        dataPatterns.identifiers.forEach(field => {
-            if (field.relationships && field.relationships.length > 0) {
-                relationships.push(...field.relationships);
-            }
-        });
-        
-        // Extract relationships from categorical fields
-        dataPatterns.categorical.forEach(field => {
-            if (field.relationships && field.relationships.length > 0) {
-                relationships.push(...field.relationships);
-            }
-        });
-        
-        // Fallback: Generate relationships based on field patterns if none found
-        if (relationships.length === 0) {
-            const allFields = [
-                ...dataPatterns.identifiers.map(f => f.name),
-                ...dataPatterns.categorical.map(f => f.name),
-                ...dataPatterns.numerical.map(f => f.name),
-                ...dataPatterns.searchable.map(f => f.name),
-                ...dataPatterns.temporal.map(f => f.name),
-                ...dataPatterns.sortable.map(f => f.name)
-            ];
-            
-            // Look for ID patterns and create relationships
-            const idFields = allFields.filter(field => 
-                field.toLowerCase().includes('_id') || 
-                field.toLowerCase().endsWith('id')
-            );
-            
-            idFields.forEach(idField => {
-                const baseField = idField.replace(/_id$|id$/i, '');
-                const relatedFields = allFields.filter(field => 
-                    field !== idField && 
-                    (field.toLowerCase().includes(baseField) || 
-                     field.toLowerCase().startsWith(baseField + '_'))
-                );
-                
-                relatedFields.forEach(relatedField => {
-                    relationships.push(`${idField} -> ${relatedField} (foreign_key)`);
-                });
-            });
-            
-            // Look for common relationship patterns
-            if (idFields.length > 1) {
-                relationships.push(`${idFields[0]} -> ${idFields[1]} (cross_reference)`);
-            }
-        }
-        
-        return [...new Set(relationships)]; // Remove duplicates
+    // Helper method to extract validation rules from LLM mappings
+    private extractValidationRulesFromLLM(llmMappings: any): any[] {
+        return llmMappings.mappings?.map((mapping: any) => ({
+            field: mapping.tsvField,
+            type: mapping.testType,
+            validation: mapping.validationCriteria || 'Standard validation'
+        })) || [];
     }
 
-    // Add this helper method to extract UI filters
-    private extractUIFilters(uiAnalysis: any): string[] {
-        const filters: string[] = [];
-        
-        // Extract from forms
-        if (uiAnalysis.forms) {
-            uiAnalysis.forms.forEach((form: any) => {
-                if (form.name) filters.push(form.name);
-                if (form.placeholder) filters.push(form.placeholder);
-            });
-        }
-        
-        // Extract from buttons
-        if (uiAnalysis.buttons) {
-            uiAnalysis.buttons.forEach((button: any) => {
-                if (button.text) filters.push(button.text);
-            });
-        }
-        
-        // Extract from dropdowns
-        if (uiAnalysis.dropdowns) {
-            uiAnalysis.dropdowns.forEach((dropdown: any) => {
-                if (dropdown.options) {
-                    dropdown.options.forEach((option: any) => {
-                        if (option.text) filters.push(option.text);
-                    });
-                }
-            });
-        }
-        
-        // Extract from inputs
-        if (uiAnalysis.inputs) {
-            uiAnalysis.inputs.forEach((input: any) => {
-                if (input.name) filters.push(input.name);
-                if (input.placeholder) filters.push(input.placeholder);
-            });
-        }
-        
-        // Extract from tables
-        if (uiAnalysis.tables) {
-            uiAnalysis.tables.forEach((table: any) => {
-                if (table.columns) {
-                    table.columns.forEach((column: any) => {
-                        if (column.name) filters.push(column.name);
-                    });
-                }
-            });
-        }
-        
-        return filters.filter(f => f && f.length > 2); // Remove empty/short filters
-    }
-
-    // Helper method to store LLM responses with enhanced debugging
-    private storeLLMResponse(type: string, prompt: string, response: any, parsed: any) {
-        const startTime = Date.now();
-        const endTime = Date.now();
-        
+    // Store LLM response for tracking
+    private storeLLMResponse(operation: string, prompt: string, response: any, parsedResponse: any) {
         const llmCall = {
-            id: `llm-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-            type,
             timestamp: new Date().toISOString(),
-            duration: endTime - startTime,
-            prompt: {
-                content: prompt,
-                length: prompt.length,
-                tokenEstimate: Math.ceil(prompt.length / 4)
-            },
-            response: {
-                content: response.content || response,
-                length: response.content?.length || 0,
-                tokenEstimate: Math.ceil((response.content?.length || 0) / 4),
-                truncated: this.checkIfTruncated(response.content)
-            },
-            parsed: {
-                success: !!parsed,
-                totalFields: parsed?.totalFields || 0,
-                elementCount: this.calculateElementCount(parsed, type),
-                confidence: parsed?.confidence || 0
-            },
+            operation,
+            prompt: prompt.substring(0, 500) + '...',
+            response: typeof response === 'string' ? response.substring(0, 500) + '...' : response,
+            parsedResponse,
             status: 'completed'
         };
         
@@ -1630,14 +1491,11 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
             this.llmCallTracker = this.llmCallTracker.slice(-20); // Keep last 20 calls
         }
         
-        // Emit to frontend via WebSocket/Socket.IO
+        // Emit to frontend
         this.emitLLMCall(llmCall);
-        
-        // Enhanced console logging
-        console.log(`🧠 LLM Call ${llmCall.id}: ${type} - ${llmCall.duration}ms`);
     }
 
-    // New method to emit LLM data to frontend
+    // Emit LLM call to frontend
     private emitLLMCall(llmCall: any) {
         try {
             // Send via existing socket if available
@@ -1660,1140 +1518,58 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
         }
     }
 
-    // Helper methods
-    private checkIfTruncated(content: string): boolean {
-        if (!content) return false;
-        return content.endsWith('...') || content.length > 3000;
+    // Dummy methods for compatibility (these will be removed in pure AI system)
+    private dismissUIObstacles(): Promise<void> {
+        console.log('⚠️ dismissUIObstacles called - this should be replaced with pure AI popup detection');
+        return Promise.resolve();
     }
 
-    private calculateElementCount(parsed: any, type: string): number {
-        if (type === 'UI_ANALYSIS') {
-            return (parsed?.forms?.length || 0) + 
-                   (parsed?.buttons?.length || 0) + 
-                   (parsed?.tables?.length || 0) + 
-                   (parsed?.inputs?.length || 0) + 
-                   (parsed?.links?.length || 0) + 
-                   (parsed?.dropdowns?.length || 0);
-        }
-        return parsed?.totalFields || 0;
+    private verifyUIAccessible(): Promise<boolean> {
+        console.log('⚠️ verifyUIAccessible called - this should be replaced with pure AI verification');
+        return Promise.resolve(true);
     }
 
-    // Add this method to display analysis results
-    private displayAnalysisResults(uiAnalysis: any, dbAnalysis: any, mappingAnalysis: any) {
-        console.log('\n=== ANALYSIS RESULTS DISPLAY ===');
-        console.log('UI Elements Found:');
-        console.log(`  Forms: ${uiAnalysis?.forms?.length || 0}`);
-        console.log(`  Buttons: ${uiAnalysis?.buttons?.length || 0}`);
-        console.log(`  Tables: ${uiAnalysis?.tables?.length || 0}`);
-        console.log(`  Inputs: ${uiAnalysis?.inputs?.length || 0}`);
-        console.log(`  Links: ${uiAnalysis?.links?.length || 0}`);
-        console.log(`  Dropdowns: ${uiAnalysis?.dropdowns?.length || 0}`);
+    // Simple data analysis method (replaces UniversalPatternDetector)
+    private simpleDataAnalysis(tsvFiles: any[]): any {
+        const allFields: string[] = [];
+        const fieldTypes: any = {};
+        const relationships: string[] = [];
         
-        const totalUIElements = (uiAnalysis?.forms?.length || 0) + 
-                               (uiAnalysis?.buttons?.length || 0) + 
-                               (uiAnalysis?.tables?.length || 0) + 
-                               (uiAnalysis?.inputs?.length || 0) + 
-                               (uiAnalysis?.links?.length || 0) + 
-                               (uiAnalysis?.dropdowns?.length || 0);
+        tsvFiles.forEach(file => {
+            if (file && file.content) {
+                const lines = file.content.split('\n').filter(line => line.trim());
+                if (lines.length > 0) {
+                    const headers = lines[0].split('\t').map(h => h.trim());
+                    allFields.push(...headers);
+                    
+                    // Simple type detection
+                    headers.forEach(header => {
+                        fieldTypes[header] = 'string'; // Default to string
+                    });
+                }
+            }
+        });
         
-        console.log(`  Total UI Elements: ${totalUIElements}`);
-        console.log(`  Database Fields: ${dbAnalysis?.totalFields || 0}`);
-        console.log(`  Test Cases: ${mappingAnalysis?.testCases?.length || 0}`);
-        console.log(`  Relationships: ${mappingAnalysis?.dataRelationships?.length || 0}`);
-    }
-
-    // Helper methods for converting hybrid UI analysis to UIPatterns
-    private convertHybridUIToPatterns(uiAnalysis: any): any {
-        console.log('🔄 Converting hybrid UI analysis to UIPatterns...');
-        console.log('🔄 Input uiAnalysis:', uiAnalysis);
-        
-        const uiPatterns = {
-            filters: this.convertToFilterElements(uiAnalysis),
-            search: this.convertToSearchElements(uiAnalysis),
-            tables: this.convertToTableElements(uiAnalysis),
-            sortable: this.convertToSortableElements(uiAnalysis),
-            pagination: this.convertToPaginationElements(uiAnalysis),
-            buttons: this.convertToButtonElements(uiAnalysis),
-            forms: this.convertToFormElements(uiAnalysis)
+        return {
+            totalFields: allFields.length,
+            fieldNames: [...new Set(allFields)],
+            fieldTypes,
+            relationships,
+            businessRules: []
         };
-        
-        console.log('🔄 Converted UIPatterns:', uiPatterns);
-        return uiPatterns;
     }
 
-    private convertToFilterElements(uiAnalysis: any): any[] {
-        const filters: any[] = [];
-        
-        // Convert dropdowns to filters
-        if (uiAnalysis.dropdowns && uiAnalysis.dropdowns.length > 0) {
-            uiAnalysis.dropdowns.forEach(dropdown => {
-                filters.push({
-                    selector: dropdown.selector,
-                    type: 'dropdown',
-                    options: dropdown.options || []
-                });
-            });
-        }
-        
-        // Convert checkboxes to filters
-        if (uiAnalysis.checkboxes && uiAnalysis.checkboxes.length > 0) {
-            uiAnalysis.checkboxes.forEach(checkbox => {
-                    filters.push({
-                    selector: checkbox.selector,
-                    type: 'checkbox',
-                    options: checkbox.options || []
-                });
-            });
-        }
-        
-        // Convert screenshot-detected filters
-        if (uiAnalysis.filters && uiAnalysis.filters.length > 0) {
-            uiAnalysis.filters.forEach(filter => {
-                    filters.push({
-                    selector: `[data-filter="${filter.label}"]`,
-                    type: filter.type,
-                    options: filter.options
-                });
-            });
-        }
-        
-        console.log('🔄 Converted filters:', filters);
-        return filters;
+    // Dummy methods for compatibility
+    private extractFieldTypes(dataPatterns: any): any {
+        return dataPatterns.fieldTypes || {};
     }
 
-    private convertToSearchElements(uiAnalysis: any): any[] {
-        const search: any[] = [];
-        
-        // Convert searchBoxes to search elements
-        if (uiAnalysis.searchBoxes && uiAnalysis.searchBoxes.length > 0) {
-            uiAnalysis.searchBoxes.forEach(searchBox => {
-                search.push({
-                    selector: searchBox.selector,
-                    type: 'search',
-                    placeholder: searchBox.placeholder || ''
-                });
-            });
-        }
-        
-        // Convert forms that are search inputs
-        if (uiAnalysis.forms && uiAnalysis.forms.length > 0) {
-            uiAnalysis.forms.forEach(form => {
-                if (form.type === 'search') {
-                    search.push({
-                        selector: form.selector,
-                        type: 'search',
-                        placeholder: form.placeholder
-                    });
-                }
-            });
-        }
-        
-        // Convert inputs that are search
-        if (uiAnalysis.inputs && uiAnalysis.inputs.length > 0) {
-            uiAnalysis.inputs.forEach(input => {
-                if (input.type === 'search' || input.type === 'text') {
-                    search.push({
-                        selector: input.selector,
-                        type: input.type,
-                        placeholder: input.placeholder
-                    });
-                }
-            });
-        }
-        
-        console.log('🔄 Converted search elements:', search);
-        return search;
+    private extractRelationships(dataPatterns: any): string[] {
+        return dataPatterns.relationships || [];
     }
 
-    private convertToTableElements(uiAnalysis: any): any[] {
-        const tables: any[] = [];
-        
-        if (uiAnalysis.tables && uiAnalysis.tables.length > 0) {
-            uiAnalysis.tables.forEach(table => {
-                tables.push({
-                    selector: table.selector,
-                    columns: table.columns || [],
-                    rowCount: table.rowCount || 0
-                });
-            });
-        }
-        
-        // Convert data components that are tables
-        if (uiAnalysis.dataComponents && uiAnalysis.dataComponents.length > 0) {
-            uiAnalysis.dataComponents.forEach(component => {
-                if (component.columns && component.columns.length > 0) {
-                    tables.push({
-                        selector: component.selector || '[data-table]',
-                        columns: component.columns,
-                        rowCount: component.rowCount || 0
-                    });
-                }
-            });
-        }
-        
-        console.log('🔄 Converted table elements:', tables);
-        return tables;
+    private extractBusinessRules(dataPatterns: any): string[] {
+        return dataPatterns.businessRules || [];
     }
 
-    private convertToSortableElements(uiAnalysis: any): any[] {
-        const sortable: any[] = [];
-        
-        // Convert tables that are sortable
-        if (uiAnalysis.tables && uiAnalysis.tables.length > 0) {
-            uiAnalysis.tables.forEach(table => {
-                if (table.sortable) {
-                    sortable.push({
-                        selector: table.selector,
-                        type: 'header',
-                        sortableFields: table.columns || []
-                    });
-                }
-            });
-        }
-        
-        console.log('🔄 Converted sortable elements:', sortable);
-        return sortable;
-    }
-
-    private convertToPaginationElements(uiAnalysis: any): any[] {
-        const pagination: any[] = [];
-        
-        // Convert navigation elements that are pagination
-        if (uiAnalysis.navigation && uiAnalysis.navigation.length > 0) {
-            uiAnalysis.navigation.forEach(nav => {
-                if (nav.type === 'pagination') {
-                    pagination.push({
-                        selector: '[data-pagination]',
-                        type: 'pagination'
-                    });
-                }
-            });
-        }
-        
-        console.log('🔄 Converted pagination elements:', pagination);
-        return pagination;
-    }
-
-    private convertToButtonElements(uiAnalysis: any): any[] {
-        const buttons: any[] = [];
-        
-        if (uiAnalysis.buttons && uiAnalysis.buttons.length > 0) {
-            uiAnalysis.buttons.forEach(button => {
-                buttons.push({
-                    selector: button.selector,
-                    type: button.type,
-                    text: button.text,
-                    ariaLabel: button.ariaLabel
-                });
-            });
-        }
-        
-        console.log('🔄 Converted button elements:', buttons);
-        return buttons;
-    }
-
-    private convertToFormElements(uiAnalysis: any): any[] {
-        const forms: any[] = [];
-        
-        if (uiAnalysis.forms && uiAnalysis.forms.length > 0) {
-            uiAnalysis.forms.forEach(form => {
-                forms.push({
-                    selector: form.selector,
-                    inputs: form.inputs || [],
-                    submitButton: form.submitButton
-                });
-            });
-        }
-        
-        console.log('🔄 Converted form elements:', forms);
-        return forms;
-    }
-
-    // Helper methods for UI-based mapping generation
-    private generateMappingsFromUIAnalysis(uiAnalysis: any): any[] {
-        const mappings = [];
-        
-        console.log('🎯 generateMappingsFromUIAnalysis called with:', uiAnalysis);
-        console.log('🎯 interactiveElements:', uiAnalysis.interactiveElements);
-        console.log('🎯 dataComponents:', uiAnalysis.dataComponents);
-        
-        // Map interactive elements
-        if (uiAnalysis.interactiveElements && uiAnalysis.interactiveElements.length > 0) {
-            console.log('🎯 Found interactive elements:', uiAnalysis.interactiveElements.length);
-            uiAnalysis.interactiveElements.forEach((element: any, index: number) => {
-                mappings.push({
-                    dbField: `interactive_field_${index + 1}`,
-                    uiElement: element.text || element.label || element.selector,
-                    type: element.type || 'interactive',
-                    source: element.source || 'ui-analysis',
-                    description: `Maps to ${element.text || element.label || 'interactive element'}`
-                });
-            });
-        } else {
-            console.log('🎯 No interactive elements found');
-        }
-        
-        // Map data components
-        if (uiAnalysis.dataComponents && uiAnalysis.dataComponents.length > 0) {
-            console.log('🎯 Found data components:', uiAnalysis.dataComponents.length);
-            uiAnalysis.dataComponents.forEach((component: any, index: number) => {
-                mappings.push({
-                    dbField: `data_field_${index + 1}`,
-                    uiElement: component.title || component.selector || 'data-component',
-                    type: component.type || 'data',
-                    source: component.source || 'ui-analysis',
-                    description: `Maps to ${component.title || 'data component'}`
-                });
-            });
-        } else {
-            console.log('🎯 No data components found');
-        }
-        
-        console.log('🎯 Generated mappings:', mappings);
-        return mappings;
-    }
-
-    // Extract field name from UI element text
-    private extractFieldNameFromElementText(elementText: string): string {
-        const lowerText = elementText.toLowerCase();
-        
-        // Map UI text to TSV field names
-        if (lowerText.includes('sex') || lowerText.includes('gender')) {
-            return 'Sex';
-        } else if (lowerText.includes('breed') || lowerText.includes('species')) {
-            return 'Breed';
-        } else if (lowerText.includes('diagnosis') || lowerText.includes('disease')) {
-            return 'Diagnosis';
-        } else if (lowerText.includes('tumor') && lowerText.includes('classification')) {
-            return 'Tumor Classification';
-        } else if (lowerText.includes('case') && lowerText.includes('id')) {
-            return 'Case ID';
-        } else if (lowerText.includes('study') && lowerText.includes('code')) {
-            return 'Study Code';
-        } else if (lowerText.includes('disease') && lowerText.includes('term')) {
-            return 'disease_term';
-        } else if (lowerText.includes('primary') && lowerText.includes('disease') && lowerText.includes('site')) {
-            return 'primary_disease_site';
-        } else if (lowerText.includes('disease') && lowerText.includes('phase')) {
-            return 'disease_phase';
-        } else if (lowerText.includes('anatomic') && lowerText.includes('site')) {
-            return 'anatomic_site';
-        } else if (lowerText.includes('age') && lowerText.includes('diagnosis')) {
-            return 'age_at_diagnosis';
-        } else if (lowerText.includes('participant') && lowerText.includes('age')) {
-            return 'participant_age_at_collection';
-        } else if (lowerText.includes('sample') && lowerText.includes('tumor') && lowerText.includes('status')) {
-            return 'sample_tumor_status';
-        } else if (lowerText.includes('sample') && lowerText.includes('description')) {
-            return 'sample_description';
-        } else if (lowerText.includes('file') && lowerText.includes('type')) {
-            return 'file_type';
-        } else if (lowerText.includes('library') && lowerText.includes('selection')) {
-            return 'library_selection';
-        } else if (lowerText.includes('library') && lowerText.includes('strategy')) {
-            return 'library_strategy';
-        } else if (lowerText.includes('library') && lowerText.includes('source')) {
-            return 'library_source';
-        } else if (lowerText.includes('instrument') && lowerText.includes('model')) {
-            return 'instrument_model';
-        } else if (lowerText.includes('avg') && lowerText.includes('read') && lowerText.includes('length')) {
-            return 'avg_read_length';
-        } else if (lowerText.includes('sequence') && lowerText.includes('alignment')) {
-            return 'sequence_alignment_software';
-        } else if (lowerText.includes('diagnosis') && lowerText.includes('icd')) {
-            return 'diagnosis_icd_o';
-        } else if (lowerText.includes('alternate') && lowerText.includes('participant')) {
-            return 'alternate_participant_id';
-        } else if (lowerText.includes('alternate') && lowerText.includes('sample')) {
-            return 'alternate_sample_id';
-        } else if (lowerText.includes('file') && lowerText.includes('size')) {
-            return 'file_size';
-        } else if (lowerText.includes('md5sum')) {
-            return 'md5sum';
-        } else if (lowerText.includes('number') && lowerText.includes('bp')) {
-            return 'number_of_bp';
-        } else if (lowerText.includes('number') && lowerText.includes('reads')) {
-            return 'number_of_reads';
-        } else if (lowerText.includes('study') && lowerText.includes('name')) {
-            return 'study_name';
-        } else if (lowerText.includes('study') && lowerText.includes('short') && lowerText.includes('title')) {
-            return 'study_short_title';
-        } else if (lowerText.includes('study') && lowerText.includes('acronym')) {
-            return 'study_acronym';
-        } else if (lowerText.includes('study') && lowerText.includes('description')) {
-            return 'study_description';
-        } else if (lowerText.includes('consent')) {
-            return 'consent';
-        } else if (lowerText.includes('consent') && lowerText.includes('number')) {
-            return 'consent_number';
-        } else if (lowerText.includes('external') && lowerText.includes('url')) {
-            return 'external_url';
-        } else if (lowerText.includes('experimental') && lowerText.includes('strategy')) {
-            return 'experimental_strategy_and_data_subtype';
-        } else if (lowerText.includes('study') && lowerText.includes('data') && lowerText.includes('types')) {
-            return 'study_data_types';
-        } else if (lowerText.includes('race')) {
-            return 'race';
-        } else if (lowerText.includes('ethnicity')) {
-            return 'ethnicity';
-        } else if (lowerText.includes('platform')) {
-            return 'platform';
-        } else if (lowerText.includes('reference') && lowerText.includes('genome')) {
-            return 'reference_genome_assembly';
-        } else if (lowerText.includes('design') && lowerText.includes('description')) {
-            return 'design_description';
-        }
-        
-        // Fallback: try to clean up the text
-        return elementText.replace(/[^a-zA-Z0-9\s]/g, '').trim();
-    }
-    
-    // Get test values from TSV data for a specific field
-    private getTestValuesFromTSVData(fieldName: string): string[] {
-        try {
-            // Get TSV data from the current learning session
-            const tsvData = this.currentTSVData || [];
-            
-            if (tsvData.length === 0) {
-                console.warn(`⚠️ No TSV data available for field: ${fieldName}`);
-                return this.generateGenericTestValues(fieldName);
-            }
-            
-            // Generate field name variations to try different cases
-            const fieldVariations = this.generateFieldNameVariations(fieldName);
-            
-            // Extract unique values for this field, trying different variations
-            const fieldValues = new Set<string>();
-            
-            for (const variation of fieldVariations) {
-                tsvData.forEach(record => {
-                    if (record[variation] && record[variation].trim()) {
-                        fieldValues.add(record[variation].trim());
-                    }
-                });
-                
-                // If we found values with this variation, we can stop
-                if (fieldValues.size > 0) {
-                    console.log(`✅ Found values using field variation: ${variation}`);
-                    break;
-                }
-            }
-            
-            const uniqueValues = Array.from(fieldValues);
-            
-            if (uniqueValues.length === 0) {
-                console.warn(`⚠️ No values found for field: ${fieldName} (tried variations: ${fieldVariations.join(', ')})`);
-                return this.generateGenericTestValues(fieldName);
-            }
-            
-            // Return first 3 unique values for testing
-            const testValues = uniqueValues.slice(0, 3);
-            console.log(`📊 Found ${uniqueValues.length} unique values for ${fieldName}:`, testValues);
-            
-            return testValues;
-            
-        } catch (error) {
-            console.error(`❌ Error extracting test values for ${fieldName}:`, error);
-            return this.generateGenericTestValues(fieldName);
-        }
-    }
-
-    // Generate field name variations to handle different casing and formats
-    private generateFieldNameVariations(fieldName: string): string[] {
-        const variations = new Set<string>();
-        
-        // Add the original field name
-        variations.add(fieldName);
-        
-        // Add lowercase version
-        variations.add(fieldName.toLowerCase());
-        
-        // Add uppercase version
-        variations.add(fieldName.toUpperCase());
-        
-        // Add snake_case version
-        const snakeCase = fieldName.toLowerCase().replace(/\s+/g, '_');
-        variations.add(snakeCase);
-        
-        // Add camelCase version
-        const camelCase = fieldName.replace(/\s+(.)/g, (_, char) => char.toUpperCase()).replace(/\s+/g, '');
-        variations.add(camelCase.charAt(0).toLowerCase() + camelCase.slice(1));
-        
-        // Add PascalCase version
-        const pascalCase = fieldName.replace(/\s+(.)/g, (_, char) => char.toUpperCase()).replace(/\s+/g, '');
-        variations.add(pascalCase.charAt(0).toUpperCase() + pascalCase.slice(1));
-        
-        // Add Title Case version
-        const titleCase = fieldName.replace(/\b\w/g, char => char.toUpperCase());
-        variations.add(titleCase);
-        
-        // Add UPPER_SNAKE_CASE version
-        const upperSnakeCase = fieldName.toUpperCase().replace(/\s+/g, '_');
-        variations.add(upperSnakeCase);
-        
-        // Add kebab-case version
-        const kebabCase = fieldName.toLowerCase().replace(/\s+/g, '-');
-        variations.add(kebabCase);
-        
-        // Add specific OSA04 field variations
-        if (fieldName.toLowerCase().includes('disease') && fieldName.toLowerCase().includes('term')) {
-            variations.add('disease_term');
-            variations.add('Disease Term');
-            variations.add('DISEASE_TERM');
-        }
-        
-        if (fieldName.toLowerCase().includes('primary') && fieldName.toLowerCase().includes('disease') && fieldName.toLowerCase().includes('site')) {
-            variations.add('primary_disease_site');
-            variations.add('Primary Disease Site');
-            variations.add('PRIMARY_DISEASE_SITE');
-        }
-        
-        return Array.from(variations);
-    }
-
-    // Generate generic test values based on field name when TSV data is not available
-    private generateGenericTestValues(fieldName: string): string[] {
-        const lowerFieldName = fieldName.toLowerCase();
-        
-        // OSA04-specific field values
-        if (lowerFieldName.includes('disease') && lowerFieldName.includes('term')) {
-            return ['Osteosarcoma', 'Ewing Sarcoma', 'Rhabdomyosarcoma'];
-        } else if (lowerFieldName.includes('primary') && lowerFieldName.includes('disease') && lowerFieldName.includes('site')) {
-            return ['Bone', 'Soft Tissue', 'Central Nervous System'];
-        } else if (lowerFieldName.includes('disease') && lowerFieldName.includes('phase')) {
-            return ['Primary', 'Recurrent', 'Metastatic'];
-        } else if (lowerFieldName.includes('anatomic') && lowerFieldName.includes('site')) {
-            return ['Femur', 'Tibia', 'Humerus'];
-        } else if (lowerFieldName.includes('age') && lowerFieldName.includes('diagnosis')) {
-            return ['5', '10', '15'];
-        } else if (lowerFieldName.includes('participant') && lowerFieldName.includes('age')) {
-            return ['6', '11', '16'];
-        } else if (lowerFieldName.includes('sample') && lowerFieldName.includes('tumor') && lowerFieldName.includes('status')) {
-            return ['Primary', 'Recurrent', 'Metastatic'];
-        } else if (lowerFieldName.includes('sample') && lowerFieldName.includes('description')) {
-            return ['Tumor Sample A', 'Tumor Sample B', 'Tumor Sample C'];
-        } else if (lowerFieldName.includes('file') && lowerFieldName.includes('type')) {
-            return ['BAM', 'FASTQ', 'VCF'];
-        } else if (lowerFieldName.includes('library') && lowerFieldName.includes('selection')) {
-            return ['PCR', 'Random', 'Hybrid Selection'];
-        } else if (lowerFieldName.includes('library') && lowerFieldName.includes('strategy')) {
-            return ['WGS', 'WXS', 'RNA-Seq'];
-        } else if (lowerFieldName.includes('library') && lowerFieldName.includes('source')) {
-            return ['Genomic DNA', 'RNA', 'cDNA'];
-        } else if (lowerFieldName.includes('instrument') && lowerFieldName.includes('model')) {
-            return ['Illumina HiSeq 2000', 'Illumina HiSeq 2500', 'Illumina NovaSeq'];
-        } else if (lowerFieldName.includes('avg') && lowerFieldName.includes('read') && lowerFieldName.includes('length')) {
-            return ['100', '150', '250'];
-        } else if (lowerFieldName.includes('sequence') && lowerFieldName.includes('alignment')) {
-            return ['BWA', 'STAR', 'HISAT2'];
-        } else if (lowerFieldName.includes('diagnosis') && lowerFieldName.includes('icd')) {
-            return ['C41.9', 'C49.9', 'C71.9'];
-        } else if (lowerFieldName.includes('alternate') && lowerFieldName.includes('participant')) {
-            return ['ALT_P001', 'ALT_P002', 'ALT_P003'];
-        } else if (lowerFieldName.includes('alternate') && lowerFieldName.includes('sample')) {
-            return ['ALT_S001', 'ALT_S002', 'ALT_S003'];
-        } else if (lowerFieldName.includes('file') && lowerFieldName.includes('size')) {
-            return ['1024000', '2048000', '4096000'];
-        } else if (lowerFieldName.includes('md5sum')) {
-            return ['a1b2c3d4e5f6', 'f6e5d4c3b2a1', '123456789abc'];
-        } else if (lowerFieldName.includes('number') && lowerFieldName.includes('bp')) {
-            return ['1000000', '2000000', '3000000'];
-        } else if (lowerFieldName.includes('number') && lowerFieldName.includes('reads')) {
-            return ['100000', '200000', '300000'];
-        } else if (lowerFieldName.includes('study') && lowerFieldName.includes('name')) {
-            return ['OSA04 Study', 'Pediatric Osteosarcoma', 'Childhood Cancer Study'];
-        } else if (lowerFieldName.includes('study') && lowerFieldName.includes('short') && lowerFieldName.includes('title')) {
-            return ['OSA04', 'PED-OSA', 'CCS-001'];
-        } else if (lowerFieldName.includes('study') && lowerFieldName.includes('acronym')) {
-            return ['OSA04', 'PEDOSA', 'CCS001'];
-        } else if (lowerFieldName.includes('study') && lowerFieldName.includes('description')) {
-            return ['Pediatric Osteosarcoma Study', 'Childhood Cancer Research', 'Oncology Study'];
-        } else if (lowerFieldName.includes('consent')) {
-            return ['Consent A', 'Consent B', 'Consent C'];
-        } else if (lowerFieldName.includes('consent') && lowerFieldName.includes('number')) {
-            return ['CONS001', 'CONS002', 'CONS003'];
-        } else if (lowerFieldName.includes('external') && lowerFieldName.includes('url')) {
-            return ['https://example1.com', 'https://example2.com', 'https://example3.com'];
-        } else if (lowerFieldName.includes('experimental') && lowerFieldName.includes('strategy')) {
-            return ['WGS', 'WXS', 'RNA-Seq'];
-        } else if (lowerFieldName.includes('study') && lowerFieldName.includes('data') && lowerFieldName.includes('types')) {
-            return ['Genomic', 'Clinical', 'Imaging'];
-        } else if (lowerFieldName.includes('race')) {
-            return ['White', 'Black', 'Asian'];
-        } else if (lowerFieldName.includes('ethnicity')) {
-            return ['Hispanic', 'Non-Hispanic', 'Unknown'];
-        } else if (lowerFieldName.includes('platform')) {
-            return ['Illumina', 'PacBio', 'Oxford Nanopore'];
-        } else if (lowerFieldName.includes('reference') && lowerFieldName.includes('genome')) {
-            return ['GRCh38', 'GRCh37', 'hg19'];
-        } else if (lowerFieldName.includes('design') && lowerFieldName.includes('description')) {
-            return ['Case-Control', 'Cohort', 'Cross-Sectional'];
-        }
-        
-        // Generate values based on field type patterns
-        if (lowerFieldName.includes('id') || lowerFieldName.includes('code')) {
-            return [`${fieldName}_001`, `${fieldName}_002`, `${fieldName}_003`];
-        } else if (lowerFieldName.includes('name') || lowerFieldName.includes('title')) {
-            return [`${fieldName} Sample 1`, `${fieldName} Sample 2`, `${fieldName} Sample 3`];
-        } else if (lowerFieldName.includes('status') || lowerFieldName.includes('state')) {
-            return ['Active', 'Inactive', 'Pending'];
-        } else if (lowerFieldName.includes('type') || lowerFieldName.includes('category')) {
-            return ['Type A', 'Type B', 'Type C'];
-        } else if (lowerFieldName.includes('grade') || lowerFieldName.includes('level')) {
-            return ['Grade 1', 'Grade 2', 'Grade 3'];
-        } else if (lowerFieldName.includes('priority') || lowerFieldName.includes('importance')) {
-            return ['High', 'Medium', 'Low'];
-        } else {
-            // Generic fallback
-            return [`${fieldName} Value 1`, `${fieldName} Value 2`, `${fieldName} Value 3`];
-        }
-    }
-
-    // Generate dynamic selectors for filter elements
-    private generateFilterSelectors(baseSelector: string): string[] {
-        return [
-            baseSelector,
-            `${baseSelector} + .dropdown-menu`,
-            `${baseSelector} + .filter-options`,
-            `${baseSelector} + .options`,
-            `${baseSelector} + .menu`,
-            `${baseSelector} + [role="menu"]`,
-            `${baseSelector} + [role="listbox"]`,
-            `${baseSelector} + .MuiMenu-root`,
-            `${baseSelector} + .MuiSelect-menu`
-        ];
-    }
-
-    // Generate dynamic selectors for search elements
-    private generateSearchSelectors(baseSelector: string): string[] {
-        return [
-            baseSelector,
-            `${baseSelector} + .search-button`,
-            `${baseSelector} + .search-results`,
-            `${baseSelector} + .results`,
-            `${baseSelector} + .search-output`,
-            `${baseSelector} + [data-testid*="search"]`,
-            `${baseSelector} + [data-testid*="results"]`,
-            `${baseSelector} + .MuiTextField-root`,
-            `${baseSelector} + .MuiInputBase-root`
-        ];
-    }
-
-    private generateTestCasesFromUIAnalysis(uiAnalysis: any): any[] {
-        const testCases = [];
-        
-        console.log('🎯 generateTestCasesFromUIAnalysis called with:', uiAnalysis);
-        console.log('🎯 interactiveElements for test cases:', uiAnalysis.interactiveElements);
-        console.log('🎯 dataComponents for test cases:', uiAnalysis.dataComponents);
-        
-        // Generate test cases for interactive elements
-        if (uiAnalysis.interactiveElements && uiAnalysis.interactiveElements.length > 0) {
-            console.log('🎯 Found interactive elements for test cases:', uiAnalysis.interactiveElements.length);
-            console.log('🎯 Interactive elements details:', JSON.stringify(uiAnalysis.interactiveElements, null, 2));
-            uiAnalysis.interactiveElements.forEach((element: any, index: number) => {
-                // ENHANCED VALIDATION: Handle tables and other elements
-                if (!element.selector) {
-                    console.warn(`⚠️ Skipping interactive element ${index}: No selector`);
-                    return;
-                }
-                
-                // For tables, use columns as the identifier if no text/label
-                const elementText = element.text || element.label || 
-                    (element.type === 'table' && element.columns ? `Table with columns: ${element.columns.join(', ')}` : 
-                     `Element ${index + 1}`);
-                
-                if (!elementText) {
-                    console.warn(`⚠️ Skipping interactive element ${index}: No text/label/columns`);
-                    return;
-                }
-                
-                console.log(`🎯 Processing element ${index}: type="${element.type}", text="${element.text}", selector="${element.selector}"`);
-                
-                // Generate specific test cases based on element type and content
-                // Check if this looks like a sortable column header
-                if (element.type === 'tableHeaders' || element.type === 'sortableColumns' || 
-                    (element.text && (element.text.includes('Case ID') || element.text.includes('Breed') || element.text.includes('Sex')))) {
-                    console.log(`✅ Creating sort test for element: ${elementText}`);
-                    testCases.push({
-                        name: `Sort Test - ${elementText}`,
-                        description: `Test that ${elementText} sorting works correctly`,
-                        steps: [
-                            'Navigate to the page',
-                            `Click on ${elementText} sort element`,
-                            'Verify ascending sort is applied',
-                            'Click again to test descending sort',
-                            'Verify descending sort is applied',
-                            'Check that data is properly sorted',
-                            'Verify sort indicators are displayed correctly'
-                        ],
-                        selectors: [element.selector],
-                        category: 'Sorting',
-                        type: 'sort_test',
-                        priority: 'high',
-                        source: element.source || 'ui-analysis',
-                        websiteUrl: this.currentWebsiteUrl,
-                        expectedResults: [
-                            'Sort element is clickable',
-                            'Ascending sort works correctly',
-                            'Descending sort works correctly',
-                            'Data is properly ordered',
-                            'Sort indicators show current sort direction',
-                            'Sort state persists during navigation'
-                        ]
-                    });
-                } else if (element.type === 'selectElements' || element.type === 'filterDropdowns' || element.type === 'filterCheckboxes' ||
-                          (element.text && (element.text.includes('Breed') || element.text.includes('Sex') || element.text.includes('Filter') || 
-                           element.text.includes('Tumor Classification') || element.text.includes('tumor_classification') || 
-                           element.text.includes('Diagnosis') || element.text.includes('Case ID')))) {
-                    console.log(`✅ Creating filter test for element: ${elementText}`);
-                    
-                    // Dynamically extract test values from TSV data based on field name
-                    const fieldName = this.extractFieldNameFromElementText(elementText);
-                    const testValues = this.getTestValuesFromTSVData(fieldName);
-                    
-                    console.log(`🎯 Extracted field name: "${fieldName}" from element text: "${elementText}"`);
-                    console.log(`🎯 Test values from TSV:`, testValues);
-                    
-                    testCases.push({
-                        name: `${elementText} Filter Test`,
-                        description: `Test that ${elementText} filter dropdown works correctly and filters data appropriately`,
-                        steps: [
-                            `Navigate to ${this.currentWebsiteUrl}`,
-                            `Locate the ${elementText} filter dropdown`,
-                            `Click on the ${elementText} filter dropdown to open options`,
-                            `Select "${testValues[0]}" from the dropdown options`,
-                            'Wait for the page to update with filtered results',
-                            'Verify that only records with the selected value are displayed',
-                            `Check that the filter shows "${testValues[0]}" as selected`,
-                            'Verify the result count reflects the filtered data',
-                            `Test clearing the filter by selecting "All" or clearing the selection`,
-                            'Verify all records are displayed again'
-                        ],
-                        selectors: this.generateFilterSelectors(element.selector),
-                        category: 'Data Filtering',
-                        type: 'filter_test',
-                        priority: 'High',
-                        source: element.source || 'ui-analysis',
-                        websiteUrl: this.currentWebsiteUrl,
-                        testValues: testValues,
-                        dataField: elementText,
-                        expectedResults: [
-                            'Filter dropdown opens when clicked',
-                            'All available filter options are displayed',
-                            'Selected option is highlighted/selected correctly',
-                            'Page updates to show only matching records',
-                            'Filter state is visually indicated (badge, highlight, etc.)',
-                            'Result count updates to reflect filtered data',
-                            'Filter can be cleared to show all records',
-                            'No JavaScript errors occur during filtering'
-                        ],
-                        validationCriteria: [
-                            'All displayed records must match the selected filter value',
-                            'Filter UI must clearly show the current selection',
-                            'Result count must be accurate for the filtered data',
-                            'Performance: Filter should respond within 2 seconds'
-                        ]
-                    });
-                } else if (element.type === 'searchBoxes' || element.type === 'inputElements' || element.type === 'searchInputs' ||
-                          (element.text && element.text.toLowerCase().includes('search'))) {
-                    console.log(`✅ Creating search test for element: ${elementText}`);
-                    
-                    // Dynamically extract search terms from TSV data based on field name
-                    const fieldName = this.extractFieldNameFromElementText(elementText);
-                    const searchTerms = this.getTestValuesFromTSVData(fieldName);
-                    
-                    console.log(`🔍 Extracted field name: "${fieldName}" from element text: "${elementText}"`);
-                    console.log(`🔍 Search terms from TSV:`, searchTerms);
-                    
-                    testCases.push({
-                        name: `${elementText} Search Test`,
-                        description: `Test that ${elementText} search functionality works correctly with various search terms`,
-                        steps: [
-                            `Navigate to ${this.currentWebsiteUrl}`,
-                            `Locate the ${elementText} search input field`,
-                            `Click on the search input to focus it`,
-                            `Type "${searchTerms[0]}" in the search field`,
-                            'Press Enter or click the search button',
-                            'Wait for search results to load',
-                            'Verify that results contain the search term',
-                            'Check that the search term is highlighted in results',
-                            'Test with a partial match by typing a shorter version',
-                            'Clear the search field and verify all results return',
-                            'Test with an invalid/non-existent search term',
-                            'Verify appropriate "no results" message is shown'
-                        ],
-                        selectors: this.generateSearchSelectors(element.selector),
-                        category: 'Data Search',
-                        type: 'search_test',
-                        priority: 'High',
-                        source: element.source || 'ui-analysis',
-                        websiteUrl: this.currentWebsiteUrl,
-                        testValues: searchTerms,
-                        dataField: elementText,
-                        expectedResults: [
-                            'Search input accepts text input correctly',
-                            'Search executes when Enter is pressed or search button clicked',
-                            'Results are returned within 3 seconds',
-                            'All displayed results contain the search term',
-                            'Search term is highlighted in the results',
-                            'Partial matches work correctly',
-                            'Search can be cleared to show all results',
-                            'No results message appears for invalid searches',
-                            'Search is case-insensitive (if applicable)',
-                            'No JavaScript errors occur during search'
-                        ],
-                        validationCriteria: [
-                            'Search results must contain the search term',
-                            'Search performance must be under 3 seconds',
-                            'Clear functionality must restore all results',
-                            'Invalid searches must show appropriate messaging'
-                        ]
-                    });
-                } else {
-                    console.log(`✅ Creating generic test for element: ${elementText}`);
-                    // Generic test case for other interactive elements
-                testCases.push({
-                    name: `test_interactive_${index + 1}`,
-                        description: `Test interaction with ${elementText}`,
-                    steps: [
-                            'Navigate to the page',
-                            `Locate ${elementText}`,
-                            `Interact with ${elementText}`,
-                            'Verify expected behavior'
-                    ],
-                    selectors: [element.selector],
-                    category: 'functionality',
-                    type: element.type || 'interactive',
-                    priority: 'medium',
-                    source: element.source || 'ui-analysis',
-                    websiteUrl: this.currentWebsiteUrl
-                });
-                }
-            });
-        } else {
-            console.log('🎯 No interactive elements found for test cases');
-        }
-        
-        // Generate test cases for data components
-        if (uiAnalysis.dataComponents && uiAnalysis.dataComponents.length > 0) {
-            console.log('🎯 Found data components for test cases:', uiAnalysis.dataComponents.length);
-            uiAnalysis.dataComponents.forEach((component: any, index: number) => {
-                // STRICT VALIDATION: Only generate if component has required data
-                if (!component.title && !component.text) {
-                    console.warn(`⚠️ Skipping data component ${index}: No title/text`);
-                    return;
-                }
-                if (!component.selector) {
-                    console.warn(`⚠️ Skipping data component ${index}: No selector`);
-                    return;
-                }
-                
-                testCases.push({
-                    name: `test_data_${index + 1}`,
-                    description: `Test data component: ${component.title || 'data-component'}`,
-                    steps: [
-                        `Navigate to the page`,
-                        `Locate data component`,
-                        `Verify data is displayed correctly`,
-                        `Test data interactions if applicable`
-                    ],
-                    selectors: [component.selector],
-                    category: 'data-validation',
-                    type: 'data-validation',
-                    priority: 'high',
-                    source: component.source || 'ui-analysis',
-                    websiteUrl: this.currentWebsiteUrl
-                    // REMOVED: Default dataField, testValues
-                    // These MUST come from actual TSV data, not defaults
-                });
-            });
-        } else {
-            console.log('🎯 No data components found for test cases');
-        }
-        
-        console.log('🎯 Generated test cases:', testCases);
-        return testCases;
-    }
-
-    private extractValidationRulesFromUI(uiAnalysis: any): string[] {
-        const rules = [];
-        
-        if (uiAnalysis.interactiveElements) {
-            uiAnalysis.interactiveElements.forEach((element: any) => {
-                if (element.type === 'dropdown' || element.type === 'select') {
-                    rules.push(`${element.label || element.text} must have valid options`);
-                }
-                if (element.type === 'search' || element.type === 'input') {
-                    rules.push(`${element.label || element.text} must accept valid input`);
-                }
-            });
-        }
-        
-        return rules;
-    }
-
-    private extractDataRelationshipsFromUI(uiAnalysis: any): string[] {
-        const relationships = [];
-        
-        if (uiAnalysis.dataComponents) {
-            uiAnalysis.dataComponents.forEach((component: any) => {
-                if (component.columns) {
-                    relationships.push(`Table columns: ${component.columns.join(', ')}`);
-                }
-                if (component.type === 'chart') {
-                    relationships.push(`Chart data relationship: ${component.title}`);
-                }
-            });
-        }
-        
-        if (uiAnalysis.interactionPatterns) {
-            relationships.push(...uiAnalysis.interactionPatterns);
-        }
-        
-        return relationships;
-    }
-
-    private async verifyUIAccessible(): Promise<boolean> {
-        try {
-            // Take a verification screenshot
-            const verifyScreenshot = await this.mcpClient.callTools([{
-                id: 'verify-screenshot-' + Date.now(),
-                name: 'playwright_screenshot',
-                parameters: { name: 'ui-verification.png' }
-            }]);
-            
-            // Get page text to check for popup keywords
-            const pageText = await this.mcpClient.callTools([{
-                id: 'verify-text-' + Date.now(),
-                name: 'playwright_get_visible_text',
-                parameters: {}
-            }]);
-            
-            const text = pageText[0]?.result?.[0]?.text || '';
-            
-            // Check for common popup indicators
-            const popupKeywords = [
-                'government funding lapse',
-                'accept cookies',
-                'continue',
-                'i agree',
-                'close',
-                'dismiss',
-                'terms and conditions',
-                'privacy policy'
-            ];
-            
-            const hasPopupKeywords = popupKeywords.some(keyword => 
-                text.toLowerCase().includes(keyword.toLowerCase())
-            );
-            
-            if (hasPopupKeywords) {
-                console.log('⚠️ UI Verification: Popup keywords detected in text');
-                return false;
-            }
-            
-            console.log('✅ UI Verification: UI appears accessible');
-            return true;
-            
-        } catch (error) {
-            console.log('⚠️ UI Verification failed:', error);
-            return false;
-        }
-    }
-
-    private extractScreenshotPath(screenshotResult: any[]): string {
-        try {
-            console.log('🔍 DEBUG: Extracting screenshot path from result:', JSON.stringify(screenshotResult, null, 2));
-            
-            // Extract the actual screenshot path from Playwright MCP response
-            const result = screenshotResult[0]?.result;
-            if (result && Array.isArray(result)) {
-                console.log('🔍 DEBUG: Found result array:', result);
-                
-                // Look for "Screenshot saved to:" in the content
-                const content = result.find((c: any) => c.text?.includes('Screenshot saved to:'));
-                if (content?.text) {
-                    console.log('🔍 DEBUG: Found screenshot text:', content.text);
-                    const pathMatch = content.text.match(/Screenshot saved to: (.+)/);
-                    if (pathMatch && pathMatch[1]) {
-                        // Convert the path to a web-accessible URL
-                        const actualPath = pathMatch[1].trim();
-                        console.log('🔍 DEBUG: Extracted actual path:', actualPath);
-                        
-                        // Extract just the filename and create a web path
-                        const filename = actualPath.split('/').pop();
-                        if (filename) {
-                            const webPath = `/screenshots/${filename}`;
-                            console.log('🔍 DEBUG: Created web path:', webPath);
-                            return webPath;
-                        }
-                    }
-                }
-            }
-            
-            console.log('⚠️ DEBUG: Could not extract screenshot path');
-            return '';
-                            } catch (error) {
-            console.error('❌ Error extracting screenshot path:', error);
-            return '';
-        }
-    }
-
-    private async dismissUIObstacles(): Promise<void> {
-        console.log('🔍 Universal AI-powered popup detection starting...');
-        
-        try {
-            // Step 1: Take screenshot for AI analysis
-            console.log('📸 Taking screenshot for AI analysis...');
-            const screenshotResult = await this.mcpClient.callTools([{
-                id: 'popup-screenshot-' + Date.now(),
-                name: 'playwright_screenshot',
-                parameters: { name: 'popup-detection.png' }
-            }]);
-            
-            // Read the screenshot file and convert to base64
-            const screenshotPath = this.extractScreenshotPath(screenshotResult);
-            let screenshotBase64 = '';
-            if (screenshotPath && fs.existsSync(screenshotPath)) {
-                screenshotBase64 = fs.readFileSync(screenshotPath, 'base64');
-                console.log('📸 Screenshot loaded for AI analysis');
-            } else {
-                console.log('⚠️ Screenshot file not found, falling back to text-only analysis');
-            }
-            
-            // Step 2: Get page text content
-            console.log('📄 Getting page text content...');
-            const pageTextResult = await this.mcpClient.callTools([{
-                id: 'page-text-' + Date.now(),
-                name: 'playwright_get_visible_text',
-                parameters: {}
-            }]);
-            
-            const pageText = pageTextResult[0]?.result?.[0]?.text || '';
-            
-            // Step 3: Use AI to analyze the page for popups
-            console.log('🧠 Analyzing page with AI for popups...');
-            const prompt = `You are analyzing webpage text content to detect popups that need to be dismissed before testing can proceed.
-
-CRITICAL INSTRUCTIONS:
-1. ONLY identify popups that are EXPLICITLY MENTIONED in the provided text content
-2. ONLY suggest button selectors for buttons that are ACTUALLY VISIBLE in the text
-3. Do NOT make up or assume buttons that aren't explicitly mentioned
-4. Look for actual button text like "Continue", "Accept", "Dismiss", "Close", "OK", "I Agree"
-5. Use EXACT button text as it appears - do NOT add ellipsis (...) or modify the text
-
-Page Text Content: ${pageText}...
-
-Analyze this text content and determine:
-1. Are there any popups, modals, warning dialogs, or blocking elements mentioned?
-2. If yes, what is the EXACT dismissal button text as it appears in the text?
-3. What type of popup is it? (warning, consent, verification, terms, government notice, etc.)
-
-Look for these specific patterns in the text:
-- Warning dialogs with "Continue", "Accept", "OK" buttons
-- Cookie consent banners
-- Age verification popups
-- Government warnings (like "This warning banner provides privacy and security notices")
-- Terms acceptance dialogs
-- Privacy notices
-- JavaScript enablement warnings
-
-IMPORTANT: Generate SPECIFIC CSS selectors based on ACTUAL button text found in the content. Do NOT use jQuery-style selectors like :contains().
-Use specific CSS selectors like: 
-- button:has-text("Continue") (for buttons with exact text "Continue")
-- button[class*='continue'] (for buttons with "continue" in class)
-- .btn-continue (for buttons with specific class)
-- #accept-btn (for buttons with specific ID)
-- button[aria-label*='continue'] (for buttons with aria-label)
-- .modal button, .popup button (for buttons inside specific containers)
-
-AVOID generic selectors like just "button" - they will fail!
-AVOID making up selectors for buttons that don't exist in the text!
-
-Return ONLY a JSON response in this exact format:
-{
-  "hasPopup": true/false,
-  "popupType": "warning|consent|verification|terms|government|javascript_warning|other",
-  "buttonText": "EXACT button text as it appears in the content (e.g., 'Continue', 'Accept', 'OK') - NO ellipsis or modifications",
-  "buttonSelector": "Valid CSS selector based on actual button text found",
-  "confidence": 0.0-1.0,
-  "description": "Brief description of what you see in the text"
-}`;
-
-            // Send both image and text to AI for analysis
-            const aiResponse = screenshotBase64 
-                ? await this.bedrockClient.generateResponse([{ 
-                    role: 'user', 
-                    content: {
-                        type: 'image',
-                        text: prompt,
-                        data: screenshotBase64
-                    }
-                }], [])
-                : await this.bedrockClient.generateResponse([{ role: 'user', content: prompt }], []);
-            
-            // Step 4: Parse AI response
-            let popupAnalysis;
-            try {
-                // Extract JSON from AI response
-                const jsonMatch = aiResponse.content.match(/\{[\s\S]*\}/);
-                if (jsonMatch) {
-                    popupAnalysis = JSON.parse(jsonMatch[0]);
-                } else {
-                    throw new Error('No JSON found in AI response');
-                }
-            } catch (parseError) {
-                console.log('⚠️ Failed to parse AI response, trying fallback detection');
-                popupAnalysis = { hasPopup: false, confidence: 0 };
-            }
-            
-            // Step 5: Handle popup if detected
-            if (popupAnalysis.hasPopup && popupAnalysis.confidence > 0.6) {
-                console.log(`🚫 AI detected ${popupAnalysis.popupType} popup`);
-                console.log(`🎯 Button text: ${popupAnalysis.buttonText}`);
-                console.log(`🎯 Button selector: ${popupAnalysis.buttonSelector}`);
-                console.log(`📊 Confidence: ${popupAnalysis.confidence}`);
-                
-                try {
-                    // Click the dismissal button
-                    await this.mcpClient.callTools([{
-                        id: 'dismiss-popup-' + Date.now(),
-                        name: 'playwright_click',
-                        parameters: { selector: popupAnalysis.buttonSelector }
-                    }]);
-                    
-                    console.log(`✅ Popup dismissed successfully using AI detection`);
-                    
-                    // Wait for popup to disappear
-                    await new Promise(resolve => setTimeout(resolve, 1500));
-                    
-                    // Verify popup is gone
-                    const verifyResult = await this.mcpClient.callTools([{
-                        id: 'verify-popup-gone-' + Date.now(),
-                name: 'playwright_evaluate',
-                parameters: {
-                            expression: `document.querySelector('${popupAnalysis.buttonSelector}') === null`
-                }
-            }]);
-            
-                    if (verifyResult[0]?.result?.[0]?.value === true) {
-                        console.log('✅ Popup verification: Successfully dismissed');
-            } else {
-                        console.log('⚠️ Popup verification: May still be present');
-                    }
-                    
-                } catch (clickError) {
-                    console.log(`❌ Failed to click popup button: ${clickError.message}`);
-                    throw new Error(`CRITICAL: Cannot dismiss popup - UI blocked. Learning aborted for reliability. Selector: ${popupAnalysis.buttonSelector}`);
-                }
-            } else {
-                console.log('✅ AI analysis: No popups detected');
-                console.log(`📊 Confidence: ${popupAnalysis.confidence || 0}`);
-            }
-            
-        } catch (error) {
-            console.error('❌ Error in AI popup detection:', error);
-            console.log('⚠️ AI popup detection failed - continuing without popup dismissal');
-        }
-    }
 }

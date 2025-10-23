@@ -29,6 +29,37 @@ export class BedrockClient {
     this.modelId = config.modelId;
   }
 
+  // NEW: Invoke model for embeddings
+  async invokeModel(params: {
+    modelId: string;
+    contentType: string;
+    accept: string;
+    body: string;
+  }): Promise<any> {
+    console.log(`📡 Invoking Bedrock model: ${params.modelId}`);
+    
+    try {
+      const command = new InvokeModelCommand({
+        modelId: params.modelId,
+        contentType: params.contentType,
+        accept: params.accept,
+        body: params.body
+      });
+      
+      const response = await this.client.send(command);
+      const responseBody = JSON.parse(
+        new TextDecoder().decode(response.body)
+      );
+      
+      console.log(`✅ Model invocation successful`);
+      return responseBody;
+      
+    } catch (error: any) {
+      console.error(`❌ Model invocation failed:`, error);
+      throw new Error(`Bedrock model invocation failed: ${error.message}. NO FALLBACK AVAILABLE.`);
+    }
+  }
+
   async generateResponse(
     messages: Array<{ role: string; content: string | { type: 'image'; text: string; data: string } }>,
     tools: MCPToolDefinition[]
