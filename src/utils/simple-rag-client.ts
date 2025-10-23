@@ -479,6 +479,43 @@ Return JSON:
         }
     }
 
+    // Generate dynamic test values based on field name and TSV data
+    private generateDynamicTestValues(fieldName: string): string[] {
+        try {
+            // Try to get values from TSV data first
+            if (this.tsvData && this.tsvData.length > 0) {
+                const fieldValues = new Set<string>();
+                this.tsvData.forEach(record => {
+                    if (record[fieldName] && record[fieldName].trim()) {
+                        fieldValues.add(record[fieldName].trim());
+                    }
+                });
+                
+                const uniqueValues = Array.from(fieldValues);
+                if (uniqueValues.length > 0) {
+                    return uniqueValues.slice(0, 3);
+                }
+            }
+            
+            // Fallback to generic values based on field name
+            const lowerFieldName = fieldName.toLowerCase();
+            if (lowerFieldName.includes('id') || lowerFieldName.includes('code')) {
+                return [`${fieldName}_001`, `${fieldName}_002`, `${fieldName}_003`];
+            } else if (lowerFieldName.includes('name') || lowerFieldName.includes('title')) {
+                return [`${fieldName} Sample 1`, `${fieldName} Sample 2`, `${fieldName} Sample 3`];
+            } else if (lowerFieldName.includes('status') || lowerFieldName.includes('state')) {
+                return ['Active', 'Inactive', 'Pending'];
+            } else if (lowerFieldName.includes('type') || lowerFieldName.includes('category')) {
+                return ['Type A', 'Type B', 'Type C'];
+            } else {
+                return [`${fieldName} Value 1`, `${fieldName} Value 2`, `${fieldName} Value 3`];
+            }
+        } catch (error) {
+            console.error(`Error generating dynamic test values for ${fieldName}:`, error);
+            return [`${fieldName} Value 1`, `${fieldName} Value 2`, `${fieldName} Value 3`];
+        }
+    }
+
     // Enhanced: Extract test case data from raw response even if JSON is truncated
     private extractRawTestData(response: string): any {
         console.log('=== DEBUG: extractRawTestData ===');
@@ -533,7 +570,7 @@ Return JSON:
                             ],
                             // ADD TSV VALIDATION FIELDS:
                             dataField: this.fieldNames[0] || 'field1', // Use first TSV field
-                            testValues: ['test_value_1', 'test_value_2'], // Default test values
+                            testValues: this.generateDynamicTestValues(this.fieldNames[0] || 'field1'), // Dynamic test values
                             type: 'filter_test', // Default test type
                             websiteUrl: 'https://example.com'
                         };

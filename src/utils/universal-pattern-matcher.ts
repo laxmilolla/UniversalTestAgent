@@ -154,7 +154,7 @@ export class UniversalPatternMatcher {
           uiElement: uiElement.selector,
           connectionType: 'sortable_sort',
           confidence: 0.8,
-          testValues: ['asc', 'desc']
+          testValues: this.generateSortTestValues()
         });
       });
     });
@@ -216,5 +216,10 @@ export class UniversalPatternMatcher {
     }
 
     return Math.min(confidence, 1.0);
+  }
+
+  // Generate dynamic sort test values
+  private generateSortTestValues(): string[] {
+    return ['asc', 'desc'];
   }
 }

@@ -15,6 +15,7 @@ export class PlaywrightLearningOrchestrator {
     private executionTrace: any[] = []; // Add this line
     private readonly timeout = 120000; // 120 seconds instead of 60
     private currentTSVFiles: any[] = []; // Add this line
+    private currentTSVData: any[] = []; // Parsed TSV data for dynamic test value extraction
 
     // Add global LLM tracking
     private llmCallTracker: any[] = [];
@@ -1198,6 +1199,27 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
             const patternDetector = new UniversalPatternDetector();
             const dataPatterns = patternDetector.discoverDataPatterns(processedTSVFiles);
             
+            // Store parsed TSV data for dynamic test value extraction
+            this.currentTSVData = [];
+            processedTSVFiles.forEach(tsvFile => {
+                if (tsvFile && tsvFile.content) {
+                    const lines = tsvFile.content.split('\n').filter(line => line.trim());
+                    if (lines.length >= 2) {
+                        const headers = lines[0].split('\t');
+                        const rows = lines.slice(1).map(line => {
+                            const values = line.split('\t');
+                            const row: any = {};
+                            headers.forEach((header, index) => {
+                                row[header.trim()] = values[index]?.trim() || '';
+                            });
+                            return row;
+                        });
+                        this.currentTSVData.push(...rows);
+                    }
+                }
+            });
+            
+            console.log(`📊 Stored ${this.currentTSVData.length} TSV records for dynamic test value extraction`);
             console.log('🎯 Discovered Data Patterns:', dataPatterns);
             
             // Convert to the expected format for compatibility
@@ -1931,6 +1953,121 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
         return mappings;
     }
 
+    // Extract field name from UI element text
+    private extractFieldNameFromElementText(elementText: string): string {
+        const lowerText = elementText.toLowerCase();
+        
+        // Map UI text to TSV field names
+        if (lowerText.includes('sex') || lowerText.includes('gender')) {
+            return 'Sex';
+        } else if (lowerText.includes('breed') || lowerText.includes('species')) {
+            return 'Breed';
+        } else if (lowerText.includes('diagnosis') || lowerText.includes('disease')) {
+            return 'Diagnosis';
+        } else if (lowerText.includes('tumor') && lowerText.includes('classification')) {
+            return 'Tumor Classification';
+        } else if (lowerText.includes('case') && lowerText.includes('id')) {
+            return 'Case ID';
+        } else if (lowerText.includes('study') && lowerText.includes('code')) {
+            return 'Study Code';
+        }
+        
+        // Fallback: try to clean up the text
+        return elementText.replace(/[^a-zA-Z0-9\s]/g, '').trim();
+    }
+    
+    // Get test values from TSV data for a specific field
+    private getTestValuesFromTSVData(fieldName: string): string[] {
+        try {
+            // Get TSV data from the current learning session
+            const tsvData = this.currentTSVData || [];
+            
+            if (tsvData.length === 0) {
+                console.warn(`⚠️ No TSV data available for field: ${fieldName}`);
+                return this.generateGenericTestValues(fieldName);
+            }
+            
+            // Extract unique values for this field
+            const fieldValues = new Set<string>();
+            
+            tsvData.forEach(record => {
+                if (record[fieldName] && record[fieldName].trim()) {
+                    fieldValues.add(record[fieldName].trim());
+                }
+            });
+            
+            const uniqueValues = Array.from(fieldValues);
+            
+            if (uniqueValues.length === 0) {
+                console.warn(`⚠️ No values found for field: ${fieldName}`);
+                return this.generateGenericTestValues(fieldName);
+            }
+            
+            // Return first 3 unique values for testing
+            const testValues = uniqueValues.slice(0, 3);
+            console.log(`📊 Found ${uniqueValues.length} unique values for ${fieldName}:`, testValues);
+            
+            return testValues;
+            
+        } catch (error) {
+            console.error(`❌ Error extracting test values for ${fieldName}:`, error);
+            return this.generateGenericTestValues(fieldName);
+        }
+    }
+
+    // Generate generic test values based on field name when TSV data is not available
+    private generateGenericTestValues(fieldName: string): string[] {
+        const lowerFieldName = fieldName.toLowerCase();
+        
+        // Generate values based on field type patterns
+        if (lowerFieldName.includes('id') || lowerFieldName.includes('code')) {
+            return [`${fieldName}_001`, `${fieldName}_002`, `${fieldName}_003`];
+        } else if (lowerFieldName.includes('name') || lowerFieldName.includes('title')) {
+            return [`${fieldName} Sample 1`, `${fieldName} Sample 2`, `${fieldName} Sample 3`];
+        } else if (lowerFieldName.includes('status') || lowerFieldName.includes('state')) {
+            return ['Active', 'Inactive', 'Pending'];
+        } else if (lowerFieldName.includes('type') || lowerFieldName.includes('category')) {
+            return ['Type A', 'Type B', 'Type C'];
+        } else if (lowerFieldName.includes('grade') || lowerFieldName.includes('level')) {
+            return ['Grade 1', 'Grade 2', 'Grade 3'];
+        } else if (lowerFieldName.includes('priority') || lowerFieldName.includes('importance')) {
+            return ['High', 'Medium', 'Low'];
+        } else {
+            // Generic fallback
+            return [`${fieldName} Value 1`, `${fieldName} Value 2`, `${fieldName} Value 3`];
+        }
+    }
+
+    // Generate dynamic selectors for filter elements
+    private generateFilterSelectors(baseSelector: string): string[] {
+        return [
+            baseSelector,
+            `${baseSelector} + .dropdown-menu`,
+            `${baseSelector} + .filter-options`,
+            `${baseSelector} + .options`,
+            `${baseSelector} + .menu`,
+            `${baseSelector} + [role="menu"]`,
+            `${baseSelector} + [role="listbox"]`,
+            `${baseSelector} + .MuiMenu-root`,
+            `${baseSelector} + .MuiSelect-menu`
+        ];
+    }
+
+    // Generate dynamic selectors for search elements
+    private generateSearchSelectors(baseSelector: string): string[] {
+        return [
+            baseSelector,
+            `${baseSelector} + .search-button`,
+            `${baseSelector} + .search-results`,
+            `${baseSelector} + .results`,
+            `${baseSelector} + .search-output`,
+            `${baseSelector} + [data-testid*="search"]`,
+            `${baseSelector} + [data-testid*="results"]`,
+            `${baseSelector} + .MuiTextField-root`,
+            `${baseSelector} + .MuiInputBase-root`
+        ];
+    }
+
     private generateTestCasesFromUIAnalysis(uiAnalysis: any): any[] {
         const testCases = [];
         
@@ -1994,18 +2131,17 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
                         ]
                     });
                 } else if (element.type === 'selectElements' || element.type === 'filterDropdowns' || element.type === 'filterCheckboxes' ||
-                          (element.text && (element.text.includes('Breed') || element.text.includes('Sex') || element.text.includes('Filter')))) {
+                          (element.text && (element.text.includes('Breed') || element.text.includes('Sex') || element.text.includes('Filter') || 
+                           element.text.includes('Tumor Classification') || element.text.includes('tumor_classification') || 
+                           element.text.includes('Diagnosis') || element.text.includes('Case ID')))) {
                     console.log(`✅ Creating filter test for element: ${elementText}`);
                     
-                    // Determine test values based on element content
-                    let testValues = ['Option 1', 'Option 2'];
-                    if (elementText.includes('Sex')) {
-                        testValues = ['Female', 'Male'];
-                    } else if (elementText.includes('Breed')) {
-                        testValues = ['Boxer', 'Golden Retriever', 'German Shepherd'];
-                    } else if (elementText.includes('Diagnosis')) {
-                        testValues = ['Lymphoma', 'Cancer', 'Tumor'];
-                    }
+                    // Dynamically extract test values from TSV data based on field name
+                    const fieldName = this.extractFieldNameFromElementText(elementText);
+                    const testValues = this.getTestValuesFromTSVData(fieldName);
+                    
+                    console.log(`🎯 Extracted field name: "${fieldName}" from element text: "${elementText}"`);
+                    console.log(`🎯 Test values from TSV:`, testValues);
                     
                     testCases.push({
                         name: `${elementText} Filter Test`,
@@ -2022,7 +2158,7 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
                             `Test clearing the filter by selecting "All" or clearing the selection`,
                             'Verify all records are displayed again'
                         ],
-                        selectors: [element.selector, '.filter-dropdown', '.dropdown-menu', '.filter-options'],
+                        selectors: this.generateFilterSelectors(element.selector),
                         category: 'Data Filtering',
                         type: 'filter_test',
                         priority: 'High',
@@ -2051,15 +2187,12 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
                           (element.text && element.text.toLowerCase().includes('search'))) {
                     console.log(`✅ Creating search test for element: ${elementText}`);
                     
-                    // Determine realistic test search terms based on context
-                    let searchTerms = ['test', 'sample'];
-                    if (elementText.includes('Case ID') || elementText.includes('ID')) {
-                        searchTerms = ['COTC007B-0101', 'COTC007B-0201', 'COTC007B'];
-                    } else if (elementText.includes('Breed')) {
-                        searchTerms = ['Boxer', 'Golden Retriever', 'German Shepherd'];
-                    } else if (elementText.includes('Study')) {
-                        searchTerms = ['COTC007B', 'Clinical Trial', 'Study'];
-                    }
+                    // Dynamically extract search terms from TSV data based on field name
+                    const fieldName = this.extractFieldNameFromElementText(elementText);
+                    const searchTerms = this.getTestValuesFromTSVData(fieldName);
+                    
+                    console.log(`🔍 Extracted field name: "${fieldName}" from element text: "${elementText}"`);
+                    console.log(`🔍 Search terms from TSV:`, searchTerms);
                     
                     testCases.push({
                         name: `${elementText} Search Test`,
@@ -2078,7 +2211,7 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
                             'Test with an invalid/non-existent search term',
                             'Verify appropriate "no results" message is shown'
                         ],
-                        selectors: [element.selector, '.search-input', '.search-button', '.search-results'],
+                        selectors: this.generateSearchSelectors(element.selector),
                         category: 'Data Search',
                         type: 'search_test',
                         priority: 'High',

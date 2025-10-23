@@ -61,6 +61,11 @@ export class UniversalTestGenerator {
     return tests;
   }
 
+  // Generate dynamic sort test values
+  private generateSortTestValues(): string[] {
+    return ['asc', 'desc'];
+  }
+
   // Add validation method
   private isValidConnection(connection: TestableConnection): boolean {
     return !!(
@@ -199,7 +204,7 @@ export class UniversalTestGenerator {
       priority: 'Medium',
       dataField: connection.dataField,
       uiElement: connection.uiElement,
-      testValues: connection.testValues || ['asc', 'desc'],
+      testValues: connection.testValues || this.generateSortTestValues(),
       steps: [
         `Navigate to the page with ${connection.dataField} sortable element`,
         `Click on ${connection.dataField} sort element`,
