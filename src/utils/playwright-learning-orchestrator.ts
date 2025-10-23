@@ -1329,17 +1329,17 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
         // Extract UI elements from ALL detected elements, not just specific categories
         const uiElementTexts = [
             // Get text from all detected element types
-            ...uiAnalysis.filters?.map((f: any) => f.text) || [],
-            ...uiAnalysis.dropdowns?.map((d: any) => d.text) || [],
-            ...uiAnalysis.tables?.flatMap((t: any) => t.columns) || [],
-            ...uiAnalysis.searchBoxes?.map((s: any) => s.text || s.placeholder) || [],
-            ...uiAnalysis.buttons?.map((b: any) => b.text) || [],
-            ...uiAnalysis.forms?.map((f: any) => f.text) || [],
-            ...uiAnalysis.navigation?.map((n: any) => n.text) || [],
-            ...uiAnalysis.charts?.map((c: any) => c.text) || [],
+            ...uiAnalysis.filters?.map((f: any) => f.text || f.ariaLabel || f.selector) || [],
+            ...uiAnalysis.dropdowns?.map((d: any) => d.text || d.ariaLabel || d.selector) || [],
+            ...uiAnalysis.tables?.flatMap((t: any) => t.columns || [t.text || t.selector]) || [],
+            ...uiAnalysis.searchBoxes?.map((s: any) => s.text || s.placeholder || s.ariaLabel || s.selector) || [],
+            ...uiAnalysis.buttons?.map((b: any) => b.text || b.ariaLabel || b.selector) || [],
+            ...uiAnalysis.forms?.map((f: any) => f.text || f.ariaLabel || f.selector) || [],
+            ...uiAnalysis.navigation?.map((n: any) => n.text || n.ariaLabel || n.selector) || [],
+            ...uiAnalysis.charts?.map((c: any) => c.text || c.ariaLabel || c.selector) || [],
             // Also check interactiveElements and dataComponents
-            ...uiAnalysis.interactiveElements?.map((e: any) => e.text) || [],
-            ...uiAnalysis.dataComponents?.map((d: any) => d.text || d.columns?.join(' ')) || []
+            ...uiAnalysis.interactiveElements?.map((e: any) => e.text || e.ariaLabel || e.selector) || [],
+            ...uiAnalysis.dataComponents?.map((d: any) => d.text || d.columns?.join(' ') || d.selector) || []
         ].filter(Boolean);
         
         console.log(`🔍 Debug UI Analysis:`, {
