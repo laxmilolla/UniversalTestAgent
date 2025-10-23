@@ -1683,6 +1683,28 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
     private convertToFilterElements(uiAnalysis: any): any[] {
         const filters: any[] = [];
         
+        // Convert dropdowns to filters
+        if (uiAnalysis.dropdowns && uiAnalysis.dropdowns.length > 0) {
+            uiAnalysis.dropdowns.forEach(dropdown => {
+                filters.push({
+                    selector: dropdown.selector,
+                    type: 'dropdown',
+                    options: dropdown.options || []
+                });
+            });
+        }
+        
+        // Convert checkboxes to filters
+        if (uiAnalysis.checkboxes && uiAnalysis.checkboxes.length > 0) {
+            uiAnalysis.checkboxes.forEach(checkbox => {
+                filters.push({
+                    selector: checkbox.selector,
+                    type: 'checkbox',
+                    options: checkbox.options || []
+                });
+            });
+        }
+        
         // Convert screenshot-detected filters
         if (uiAnalysis.filters && uiAnalysis.filters.length > 0) {
             uiAnalysis.filters.forEach(filter => {
@@ -1694,38 +1716,23 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
             });
         }
         
-        // Convert forms that are filters (dropdowns, checkboxes)
-        if (uiAnalysis.forms && uiAnalysis.forms.length > 0) {
-            uiAnalysis.forms.forEach(form => {
-                if (form.type === 'dropdown' || form.type === 'checkbox') {
-                    filters.push({
-                        selector: form.selector,
-                        type: form.type,
-                        options: form.options || []
-                    });
-                }
-            });
-        }
-        
-        // Convert interactive elements that are filters
-        if (uiAnalysis.interactiveElements && uiAnalysis.interactiveElements.length > 0) {
-            uiAnalysis.interactiveElements.forEach(element => {
-                if (element.type === 'dropdown' || element.type === 'checkbox') {
-                    filters.push({
-                        selector: element.selector,
-                        type: element.type,
-                        options: element.options || []
-                    });
-                }
-            });
-        }
-        
         console.log('🔄 Converted filters:', filters);
         return filters;
     }
 
     private convertToSearchElements(uiAnalysis: any): any[] {
         const search: any[] = [];
+        
+        // Convert searchBoxes to search elements
+        if (uiAnalysis.searchBoxes && uiAnalysis.searchBoxes.length > 0) {
+            uiAnalysis.searchBoxes.forEach(searchBox => {
+                search.push({
+                    selector: searchBox.selector,
+                    type: 'search',
+                    placeholder: searchBox.placeholder || ''
+                });
+            });
+        }
         
         // Convert forms that are search inputs
         if (uiAnalysis.forms && uiAnalysis.forms.length > 0) {
