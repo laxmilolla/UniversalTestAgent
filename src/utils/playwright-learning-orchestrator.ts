@@ -497,6 +497,8 @@ private async performPlaywrightDOMAnalysis(): Promise<any> {
                         id: el.id,
                         text: el.textContent?.trim().substring(0, 50) || ''
                     })));
+                } else {
+                    console.log(`🔍 ${query.name}: No elements found`);
                 }
                 
                 elements[query.name] = queryResult.map((el: any, index: number) => {
