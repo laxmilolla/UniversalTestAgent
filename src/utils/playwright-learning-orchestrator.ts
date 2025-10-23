@@ -395,30 +395,15 @@ async analyzeRealUI(pageContent: string, pageText: string, screenshot: any, exis
         const domAnalysis = await this.performPlaywrightDOMAnalysis();
         console.log('🎯 DOM Elements Found:', domAnalysis);
         
-        // Phase 2: Enhanced HTML pattern detection (Backup)
-        console.log('Phase 2: Enhanced HTML Pattern Detection...');
-        console.log('⚠️ UniversalPatternDetector removed - using simple fallback');
-        const htmlPatterns = { filters: [], dropdowns: [], searchBoxes: [], buttons: [], forms: [], tables: [] };
-        console.log('🎯 HTML Patterns:', htmlPatterns);
+        // Pure AI system: Use ONLY DOM analysis - NO HTML backup
+        console.log('✅ Pure AI DOM Analysis Complete:', domAnalysis);
         
-        // Phase 3: Combine DOM and HTML analysis
-        console.log('Phase 3: Combining DOM and HTML Analysis...');
-        const combinedResult = this.combineDOMAndHTMLAnalysis(domAnalysis, htmlPatterns);
-        
-        console.log('✅ Combined Analysis:', combinedResult);
-        
-        return combinedResult;
+        return domAnalysis;
         
     } catch (error) {
-        console.error('Error in Playwright DOM analysis:', error);
-        // Fallback to HTML-only analysis with enhanced detection
-        console.log('⚠️ UniversalPatternDetector removed - using simple fallback');
-        const htmlPatterns = { filters: [], dropdowns: [], searchBoxes: [], buttons: [], forms: [], tables: [] };
-        
-        // Enhance HTML patterns with simple regex-based detection
-        const enhancedPatterns = this.enhanceHTMLPatterns(htmlPatterns, pageContent);
-        
-        return this.convertHTMLPatternsToResult(enhancedPatterns);
+        console.error('❌ Pure AI System Failure: Playwright DOM analysis failed:', error);
+        console.error('❌ NO FALLBACK AVAILABLE - Fix the root cause and try again.');
+        throw new Error(`Pure AI system failure: Playwright DOM analysis failed. ${error.message}. NO FALLBACK AVAILABLE.`);
     }
 }
 
@@ -541,14 +526,25 @@ private async performPlaywrightDOMAnalysis(): Promise<any> {
                                    el.className ? `.${el.className.split(' ')[0]}` : 
                                    `${query.selector}:nth-child(${index + 1})`;
                     
+                    // Get text content from multiple sources
+                    const textContent = el.textContent?.trim() || 
+                                      el.innerText?.trim() || 
+                                      el.getAttribute?.('title') || 
+                                      el.getAttribute?.('alt') || 
+                                      el.getAttribute?.('aria-label') || 
+                                      el.placeholder || 
+                                      '';
+                    
                     const elementInfo = {
                         selector: selector,
                         type: query.name.slice(0, -1), // Remove 's' from plural
-                        text: el.textContent?.trim().substring(0, 100) || '',
+                        text: textContent.substring(0, 100),
                         placeholder: el.placeholder || '',
                         ariaLabel: el.getAttribute?.('aria-label') || '',
                         dataTestId: el.getAttribute?.('data-testid') || '',
-                        source: 'playwright-native-tools'
+                        source: 'playwright-native-tools',
+                        tagName: el.tagName,
+                        className: el.className
                     };
                     
                     // Add specific properties for tables
@@ -570,57 +566,19 @@ private async performPlaywrightDOMAnalysis(): Promise<any> {
             }
         }
         
-        // If we found very few elements, try more generic fallback selectors
+        // Pure AI system: NO FALLBACKS - fail explicitly if insufficient elements found
         const totalFound: number = Object.values(elements)
             .filter((arr: any) => Array.isArray(arr))
             .reduce((sum: number, arr: any[]) => sum + arr.length, 0);
         
-        if (totalFound < 5) {
-            console.log('🔍 Found few elements, trying generic fallback selectors...');
-            
-            const fallbackQueries = [
-                { name: 'genericButtons', selector: '[onclick], [data-action], [data-click], [data-toggle]' },
-                { name: 'genericInputs', selector: 'input, textarea, [contenteditable]' },
-                { name: 'genericContainers', selector: '[class*="container"], [class*="wrapper"], [class*="panel"], [class*="section"]' },
-                { name: 'genericLists', selector: 'ul, ol, [role="list"], [class*="list"]' }
-            ];
-            
-            for (const query of fallbackQueries) {
-                try {
-                    console.log(`🔍 Fallback querying ${query.name} with selector: ${query.selector}`);
-                    
-                    const result = await this.mcpClient.callTools([{
-                        name: 'playwright_query_selector_all',
-                        parameters: {
-                            selector: query.selector
-                        },
-                        id: `fallback-${query.name}-${Date.now()}`
-                    }]);
-                    
-                    const queryResult = result[0]?.result || [];
-                    console.log(`🔍 Fallback found ${queryResult.length} ${query.name}`);
-                    
-                    if (queryResult.length > 0) {
-                        // Add to appropriate category based on element type
-                        const elementType = query.name.replace('generic', '').toLowerCase();
-                        if (!elements[elementType]) {
-                            elements[elementType] = [];
-                        }
-                        
-                        elements[elementType] = elements[elementType].concat(queryResult.map((el: any, index: number) => ({
-                            selector: el.id ? `#${el.id}` : 
-                                       el.className ? `.${el.className.split(' ')[0]}` : 
-                                       `${query.selector}:nth-child(${index + 1})`,
-                            type: elementType,
-                            text: el.textContent?.trim().substring(0, 100) || '',
-                            source: 'playwright-fallback'
-                        })));
-                    }
-                    
-                } catch (queryError) {
-                    console.error(`❌ Fallback failed to query ${query.name}:`, queryError);
-                }
-            }
+        if (totalFound < 3) {
+            console.error(`❌ Pure AI System Failure: Only ${totalFound} UI elements detected.`);
+            console.error('❌ This indicates either:');
+            console.error('   1. The target website is not accessible');
+            console.error('   2. The website has no interactive elements');
+            console.error('   3. The selectors are not matching the website structure');
+            console.error('❌ NO FALLBACK AVAILABLE - Fix the root cause and try again.');
+            throw new Error(`Pure AI system failure: Only ${totalFound} UI elements detected. Website may be inaccessible or have no interactive elements. NO FALLBACK AVAILABLE.`);
         }
         
         // Calculate total elements
@@ -1344,14 +1302,39 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
     private async analyzeTSVtoUIMapping(uiAnalysis: any, pageText: string): Promise<any> {
         console.log('\n🧠 LLM: PURE SEMANTIC MAPPING (No Hardcoding)');
         
-        // Extract UI elements
+        // Extract UI elements from ALL detected elements, not just specific categories
         const uiElementTexts = [
+            // Get text from all detected element types
             ...uiAnalysis.filters?.map((f: any) => f.text) || [],
             ...uiAnalysis.dropdowns?.map((d: any) => d.text) || [],
-            ...uiAnalysis.tables?.flatMap((t: any) => t.columns) || []
+            ...uiAnalysis.tables?.flatMap((t: any) => t.columns) || [],
+            ...uiAnalysis.searchBoxes?.map((s: any) => s.text || s.placeholder) || [],
+            ...uiAnalysis.buttons?.map((b: any) => b.text) || [],
+            ...uiAnalysis.forms?.map((f: any) => f.text) || [],
+            ...uiAnalysis.navigation?.map((n: any) => n.text) || [],
+            ...uiAnalysis.charts?.map((c: any) => c.text) || [],
+            // Also check interactiveElements and dataComponents
+            ...uiAnalysis.interactiveElements?.map((e: any) => e.text) || [],
+            ...uiAnalysis.dataComponents?.map((d: any) => d.text || d.columns?.join(' ')) || []
         ].filter(Boolean);
         
+        console.log(`🔍 Debug UI Analysis:`, {
+            filters: uiAnalysis.filters?.length || 0,
+            dropdowns: uiAnalysis.dropdowns?.length || 0,
+            tables: uiAnalysis.tables?.length || 0,
+            searchBoxes: uiAnalysis.searchBoxes?.length || 0,
+            buttons: uiAnalysis.buttons?.length || 0,
+            forms: uiAnalysis.forms?.length || 0,
+            navigation: uiAnalysis.navigation?.length || 0,
+            charts: uiAnalysis.charts?.length || 0,
+            interactiveElements: uiAnalysis.interactiveElements?.length || 0,
+            dataComponents: uiAnalysis.dataComponents?.length || 0,
+            totalElements: uiAnalysis.totalElements || 0,
+            analysisMethod: uiAnalysis.analysisMethod
+        });
+        
         if (uiElementTexts.length === 0) {
+            console.error('❌ No UI element texts found. UI Analysis details:', JSON.stringify(uiAnalysis, null, 2));
             throw new Error('No UI elements detected. Cannot perform LLM mapping.');
         }
         
