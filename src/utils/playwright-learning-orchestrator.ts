@@ -436,8 +436,12 @@ private async performPlaywrightDOMAnalysis(): Promise<any> {
         // First, let's get the actual page content to understand the structure
         let pageContent = '';
         try {
-            const contentResult = await mcp_playwright_get_visible_text();
-            pageContent = contentResult.text || '';
+            const contentResult = await this.mcpClient.callTools([{
+                name: 'playwright_get_visible_text',
+                parameters: {},
+                id: `get-content-${Date.now()}`
+            }]);
+            pageContent = contentResult[0]?.result?.text || '';
             console.log('📄 Page content preview:', pageContent.substring(0, 500));
         } catch (error) {
             console.log('⚠️ Could not get page content:', error);
