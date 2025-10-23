@@ -916,9 +916,15 @@ Return ONLY a JSON response in this exact format:
         .test-details { color: #6c757d; font-size: 0.9em; }
         .screenshots { margin-top: 10px; }
         .screenshot-link { display: inline-block; margin-right: 10px; padding: 5px 10px; background: #007bff; color: white; text-decoration: none; border-radius: 4px; font-size: 0.8em; }
-        .validation-details { margin-top: 10px; padding: 10px; background: #e9ecef; border-radius: 4px; }
+        .validation-details { margin-top: 10px; padding: 15px; background: #f8f9fa; border-radius: 4px; border-left: 4px solid #28a745; }
         .validation-passed { color: #28a745; font-weight: bold; }
         .validation-failed { color: #dc3545; font-weight: bold; }
+        .validation-breakdown { margin: 10px 0; padding: 10px; background: #ffffff; border-radius: 4px; border: 1px solid #dee2e6; }
+        .validation-breakdown h4 { margin: 0 0 10px 0; color: #495057; font-size: 14px; }
+        .validation-check { margin: 8px 0; padding: 8px; background: #f8f9fa; border-radius: 3px; font-size: 13px; }
+        .check-passed { color: #28a745; font-weight: bold; }
+        .check-failed { color: #dc3545; font-weight: bold; }
+        .validation-summary { margin-top: 10px; padding: 8px; background: #e9ecef; border-radius: 3px; font-size: 13px; }
     </style>
 </head>
 <body>
@@ -976,13 +982,54 @@ Return ONLY a JSON response in this exact format:
                     ` : ''}
                     ${result.validation ? `
                         <div class="validation-details">
-                            <strong>TSV Validation:</strong> 
+                            <strong>TSV vs UI Validation:</strong> 
                             <span class="${result.validation.passed ? 'validation-passed' : 'validation-failed'}">
                                 ${result.validation.passed ? 'PASSED' : 'FAILED'}
                             </span><br>
-                            <strong>Expected Count:</strong> ${result.validation.expectedCount} | 
-                            <strong>Actual Count:</strong> ${result.validation.actualCount}<br>
-                            <strong>Message:</strong> ${result.validation.message}
+                            
+                            <div class="validation-breakdown">
+                                <h4>Validation Breakdown:</h4>
+                                
+                                <div class="validation-check">
+                                    <strong>📊 Record Count:</strong> 
+                                    <span class="${result.validation.validationChecks?.countMatch?.passed ? 'check-passed' : 'check-failed'}">
+                                        ${result.validation.validationChecks?.countMatch?.passed ? '✅' : '❌'}
+                                    </span>
+                                    Expected: ${result.validation.expectedCount} | Actual: ${result.validation.actualCount}
+                                    ${result.validation.validationChecks?.countMatch?.difference !== 0 ? 
+                                        ` (Difference: ${result.validation.validationChecks.countMatch.difference > 0 ? '+' : ''}${result.validation.validationChecks.countMatch.difference})` : ''}
+                                </div>
+                                
+                                ${result.validation.validationChecks?.fieldValuesMatch ? `
+                                <div class="validation-check">
+                                    <strong>🔍 Field Values:</strong> 
+                                    <span class="${result.validation.validationChecks.fieldValuesMatch.passed ? 'check-passed' : 'check-failed'}">
+                                        ${result.validation.validationChecks.fieldValuesMatch.passed ? '✅' : '❌'}
+                                    </span>
+                                    ${result.validation.validationChecks.fieldValuesMatch.message}
+                                    ${result.validation.validationChecks.fieldValuesMatch.invalidValues?.length > 0 ? 
+                                        `<br><small>Invalid values: ${result.validation.validationChecks.fieldValuesMatch.invalidValues.join(', ')}</small>` : ''}
+                                </div>
+                                ` : ''}
+                                
+                                ${result.validation.validationChecks?.recordsMatch ? `
+                                <div class="validation-check">
+                                    <strong>🆔 Record IDs:</strong> 
+                                    <span class="${result.validation.validationChecks.recordsMatch.passed ? 'check-passed' : 'check-failed'}">
+                                        ${result.validation.validationChecks.recordsMatch.passed ? '✅' : '❌'}
+                                    </span>
+                                    ${result.validation.validationChecks.recordsMatch.message}
+                                    ${result.validation.validationChecks.recordsMatch.missingIds?.length > 0 ? 
+                                        `<br><small>Missing IDs: ${result.validation.validationChecks.recordsMatch.missingIds.slice(0, 5).join(', ')}${result.validation.validationChecks.recordsMatch.missingIds.length > 5 ? '...' : ''}</small>` : ''}
+                                    ${result.validation.validationChecks.recordsMatch.extraIds?.length > 0 ? 
+                                        `<br><small>Extra IDs: ${result.validation.validationChecks.recordsMatch.extraIds.slice(0, 5).join(', ')}${result.validation.validationChecks.recordsMatch.extraIds.length > 5 ? '...' : ''}</small>` : ''}
+                                </div>
+                                ` : ''}
+                            </div>
+                            
+                            <div class="validation-summary">
+                                <strong>📋 Summary:</strong> ${result.validation.message}
+                            </div>
                         </div>
                     ` : ''}
                     ${result.error ? `

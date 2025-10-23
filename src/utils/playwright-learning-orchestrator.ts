@@ -1996,57 +1996,113 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
                 } else if (element.type === 'selectElements' || element.type === 'filterDropdowns' || element.type === 'filterCheckboxes' ||
                           (element.text && (element.text.includes('Breed') || element.text.includes('Sex') || element.text.includes('Filter')))) {
                     console.log(`✅ Creating filter test for element: ${elementText}`);
+                    
+                    // Determine test values based on element content
+                    let testValues = ['Option 1', 'Option 2'];
+                    if (elementText.includes('Sex')) {
+                        testValues = ['Female', 'Male'];
+                    } else if (elementText.includes('Breed')) {
+                        testValues = ['Boxer', 'Golden Retriever', 'German Shepherd'];
+                    } else if (elementText.includes('Diagnosis')) {
+                        testValues = ['Lymphoma', 'Cancer', 'Tumor'];
+                    }
+                    
                     testCases.push({
-                        name: `Filter Test - ${elementText}`,
-                        description: `Test that ${elementText} filter works correctly and returns expected results`,
+                        name: `${elementText} Filter Test`,
+                        description: `Test that ${elementText} filter dropdown works correctly and filters data appropriately`,
                         steps: [
-                            'Navigate to the page',
-                            `Click on ${elementText} filter element`,
-                            'Select a test value from the filter options',
-                            'Verify filtered results are displayed',
-                            'Check that all displayed records match the selected filter value',
-                            'Verify result count matches expected count'
+                            `Navigate to ${this.currentWebsiteUrl}`,
+                            `Locate the ${elementText} filter dropdown`,
+                            `Click on the ${elementText} filter dropdown to open options`,
+                            `Select "${testValues[0]}" from the dropdown options`,
+                            'Wait for the page to update with filtered results',
+                            'Verify that only records with the selected value are displayed',
+                            `Check that the filter shows "${testValues[0]}" as selected`,
+                            'Verify the result count reflects the filtered data',
+                            `Test clearing the filter by selecting "All" or clearing the selection`,
+                            'Verify all records are displayed again'
                         ],
-                        selectors: [element.selector],
-                        category: 'Search & Filter',
+                        selectors: [element.selector, '.filter-dropdown', '.dropdown-menu', '.filter-options'],
+                        category: 'Data Filtering',
                         type: 'filter_test',
-                        priority: 'high',
+                        priority: 'High',
                         source: element.source || 'ui-analysis',
                         websiteUrl: this.currentWebsiteUrl,
+                        testValues: testValues,
+                        dataField: elementText,
                         expectedResults: [
-                            'Filter element is clickable and responsive',
-                            'Selected value is properly highlighted',
-                            'Results are filtered correctly',
-                            'All displayed records match the selected filter value',
-                            'Result count is accurate',
-                            'No unrelated records are displayed'
+                            'Filter dropdown opens when clicked',
+                            'All available filter options are displayed',
+                            'Selected option is highlighted/selected correctly',
+                            'Page updates to show only matching records',
+                            'Filter state is visually indicated (badge, highlight, etc.)',
+                            'Result count updates to reflect filtered data',
+                            'Filter can be cleared to show all records',
+                            'No JavaScript errors occur during filtering'
+                        ],
+                        validationCriteria: [
+                            'All displayed records must match the selected filter value',
+                            'Filter UI must clearly show the current selection',
+                            'Result count must be accurate for the filtered data',
+                            'Performance: Filter should respond within 2 seconds'
                         ]
                     });
                 } else if (element.type === 'searchBoxes' || element.type === 'inputElements' || element.type === 'searchInputs' ||
                           (element.text && element.text.toLowerCase().includes('search'))) {
                     console.log(`✅ Creating search test for element: ${elementText}`);
+                    
+                    // Determine realistic test search terms based on context
+                    let searchTerms = ['test', 'sample'];
+                    if (elementText.includes('Case ID') || elementText.includes('ID')) {
+                        searchTerms = ['COTC007B-0101', 'COTC007B-0201', 'COTC007B'];
+                    } else if (elementText.includes('Breed')) {
+                        searchTerms = ['Boxer', 'Golden Retriever', 'German Shepherd'];
+                    } else if (elementText.includes('Study')) {
+                        searchTerms = ['COTC007B', 'Clinical Trial', 'Study'];
+                    }
+                    
                     testCases.push({
-                        name: `Search Test - ${elementText}`,
-                        description: `Test that search functionality works correctly`,
+                        name: `${elementText} Search Test`,
+                        description: `Test that ${elementText} search functionality works correctly with various search terms`,
                         steps: [
-                            'Navigate to the page',
-                            `Enter a test search term in ${elementText}`,
-                            'Verify search results are displayed',
-                            'Check that results match the search term',
-                            'Clear search and verify all results return'
+                            `Navigate to ${this.currentWebsiteUrl}`,
+                            `Locate the ${elementText} search input field`,
+                            `Click on the search input to focus it`,
+                            `Type "${searchTerms[0]}" in the search field`,
+                            'Press Enter or click the search button',
+                            'Wait for search results to load',
+                            'Verify that results contain the search term',
+                            'Check that the search term is highlighted in results',
+                            'Test with a partial match by typing a shorter version',
+                            'Clear the search field and verify all results return',
+                            'Test with an invalid/non-existent search term',
+                            'Verify appropriate "no results" message is shown'
                         ],
-                        selectors: [element.selector],
-                        category: 'Search & Filter',
+                        selectors: [element.selector, '.search-input', '.search-button', '.search-results'],
+                        category: 'Data Search',
                         type: 'search_test',
-                        priority: 'medium',
+                        priority: 'High',
                         source: element.source || 'ui-analysis',
                         websiteUrl: this.currentWebsiteUrl,
+                        testValues: searchTerms,
+                        dataField: elementText,
                         expectedResults: [
-                            'Search box accepts input',
-                            'Search results are displayed correctly',
-                            'Results match the search term',
-                            'Search can be cleared',
-                            'All results return when search is cleared'
+                            'Search input accepts text input correctly',
+                            'Search executes when Enter is pressed or search button clicked',
+                            'Results are returned within 3 seconds',
+                            'All displayed results contain the search term',
+                            'Search term is highlighted in the results',
+                            'Partial matches work correctly',
+                            'Search can be cleared to show all results',
+                            'No results message appears for invalid searches',
+                            'Search is case-insensitive (if applicable)',
+                            'No JavaScript errors occur during search'
+                        ],
+                        validationCriteria: [
+                            'Search results must contain the search term',
+                            'Search performance must be under 3 seconds',
+                            'Clear functionality must restore all results',
+                            'Invalid searches must show appropriate messaging'
                         ]
                     });
                 } else {

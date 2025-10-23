@@ -190,21 +190,38 @@ export class SimpleRAGClient {
     private generateValidationMessage(validation: any, expectedResults: any, actualRecords: any[]): string {
         const messages = [];
         
-        if (!validation.countMatch.passed) {
-            messages.push(validation.countMatch.message);
-        }
-        if (!validation.fieldValuesMatch.passed) {
-            messages.push(validation.fieldValuesMatch.message);
-        }
-        if (!validation.recordsMatch.passed) {
-            messages.push(validation.recordsMatch.message);
+        // Count validation
+        if (validation.countMatch.passed) {
+            messages.push(`✅ Record count matches TSV: ${actualRecords.length} records`);
+        } else {
+            messages.push(`❌ Record count mismatch: Expected ${validation.countMatch.expectedCount} from TSV, got ${validation.countMatch.actualCount} from UI`);
         }
         
-        if (messages.length === 0) {
-            return `✅ All validations passed: UI results match TSV gold standard (${actualRecords.length} records)`;
+        // Field values validation
+        if (validation.fieldValuesMatch.passed) {
+            messages.push(`✅ All ${validation.fieldValuesMatch.fieldName} values match TSV data`);
+        } else {
+            messages.push(`❌ Invalid ${validation.fieldValuesMatch.fieldName} values found: ${validation.fieldValuesMatch.invalidValues?.length || 0} mismatches`);
         }
         
-        return `❌ Validation failed:\n${messages.join('\n')}`;
+        // Record IDs validation
+        if (validation.recordsMatch.passed) {
+            messages.push(`✅ All record IDs match TSV data`);
+        } else {
+            const missing = validation.recordsMatch.missingIds?.length || 0;
+            const extra = validation.recordsMatch.extraIds?.length || 0;
+            messages.push(`❌ Record ID mismatches: ${missing} missing, ${extra} extra`);
+        }
+        
+        const allPassed = validation.countMatch.passed && 
+                         validation.fieldValuesMatch.passed && 
+                         validation.recordsMatch.passed;
+        
+        if (allPassed) {
+            return `🎯 Perfect Match: UI results exactly match TSV gold standard (${actualRecords.length} records validated)`;
+        }
+        
+        return `⚠️ Validation Issues Found:\n${messages.join('\n')}`;
     }
 
     // Create stratified sample for large TSV files
