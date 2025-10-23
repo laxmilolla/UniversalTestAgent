@@ -1327,20 +1327,34 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
         console.log('\n🧠 LLM: PURE SEMANTIC MAPPING (No Hardcoding)');
         
         // Extract UI elements from ALL detected elements, not just specific categories
+        // Use actual visible text content, not CSS selectors
         const uiElementTexts = [
-            // Get text from all detected element types
-            ...uiAnalysis.filters?.map((f: any) => f.text || f.ariaLabel || f.selector) || [],
-            ...uiAnalysis.dropdowns?.map((d: any) => d.text || d.ariaLabel || d.selector) || [],
-            ...uiAnalysis.tables?.flatMap((t: any) => t.columns || [t.text || t.selector]) || [],
-            ...uiAnalysis.searchBoxes?.map((s: any) => s.text || s.placeholder || s.ariaLabel || s.selector) || [],
-            ...uiAnalysis.buttons?.map((b: any) => b.text || b.ariaLabel || b.selector) || [],
-            ...uiAnalysis.forms?.map((f: any) => f.text || f.ariaLabel || f.selector) || [],
-            ...uiAnalysis.navigation?.map((n: any) => n.text || n.ariaLabel || n.selector) || [],
-            ...uiAnalysis.charts?.map((c: any) => c.text || c.ariaLabel || c.selector) || [],
+            // Get text from all detected element types - prioritize actual text content
+            ...uiAnalysis.filters?.map((f: any) => f.text || f.ariaLabel || f.dataTestId) || [],
+            ...uiAnalysis.dropdowns?.map((d: any) => d.text || d.ariaLabel || d.dataTestId) || [],
+            ...uiAnalysis.tables?.flatMap((t: any) => t.columns || [t.text || t.ariaLabel]) || [],
+            ...uiAnalysis.searchBoxes?.map((s: any) => s.text || s.placeholder || s.ariaLabel || s.dataTestId) || [],
+            ...uiAnalysis.buttons?.map((b: any) => b.text || b.ariaLabel || b.dataTestId) || [],
+            ...uiAnalysis.forms?.map((f: any) => f.text || f.ariaLabel || f.dataTestId) || [],
+            ...uiAnalysis.navigation?.map((n: any) => n.text || n.ariaLabel || n.dataTestId) || [],
+            ...uiAnalysis.charts?.map((c: any) => c.text || c.ariaLabel || c.dataTestId) || [],
             // Also check interactiveElements and dataComponents
-            ...uiAnalysis.interactiveElements?.map((e: any) => e.text || e.ariaLabel || e.selector) || [],
-            ...uiAnalysis.dataComponents?.map((d: any) => d.text || d.columns?.join(' ') || d.selector) || []
+            ...uiAnalysis.interactiveElements?.map((e: any) => e.text || e.ariaLabel || e.dataTestId) || [],
+            ...uiAnalysis.dataComponents?.map((d: any) => d.text || d.columns?.join(' ') || d.ariaLabel) || []
         ].filter(Boolean);
+        
+        // If we still don't have meaningful text, get visible text from the page
+        if (uiElementTexts.length === 0 || uiElementTexts.every(text => text.includes('nth-child') || text.includes(':'))) {
+            console.log('🔍 No meaningful UI text found, extracting visible text from page...');
+            try {
+                const visibleText = pageText.substring(0, 2000); // Get first 2000 chars of visible text
+                const words = visibleText.split(/\s+/).filter(word => word.length > 2);
+                uiElementTexts.push(...words.slice(0, 20)); // Add first 20 meaningful words
+                console.log(`🔍 Extracted ${words.length} words from page text`);
+            } catch (error) {
+                console.error('❌ Failed to extract visible text:', error);
+            }
+        }
         
         console.log(`🔍 Debug UI Analysis:`, {
             filters: uiAnalysis.filters?.length || 0,
