@@ -134,8 +134,20 @@ export class UIStateCapturer {
             for (const selector of selectors) {
                 try {
                     const result = await this.mcpClient.callTools([{
-                        name: 'query_selector_all',
-                        parameters: { selector },
+                        name: 'playwright_evaluate',
+                        parameters: { 
+                            script: `Array.from(document.querySelectorAll('${selector}')).map(el => ({
+                                tagName: el.tagName,
+                                id: el.id,
+                                className: el.className,
+                                textContent: el.textContent?.trim(),
+                                innerHTML: el.innerHTML,
+                                attributes: Array.from(el.attributes).reduce((acc, attr) => {
+                                    acc[attr.name] = attr.value;
+                                    return acc;
+                                }, {})
+                            }))`
+                        },
                         id: `get-count-${Date.now()}`
                     }]);
                     
@@ -178,8 +190,20 @@ export class UIStateCapturer {
             for (const selector of dropdownSelectors) {
                 try {
                     const result = await this.mcpClient.callTools([{
-                        name: 'query_selector_all',
-                        parameters: { selector },
+                        name: 'playwright_evaluate',
+                        parameters: { 
+                            script: `Array.from(document.querySelectorAll('${selector}')).map(el => ({
+                                tagName: el.tagName,
+                                id: el.id,
+                                className: el.className,
+                                textContent: el.textContent?.trim(),
+                                innerHTML: el.innerHTML,
+                                attributes: Array.from(el.attributes).reduce((acc, attr) => {
+                                    acc[attr.name] = attr.value;
+                                    return acc;
+                                }, {})
+                            }))`
+                        },
                         id: `get-dropdowns-${Date.now()}`
                     }]);
                     
@@ -220,8 +244,20 @@ export class UIStateCapturer {
     private async getTableRowCount(): Promise<number> {
         try {
             const result = await this.mcpClient.callTools([{
-                name: 'query_selector_all',
-                parameters: { selector: 'table tbody tr' },
+                name: 'playwright_evaluate',
+                parameters: { 
+                    script: `Array.from(document.querySelectorAll('table tbody tr')).map(el => ({
+                        tagName: el.tagName,
+                        id: el.id,
+                        className: el.className,
+                        textContent: el.textContent?.trim(),
+                        innerHTML: el.innerHTML,
+                        attributes: Array.from(el.attributes).reduce((acc, attr) => {
+                            acc[attr.name] = attr.value;
+                            return acc;
+                        }, {})
+                    }))`
+                },
                 id: `get-table-rows-${Date.now()}`
             }]);
             

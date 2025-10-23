@@ -144,10 +144,9 @@ export class PlaywrightLearningOrchestrator {
                 // Wait for common React/Material-UI components to appear
                 try {
                     await this.mcpClient.callTools([{
-                        name: 'wait_for_element',
+                        name: 'playwright_evaluate',
                         parameters: { 
-                            selector: '.MuiButton-root, [data-testid], .data-table, .filter-panel',
-                            timeout: 10000 
+                            script: `document.querySelector('.MuiButton-root, [data-testid], .data-table, .filter-panel') !== null`
                         },
                         id: 'wait-for-components-' + Date.now()
                     }]);

@@ -231,8 +231,20 @@ export class ActiveUIExplorer {
             
             for (const selector of selectors) {
             const result = await this.mcpClient.callTools([{
-                name: 'query_selector_all',
-                parameters: { selector },
+                name: 'playwright_evaluate',
+                parameters: { 
+                    script: `Array.from(document.querySelectorAll('${selector}')).map(el => ({
+                        tagName: el.tagName,
+                        id: el.id,
+                        className: el.className,
+                        textContent: el.textContent?.trim(),
+                        innerHTML: el.innerHTML,
+                        attributes: Array.from(el.attributes).reduce((acc, attr) => {
+                            acc[attr.name] = attr.value;
+                            return acc;
+                        }, {})
+                    }))`
+                },
                 id: `discover-dropdowns-${Date.now()}`
             }]);
                 
@@ -272,8 +284,20 @@ export class ActiveUIExplorer {
             
             for (const selector of selectors) {
             const result = await this.mcpClient.callTools([{
-                name: 'query_selector_all',
-                parameters: { selector },
+                name: 'playwright_evaluate',
+                parameters: { 
+                    script: `Array.from(document.querySelectorAll('${selector}')).map(el => ({
+                        tagName: el.tagName,
+                        id: el.id,
+                        className: el.className,
+                        textContent: el.textContent?.trim(),
+                        innerHTML: el.innerHTML,
+                        attributes: Array.from(el.attributes).reduce((acc, attr) => {
+                            acc[attr.name] = attr.value;
+                            return acc;
+                        }, {})
+                    }))`
+                },
                 id: `discover-search-${Date.now()}`
             }]);
                 
@@ -307,8 +331,20 @@ export class ActiveUIExplorer {
     private async getDropdownOptions(selector: string): Promise<string[]> {
         try {
             const result = await this.mcpClient.callTools([{
-                name: 'query_selector_all',
-                parameters: { selector: `${selector} option` },
+                name: 'playwright_evaluate',
+                parameters: { 
+                    script: `Array.from(document.querySelectorAll('${selector} option')).map(el => ({
+                        tagName: el.tagName,
+                        id: el.id,
+                        className: el.className,
+                        textContent: el.textContent?.trim(),
+                        value: el.value,
+                        attributes: Array.from(el.attributes).reduce((acc, attr) => {
+                            acc[attr.name] = attr.value;
+                            return acc;
+                        }, {})
+                    }))`
+                },
                 id: `get-options-${Date.now()}`
             }]);
             
