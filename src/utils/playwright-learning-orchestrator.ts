@@ -597,12 +597,67 @@ private async performPlaywrightDOMAnalysis(): Promise<any> {
         });
         elements.totalElements = totalElements;
         
+        // Map elements to the expected result structure
+        const result = {
+            filters: [],
+            dropdowns: [],
+            checkboxes: [],
+            searchBoxes: [],
+            buttons: [],
+            forms: [],
+            tables: [],
+            navigation: [],
+            charts: [],
+            totalElements: 0,
+            analysisMethod: 'playwright-native-tools',
+            domElements: 0,
+            htmlElements: 0,
+            confidence: 0.9
+        };
+        
+        // Map elements to appropriate categories
+        if (elements.selectElements) {
+            result.dropdowns = elements.selectElements;
+        }
+        if (elements.inputElements) {
+            result.searchBoxes = elements.inputElements;
+        }
+        if (elements.clickableElements) {
+            result.buttons = elements.clickableElements;
+        }
+        if (elements.tableHeaders) {
+            result.tables = elements.tableHeaders;
+        }
+        if (elements.textElements) {
+            // Add text elements to appropriate categories based on content
+            elements.textElements.forEach((el: any) => {
+                if (el.text.toLowerCase().includes('breed') || el.text.toLowerCase().includes('sex') || el.text.toLowerCase().includes('case')) {
+                    result.filters.push(el);
+                }
+            });
+        }
+        
+        // Calculate total elements
+        result.totalElements = result.filters.length + result.dropdowns.length + result.checkboxes.length + 
+                              result.searchBoxes.length + result.buttons.length + result.forms.length + 
+                              result.tables.length + result.navigation.length + result.charts.length;
+        
         console.log('✅ Native Playwright DOM analysis completed:', {
-            totalElements: elements.totalElements,
-            breakdown: Object.keys(elements).map(key => ({ [key]: Array.isArray(elements[key]) ? elements[key].length : 0 }))
+            totalElements: result.totalElements,
+            breakdown: {
+                filters: result.filters.length,
+                dropdowns: result.dropdowns.length,
+                checkboxes: result.checkboxes.length,
+                searchBoxes: result.searchBoxes.length,
+                buttons: result.buttons.length,
+                forms: result.forms.length,
+                tables: result.tables.length,
+                navigation: result.navigation.length,
+                charts: result.charts.length
+            }
         });
         
-        return elements;
+        return result;
         
     } catch (error) {
         console.error('❌ Native Playwright DOM analysis failed:', error);
