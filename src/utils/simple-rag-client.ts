@@ -127,16 +127,27 @@ export class SimpleRAGClient {
     }
 
     private validateCount(actualCount: number, expectedCount: number): any {
-        const passed = actualCount === expectedCount;
+        // Detect false positive: both counts are 0 but there should be data
+        const isFalsePositive = actualCount === 0 && expectedCount === 0;
+        const passed = actualCount === expectedCount && !isFalsePositive;
+        
+        let message;
+        if (isFalsePositive) {
+            message = `⚠️ FALSE POSITIVE: Both expected and actual counts are 0 - this suggests no data was found in UI or TSV`;
+        } else if (passed) {
+            message = `Count matches TSV: ${actualCount} records`;
+        } else {
+            message = `Count mismatch: Expected ${expectedCount} from TSV, got ${actualCount} from UI`;
+        }
+        
         return {
             checkType: 'count',
             passed: passed,
-            message: passed ? 
-                `Count matches TSV: ${actualCount} records` : 
-                `Count mismatch: Expected ${expectedCount} from TSV, got ${actualCount} from UI`,
+            message: message,
             expectedCount,
             actualCount,
-            difference: actualCount - expectedCount
+            difference: actualCount - expectedCount,
+            isFalsePositive: isFalsePositive
         };
     }
 
@@ -189,6 +200,15 @@ export class SimpleRAGClient {
 
     private generateValidationMessage(validation: any, expectedResults: any, actualRecords: any[]): string {
         const messages = [];
+        
+        // Check for false positive first
+        if (validation.countMatch.isFalsePositive) {
+            return `🚨 FALSE POSITIVE DETECTED: Both TSV and UI returned 0 records for "${expectedResults.dataField}" filter. This suggests:\n` +
+                   `• TSV data may not contain records with "${expectedResults.filterValue}" value\n` +
+                   `• UI data extraction may have failed\n` +
+                   `• Filter may not be working correctly\n` +
+                   `• Test case may be targeting non-existent data`;
+        }
         
         // Count validation
         if (validation.countMatch.passed) {

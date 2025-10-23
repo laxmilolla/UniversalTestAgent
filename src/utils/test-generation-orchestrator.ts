@@ -548,49 +548,126 @@ Return JSON in this format:
     // Extract actual screenshot path from Playwright MCP response
     const beforeScreenshotPath = this.extractScreenshotPath(beforeScreenshotResult);
     
-    // Apply filter based on test case
+    // Apply filter based on test case with enhanced logic
     if (testCase.type === 'filter_test') {
-      // Click filter dropdown
-      await this.mcpClient.callTools([{
-        id: 'click-filter-' + Date.now(),
-        name: 'playwright_click',
-        parameters: { selector: testCase.selectors[0] }
-      }]);
+      console.log(`🔍 Applying filter: ${testCase.dataField} = ${testCase.testValues[0]}`);
       
-      // Select filter value
-      await this.mcpClient.callTools([{
-        id: 'fill-filter-' + Date.now(),
-        name: 'playwright_fill',
-        parameters: { 
-          selector: testCase.selectors[0],
-          value: testCase.testValues[0]
-        }
-      }]);
+      // Try multiple approaches to find and apply the filter
+      const filterApplied = await this.applyFilterWithMultipleStrategies(testCase);
       
-      // Wait for results
-      await this.mcpClient.callTools([{
-        id: 'wait-results-' + Date.now(),
-        name: 'playwright_wait_for',
-        parameters: { selector: '[data-screenshot-table] tr', timeout: 5000 }
-      }]);
+      if (!filterApplied) {
+        console.warn(`⚠️ Could not apply filter for ${testCase.dataField}`);
+      }
+      
+      // Wait for filtered results to load
+      await this.waitForFilteredResults(testCase);
     }
     
-    // Extract actual results from UI
+    // Extract actual results from UI with multiple fallback selectors
     const results = await this.mcpClient.callTools([{
       id: 'evaluate-results-' + Date.now(),
       name: 'playwright_evaluate',
       parameters: {
         expression: `
-          const tableRows = document.querySelectorAll('[data-screenshot-table] tr:not(:first-child)');
-          Array.from(tableRows).map(row => {
-            const cells = Array.from(row.querySelectorAll('td'));
-            return {
-              field1: cells[0]?.textContent?.trim(),
-              field2: cells[1]?.textContent?.trim(),
-              field3: cells[2]?.textContent?.trim(),
-              field4: cells[3]?.textContent?.trim()
-            };
+          // Try multiple table selectors to find data
+          const selectors = [
+            '[data-screenshot-table] tr:not(:first-child)',
+            'table tr:not(:first-child)',
+            '.data-table tr:not(:first-child)',
+            '.MuiTableBody-root tr',
+            '[role="table"] tr:not(:first-child)',
+            '.table tbody tr',
+            'tbody tr'
+          ];
+          
+          let tableRows = [];
+          for (const selector of selectors) {
+            tableRows = document.querySelectorAll(selector);
+            if (tableRows.length > 0) {
+              console.log('Found table with selector:', selector, 'rows:', tableRows.length);
+              break;
+            }
+          }
+          
+          if (tableRows.length === 0) {
+            console.log('No table rows found with any selector');
+            return [];
+          }
+          
+          // Extract data from table rows
+          const extractedData = Array.from(tableRows).map((row, index) => {
+            const cells = Array.from(row.querySelectorAll('td, th'));
+            const rowData = {};
+            
+            // Map cells to field names based on position
+            cells.forEach((cell, cellIndex) => {
+              const cellText = cell.textContent?.trim();
+              if (cellText) {
+                rowData[\`field\${cellIndex + 1}\`] = cellText;
+                
+                // Try to identify specific fields by content with better matching
+                const lowerText = cellText.toLowerCase();
+                
+                // Tumor classification patterns
+                if (lowerText.includes('tumor') || lowerText.includes('classification') || 
+                    lowerText.includes('grade') || lowerText.includes('stage') ||
+                    lowerText.includes('malignant') || lowerText.includes('benign')) {
+                  rowData.tumor_classification = cellText;
+                }
+                
+                // Breed patterns
+                if (lowerText.includes('breed') || lowerText.includes('species') ||
+                    lowerText.includes('dog') || lowerText.includes('canine')) {
+                  rowData.breed = cellText;
+                }
+                
+                // Sex/Gender patterns
+                if (lowerText.includes('sex') || lowerText.includes('gender') ||
+                    lowerText === 'male' || lowerText === 'female' ||
+                    lowerText === 'm' || lowerText === 'f') {
+                  rowData.sex = cellText;
+                }
+                
+                // Case ID patterns
+                if (lowerText.includes('case') && lowerText.includes('id') ||
+                    lowerText.includes('cotc') || lowerText.includes('sample')) {
+                  rowData.case_id = cellText;
+                }
+                
+                // Study patterns
+                if (lowerText.includes('study') || lowerText.includes('trial') ||
+                    lowerText.includes('protocol')) {
+                  rowData.study_code = cellText;
+                }
+                
+                // Diagnosis patterns
+                if (lowerText.includes('diagnosis') || lowerText.includes('disease') ||
+                    lowerText.includes('cancer') || lowerText.includes('lymphoma') ||
+                    lowerText.includes('tumor') || lowerText.includes('neoplasm')) {
+                  rowData.diagnosis = cellText;
+                }
+              }
+            });
+            
+            return rowData;
           });
+          
+          console.log('📊 Extracted data summary:', {
+            totalRows: extractedData.length,
+            tumorClassifications: extractedData.filter(r => r.tumor_classification).length,
+            breeds: extractedData.filter(r => r.breed).length,
+            sexes: extractedData.filter(r => r.sex).length,
+            caseIds: extractedData.filter(r => r.case_id).length,
+            studies: extractedData.filter(r => r.study_code).length,
+            diagnoses: extractedData.filter(r => r.diagnosis).length
+          });
+          
+          // Log sample data for debugging
+          if (extractedData.length > 0) {
+            console.log('📋 Sample extracted record:', extractedData[0]);
+          }
+          
+          return extractedData;
         `
       }
     }]);
@@ -838,6 +915,150 @@ Return ONLY a JSON response in this exact format:
     }
   }
 
+  // Enhanced filter application with multiple strategies
+  private async applyFilterWithMultipleStrategies(testCase: any): Promise<boolean> {
+    const fieldName = testCase.dataField;
+    const filterValue = testCase.testValues[0];
+    
+    console.log(`🎯 Applying filter for ${fieldName} with value: ${filterValue}`);
+    
+    // Strategy 1: Try specific selectors from test case
+    for (const selector of testCase.selectors) {
+      try {
+        console.log(`🔍 Trying selector: ${selector}`);
+        
+        // Click to open filter
+        await this.mcpClient.callTools([{
+          id: 'click-filter-' + Date.now(),
+          name: 'playwright_click',
+          parameters: { selector: selector }
+        }]);
+        
+        // Wait a bit for dropdown to open
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Try to find and select the filter value
+        const filterApplied = await this.selectFilterValue(selector, filterValue, fieldName);
+        if (filterApplied) {
+          console.log(`✅ Filter applied successfully with selector: ${selector}`);
+          return true;
+        }
+      } catch (error) {
+        console.log(`❌ Selector ${selector} failed:`, error);
+      }
+    }
+    
+    // Strategy 2: Try content-based selectors
+    const contentSelectors = [
+      `*:contains("${fieldName}")`,
+      `*:contains("${fieldName.toLowerCase()}")`,
+      `*:contains("${fieldName.replace(/_/g, ' ')}")`,
+      `[data-testid*="${fieldName}"]`,
+      `[aria-label*="${fieldName}"]`,
+      `[placeholder*="${fieldName}"]`
+    ];
+    
+    for (const selector of contentSelectors) {
+      try {
+        console.log(`🔍 Trying content selector: ${selector}`);
+        const filterApplied = await this.selectFilterValue(selector, filterValue, fieldName);
+        if (filterApplied) {
+          console.log(`✅ Filter applied with content selector: ${selector}`);
+          return true;
+        }
+      } catch (error) {
+        console.log(`❌ Content selector ${selector} failed:`, error);
+      }
+    }
+    
+    console.warn(`⚠️ All filter strategies failed for ${fieldName}`);
+    return false;
+  }
+  
+  // Select filter value from dropdown/options
+  private async selectFilterValue(selector: string, filterValue: string, fieldName: string): Promise<boolean> {
+    try {
+      // Try different approaches to select the value
+      
+      // Approach 1: Look for option elements
+      const optionSelectors = [
+        `option:contains("${filterValue}")`,
+        `[role="option"]:contains("${filterValue}")`,
+        `.MuiMenuItem-root:contains("${filterValue}")`,
+        `.dropdown-item:contains("${filterValue}")`,
+        `li:contains("${filterValue}")`
+      ];
+      
+      for (const optionSelector of optionSelectors) {
+        try {
+          await this.mcpClient.callTools([{
+            id: 'select-option-' + Date.now(),
+            name: 'playwright_click',
+            parameters: { selector: optionSelector }
+          }]);
+          console.log(`✅ Selected option: ${optionSelector}`);
+          return true;
+        } catch (error) {
+          // Try next option selector
+        }
+      }
+      
+      // Approach 2: Try typing in input field
+      try {
+        await this.mcpClient.callTools([{
+          id: 'fill-filter-' + Date.now(),
+          name: 'playwright_fill',
+          parameters: { 
+            selector: selector,
+            value: filterValue
+          }
+        }]);
+        console.log(`✅ Filled filter with value: ${filterValue}`);
+        return true;
+      } catch (error) {
+        // Input fill failed
+      }
+      
+      return false;
+    } catch (error) {
+      console.log(`❌ Error selecting filter value:`, error);
+      return false;
+    }
+  }
+  
+  // Wait for filtered results to load
+  private async waitForFilteredResults(testCase: any): Promise<void> {
+    console.log(`⏳ Waiting for filtered results to load...`);
+    
+    // Wait for table/data to update
+    const waitSelectors = [
+      '[data-screenshot-table] tr',
+      'table tr',
+      '.data-table tr',
+      '.MuiTableBody-root tr',
+      '[role="table"] tr',
+      '.table tbody tr',
+      'tbody tr'
+    ];
+    
+    for (const selector of waitSelectors) {
+      try {
+        await this.mcpClient.callTools([{
+          id: 'wait-results-' + Date.now(),
+          name: 'playwright_wait_for',
+          parameters: { selector: selector, timeout: 5000 }
+        }]);
+        console.log(`✅ Results loaded with selector: ${selector}`);
+        break;
+      } catch (error) {
+        // Try next selector
+      }
+    }
+    
+    // Additional wait for any animations/loading
+    await new Promise(resolve => setTimeout(resolve, 2000));
+  }
+
   private extractScreenshotPath(screenshotResult: any[]): string {
     try {
       console.log('🔍 DEBUG: Extracting screenshot path from result:', JSON.stringify(screenshotResult, null, 2));
@@ -922,6 +1143,7 @@ Return ONLY a JSON response in this exact format:
         .validation-breakdown { margin: 10px 0; padding: 10px; background: #ffffff; border-radius: 4px; border: 1px solid #dee2e6; }
         .validation-breakdown h4 { margin: 0 0 10px 0; color: #495057; font-size: 14px; }
         .validation-check { margin: 8px 0; padding: 8px; background: #f8f9fa; border-radius: 3px; font-size: 13px; }
+        .validation-check.false-positive { background: #fff3cd; border: 1px solid #ffeaa7; }
         .check-passed { color: #28a745; font-weight: bold; }
         .check-failed { color: #dc3545; font-weight: bold; }
         .validation-summary { margin-top: 10px; padding: 8px; background: #e9ecef; border-radius: 3px; font-size: 13px; }
@@ -990,14 +1212,17 @@ Return ONLY a JSON response in this exact format:
                             <div class="validation-breakdown">
                                 <h4>Validation Breakdown:</h4>
                                 
-                                <div class="validation-check">
+                                <div class="validation-check ${result.validation.validationChecks?.countMatch?.isFalsePositive ? 'false-positive' : ''}">
                                     <strong>📊 Record Count:</strong> 
                                     <span class="${result.validation.validationChecks?.countMatch?.passed ? 'check-passed' : 'check-failed'}">
-                                        ${result.validation.validationChecks?.countMatch?.passed ? '✅' : '❌'}
+                                        ${result.validation.validationChecks?.countMatch?.isFalsePositive ? '⚠️' : 
+                                          (result.validation.validationChecks?.countMatch?.passed ? '✅' : '❌')}
                                     </span>
                                     Expected: ${result.validation.expectedCount} | Actual: ${result.validation.actualCount}
                                     ${result.validation.validationChecks?.countMatch?.difference !== 0 ? 
                                         ` (Difference: ${result.validation.validationChecks.countMatch.difference > 0 ? '+' : ''}${result.validation.validationChecks.countMatch.difference})` : ''}
+                                    ${result.validation.validationChecks?.countMatch?.isFalsePositive ? 
+                                        '<br><strong style="color: #dc3545;">⚠️ FALSE POSITIVE: Both counts are 0 - check TSV data and UI extraction</strong>' : ''}
                                 </div>
                                 
                                 ${result.validation.validationChecks?.fieldValuesMatch ? `
