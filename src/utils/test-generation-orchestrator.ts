@@ -605,69 +605,53 @@ Return JSON in this format:
               if (cellText) {
                 rowData[\`field\${cellIndex + 1}\`] = cellText;
                 
-                // Try to identify specific fields by content with better matching
-                const lowerText = cellText.toLowerCase();
-                
-                // Tumor classification patterns
-                if (lowerText.includes('tumor') || lowerText.includes('classification') || 
-                    lowerText.includes('grade') || lowerText.includes('stage') ||
-                    lowerText.includes('malignant') || lowerText.includes('benign')) {
-                  rowData.tumor_classification = cellText;
-                }
-                
-                // Breed patterns
-                if (lowerText.includes('breed') || lowerText.includes('species') ||
-                    lowerText.includes('dog') || lowerText.includes('canine')) {
-                  rowData.breed = cellText;
-                }
-                
-                // Sex/Gender patterns
-                if (lowerText.includes('sex') || lowerText.includes('gender') ||
-                    lowerText === 'male' || lowerText === 'female' ||
-                    lowerText === 'm' || lowerText === 'f') {
-                  rowData.sex = cellText;
-                }
-                
-                // Case ID patterns
-                if (lowerText.includes('case') && lowerText.includes('id') ||
-                    lowerText.includes('cotc') || lowerText.includes('sample')) {
-                  rowData.case_id = cellText;
-                }
-                
-                // Study patterns
-                if (lowerText.includes('study') || lowerText.includes('trial') ||
-                    lowerText.includes('protocol')) {
-                  rowData.study_code = cellText;
-                }
-                
-                // Diagnosis patterns
-                if (lowerText.includes('diagnosis') || lowerText.includes('disease') ||
-                    lowerText.includes('cancer') || lowerText.includes('lymphoma') ||
-                    lowerText.includes('tumor') || lowerText.includes('neoplasm')) {
-                  rowData.diagnosis = cellText;
-                }
+                // NOTE: Hardcoded field detection removed - now using LLM-based extraction
               }
             });
             
             return rowData;
           });
           
+          // DYNAMIC DATA EXTRACTION: Use LLM instead of hardcoded field detection
+          console.log('🧠 Using LLM for dynamic UI data extraction...');
+          
+          // Get expected fields from test case (comes from LLM mapping)
+          const expectedFields = testCase.dataField ? [testCase.dataField] : [];
+          const ragClient = this.playwrightLearningOrchestrator.getRagClient();
+          
+          // Get all available TSV fields from RAG
+          const availableFields = ragClient.getFieldNames();
+          
+          console.log('📊 Dynamic Data Extraction:', {
+            availableFields: availableFields.length,
+            expectedFields: expectedFields.length,
+            tableHTML: tableHTML.length
+          });
+          
+          // Extract data dynamically using LLM
+          const llmExtractedData = await this.extractUIDataWithLLM(
+            tableHTML,
+            availableFields,
+            expectedFields
+          );
+          
+          // Use LLM extracted data instead of hardcoded extraction
+          const finalExtractedData = llmExtractedData.length > 0 ? llmExtractedData : extractedData;
+          
           console.log('📊 Extracted data summary:', {
-            totalRows: extractedData.length,
-            tumorClassifications: extractedData.filter(r => r.tumor_classification).length,
-            breeds: extractedData.filter(r => r.breed).length,
-            sexes: extractedData.filter(r => r.sex).length,
-            caseIds: extractedData.filter(r => r.case_id).length,
+            totalRows: finalExtractedData.length,
+            llmExtractedRows: llmExtractedData.length,
+            hardcodedExtractedRows: extractedData.length,
             studies: extractedData.filter(r => r.study_code).length,
             diagnoses: extractedData.filter(r => r.diagnosis).length
           });
           
           // Log sample data for debugging
-          if (extractedData.length > 0) {
-            console.log('📋 Sample extracted record:', extractedData[0]);
+          if (finalExtractedData.length > 0) {
+            console.log('📋 Sample extracted record:', finalExtractedData[0]);
           }
           
-          return extractedData;
+          return finalExtractedData;
         `
       }
     }]);
@@ -1268,5 +1252,96 @@ Return ONLY a JSON response in this exact format:
     </div>
 </body>
 </html>`;
+  }
+
+  // NEW METHOD: LLM-based UI data extraction (replaces hardcoded field detection)
+  private async extractUIDataWithLLM(
+    tableHTML: string,
+    availableFields: string[],
+    expectedFields: string[]
+  ): Promise<any[]> {
+    console.log('🧠 Using LLM for dynamic UI data extraction...');
+    
+    const prompt = `Extract structured data from this HTML table.
+
+AVAILABLE TSV FIELDS (from database):
+${availableFields.join(', ')}
+
+EXPECTED FIELDS FOR THIS TEST:
+${expectedFields.join(', ')}
+
+HTML TABLE:
+${tableHTML.substring(0, 5000)}
+
+TASK: Extract data and map it to the correct TSV field names.
+- Identify which column corresponds to which field
+- Extract ALL rows of data
+- Use fuzzy matching to map UI column headers to TSV field names
+- Return ONLY data for fields that exist in the TSV
+
+Return JSON:
+{
+  "columnMappings": {
+    "UI Column Name": "tsv_field_name"
+  },
+  "extractedData": [
+    {
+      "tsv_field_1": "value1",
+      "tsv_field_2": "value2"
+    }
+  ]
+}`;
+
+    const response = await this.bedrockClient.generateResponse([{
+      role: 'user',
+      content: prompt
+    }], []);
+    
+    const result = JSON.parse(response.content);
+    console.log(`✅ LLM extracted ${result.extractedData.length} rows`);
+    
+    return result.extractedData;
+  }
+
+  // NEW METHOD: LLM-based column mapping
+  private async mapUIColumnsToTSVFields(
+    tableHeaders: string[],
+    availableFields: string[]
+  ): Promise<{ [uiColumn: string]: string }> {
+    console.log('🧠 Mapping UI columns to TSV fields with LLM...');
+    
+    const prompt = `Map UI table column headers to database field names.
+
+UI COLUMN HEADERS:
+${tableHeaders.join(', ')}
+
+AVAILABLE TSV FIELDS:
+${availableFields.join(', ')}
+
+TASK: Create mappings between UI columns and TSV fields.
+- Use fuzzy matching (case insensitive, ignore spaces/underscores)
+- Only map if confident (>70% match)
+- Leave unmapped if no good match
+
+Return JSON:
+{
+  "mappings": {
+    "UI Column": "tsv_field_name"
+  },
+  "unmapped": ["column1", "column2"],
+  "confidence": {
+    "UI Column": 0.95
+  }
+}`;
+
+    const response = await this.bedrockClient.generateResponse([{
+      role: 'user',
+      content: prompt
+    }], []);
+    
+    const result = JSON.parse(response.content);
+    console.log(`✅ Mapped ${Object.keys(result.mappings).length} columns`);
+    
+    return result.mappings;
   }
 }

@@ -43,7 +43,10 @@ export class FileProcessor {
                     
                     // Look for relationships (fields with similar names)
                     fields.forEach(field => {
-                        if (field.includes('case_id') || field.includes('sample_id') || field.includes('study_id')) {
+                        // Detect ID fields by pattern, not specific names
+                        if (field.toLowerCase().includes('_id') || 
+                            field.toLowerCase().endsWith('id') ||
+                            field.toLowerCase().startsWith('id_')) {
                             relationships.push(field);
                         }
                     });

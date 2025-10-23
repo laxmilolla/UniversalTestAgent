@@ -28,7 +28,7 @@ Return JSON format:
   "totalFields": number,
   "fieldNames": ["field1", "field2", ...],
   "fieldTypes": {"field1": "string", "field2": "integer", ...},
-  "relationships": ["case_id -> sample_id", ...],
+  "relationships": ["field1 -> field2", ...],
   "businessRules": ["rule1", "rule2", ...],
   "validationPatterns": ["pattern1", "pattern2", ...]
 }`;
@@ -170,7 +170,7 @@ UI Elements: ${JSON.stringify(uiAnalysis.interactiveElements)}
 Return JSON format:
 {
   "mappings": [
-    {"dbField": "sample_id", "uiElement": "Sample ID column", "type": "display"},
+    {"dbField": "field_name", "uiElement": "Field Label", "type": "display"},
     {"dbField": "field1", "uiElement": "Field 1 dropdown", "type": "input"}
   ],
   "testCases": [

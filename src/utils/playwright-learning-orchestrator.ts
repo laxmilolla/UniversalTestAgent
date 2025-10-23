@@ -501,11 +501,11 @@ private async performPlaywrightDOMAnalysis(): Promise<any> {
             // Look for clickable elements that might be buttons
             { name: 'clickableElements', selector: 'button, a, [onclick], [role="button"]' },
             
-            // Look for elements with specific text content
-            { name: 'breedElements', selector: '*:contains("Breed"), *:contains("breed")' },
-            { name: 'sexElements', selector: '*:contains("Sex"), *:contains("sex")' },
-            { name: 'caseIdElements', selector: '*:contains("Case ID"), *:contains("case"), *:contains("ID")' },
-            { name: 'searchElements', selector: '*:contains("Search"), *:contains("search")' }
+            // Generic interactive element detection (no specific field names)
+            { name: 'labeledInputs', selector: 'label + input, label + select' },
+            { name: 'dataAttributes', selector: '[data-field], [data-column], [data-key]' },
+            { name: 'ariaLabels', selector: '[aria-label], [aria-labelledby]' },
+            { name: 'tableHeaders', selector: 'th, thead td, [role="columnheader"]' }
         ];
         
         for (const query of queries) {
