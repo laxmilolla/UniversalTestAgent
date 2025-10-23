@@ -666,7 +666,8 @@ private async performPlaywrightDOMAnalysis(): Promise<any> {
         if ((elements as any).textElements) {
             // Add text elements to appropriate categories based on content
             (elements as any).textElements.forEach((el: any) => {
-                if (el.text.toLowerCase().includes('breed') || el.text.toLowerCase().includes('sex') || el.text.toLowerCase().includes('case')) {
+                // Generic text element detection (no specific field names)
+                if (el.text && el.text.length > 0) {
                     result.filters.push(el);
                 }
             });
