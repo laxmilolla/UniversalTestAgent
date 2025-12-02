@@ -9,6 +9,9 @@ export interface UIState {
     tableRowCount: number;
     screenshotPath: string;
     timestamp: string;
+    // New properties for checkbox and radio button state
+    checkboxes: { selector: string; label: string; checked: boolean }[];
+    radioGroups: { groupName: string; selectedOption: string }[];
 }
 
 export interface StateChanges {
@@ -40,7 +43,13 @@ export class UIStateCapturer {
             // 4. Get table row count
             const tableRowCount = await this.getTableRowCount();
 
-            // 5. Take screenshot
+            // 5. Get checkbox states
+            const checkboxes = await this.getCheckboxStates();
+
+            // 6. Get radio button states
+            const radioGroups = await this.getRadioButtonStates();
+
+            // 7. Take screenshot
             const screenshotPath = await this.takeScreenshot();
 
             const state: UIState = {
@@ -51,10 +60,12 @@ export class UIStateCapturer {
                 dropdownStates,
                 tableRowCount,
                 screenshotPath,
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toISOString(),
+                checkboxes,
+                radioGroups
             };
 
-            console.log(`✅ UI state captured: ${resultCountText}, ${tableRowCount} table rows, ${Object.keys(dropdownStates).length} dropdowns`);
+            console.log(`✅ UI state captured: ${resultCountText}, ${tableRowCount} table rows, ${Object.keys(dropdownStates).length} dropdowns, ${checkboxes.length} checkboxes, ${radioGroups.length} radio groups`);
             return state;
 
         } catch (error: any) {
@@ -307,6 +318,79 @@ export class UIStateCapturer {
             return params;
         } catch (error) {
             return {};
+        }
+    }
+
+    // ===== NEW METHODS FOR CHECKBOX AND RADIO BUTTON STATE CAPTURE =====
+
+    private async getCheckboxStates(): Promise<{ selector: string; label: string; checked: boolean }[]> {
+        try {
+            const result = await this.mcpClient.callTools([{
+                name: 'playwright_evaluate',
+                parameters: {
+                    script: `
+                        Array.from(document.querySelectorAll('input[type="checkbox"], [role="checkbox"], .MuiCheckbox-root, [class*="ant-checkbox"], [class*="checkbox"]')).map(el => ({
+                            selector: el.id ? '#' + el.id : el.tagName.toLowerCase() + (el.className ? '.' + el.className.split(' ')[0] : ''),
+                            label: el.getAttribute('aria-label') || 
+                                   el.getAttribute('title') || 
+                                   el.closest('label')?.textContent?.trim() ||
+                                   el.parentElement?.textContent?.trim() ||
+                                   'Checkbox',
+                            checked: el.checked || el.getAttribute('aria-checked') === 'true'
+                        }))
+                    `
+                },
+                id: `get-checkbox-states-${Date.now()}`
+            }]);
+
+            if (result[0]?.result?.content && result[0].result.content[0]?.text) {
+                return JSON.parse(result[0].result.content[0].text);
+            }
+            return [];
+        } catch (error) {
+            console.error('Error getting checkbox states:', error);
+            return [];
+        }
+    }
+
+    private async getRadioButtonStates(): Promise<{ groupName: string; selectedOption: string }[]> {
+        try {
+            const result = await this.mcpClient.callTools([{
+                name: 'playwright_evaluate',
+                parameters: {
+                    script: `
+                        const radioGroups = {};
+                        Array.from(document.querySelectorAll('input[type="radio"], [role="radio"], .MuiRadio-root, [class*="ant-radio"], [class*="radio"]')).forEach(el => {
+                            const groupName = el.name || el.getAttribute('name') || 'unnamed';
+                            if (!radioGroups[groupName]) {
+                                radioGroups[groupName] = [];
+                            }
+                            radioGroups[groupName].push({
+                                label: el.getAttribute('aria-label') || 
+                                       el.getAttribute('title') || 
+                                       el.closest('label')?.textContent?.trim() ||
+                                       el.parentElement?.textContent?.trim() ||
+                                       'Radio Option',
+                                checked: el.checked || el.getAttribute('aria-checked') === 'true'
+                            });
+                        });
+                        
+                        return Object.entries(radioGroups).map(([groupName, options]) => ({
+                            groupName: groupName,
+                            selectedOption: options.find(opt => opt.checked)?.label || 'None'
+                        }))
+                    `
+                },
+                id: `get-radio-states-${Date.now()}`
+            }]);
+
+            if (result[0]?.result?.content && result[0].result.content[0]?.text) {
+                return JSON.parse(result[0].result.content[0].text);
+            }
+            return [];
+        } catch (error) {
+            console.error('Error getting radio button states:', error);
+            return [];
         }
     }
 }

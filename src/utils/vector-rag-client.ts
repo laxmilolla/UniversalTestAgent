@@ -18,6 +18,10 @@ export class VectorRAGClient {
         });
         this.bedrockClient = bedrockClient;
         
+        // Clear existing vector store to force re-indexing with new metadata structure
+        this.vectorStore.clear();
+        this.tsvMetadata = {};
+        
         console.log('✅ VectorRAGClient initialized with S3 and Bedrock');
     }
     
@@ -29,6 +33,10 @@ export class VectorRAGClient {
         console.log('\n' + '='.repeat(80));
         console.log('🔍 RAG: STARTING VECTOR EMBEDDING CREATION (Pure AI Mode)');
         console.log('='.repeat(80));
+        
+        console.log('🔍 DEBUG: indexTSVData called with', tsvFiles.length, 'files');
+        console.log('🔍 DEBUG: First file name:', tsvFiles[0]?.name);
+        console.log('🔍 DEBUG: First file content length:', tsvFiles[0]?.content?.length);
         
         for (const file of tsvFiles) {
             console.log(`\n📊 Processing File: ${file.name}`);
@@ -74,7 +82,13 @@ export class VectorRAGClient {
                     fileName: file.name,
                     records: chunks[i],
                     embedding: embedding.vector,
-                    text: chunkText
+                    text: chunkText,
+                    metadata: {
+                        type: 'tsv_record',
+                        fileName: file.name,
+                        chunkIndex: i,
+                        totalChunks: chunks.length
+                    }
                 });
                 
                 console.log(`  │  ✅ Embedding ID: ${embedding.id}, Dimensions: ${embedding.vector.length}`);
@@ -295,12 +309,38 @@ export class VectorRAGClient {
         try {
             const results = await this.searchRelevantData(question, 10);
             
+            // DEBUG: Log what we found
+            console.log(`🔍 DEBUG: Found ${results.length} total results`);
+            results.forEach((result, index) => {
+                console.log(`🔍 DEBUG: Result ${index}:`, {
+                    hasMetadata: !!result.metadata,
+                    metadataType: result.metadata?.type,
+                    fileName: result.fileName,
+                    hasRecords: !!result.records,
+                    recordsType: typeof result.records,
+                    allKeys: Object.keys(result)
+                });
+            });
+            
             // Filter for TSV-related results
-            const tsvResults = results.filter(result => 
-                result.metadata?.type === 'tsv_field' || 
-                result.metadata?.type === 'relationship' ||
-                result.metadata?.type === 'tsv_record'
-            );
+            // Handle both new entries with metadata and old entries without metadata
+            const tsvResults = results.filter(result => {
+                // New entries with proper metadata
+                if (result.metadata?.type === 'tsv_field' || 
+                    result.metadata?.type === 'relationship' ||
+                    result.metadata?.type === 'tsv_record') {
+                    return true;
+                }
+                // Old entries without metadata - treat as TSV records if they have records property
+                if (!result.metadata && result.records && Array.isArray(result.records)) {
+                    return true;
+                }
+                // Handle flat TSV records (actual structure found in logs)
+                if (!result.metadata && !result.records && result['type']) {
+                    return true;
+                }
+                return false;
+            });
             
             console.log(`✅ Found ${tsvResults.length} relevant TSV knowledge items`);
             return tsvResults;
@@ -316,6 +356,19 @@ export class VectorRAGClient {
         
         try {
             const results = await this.searchRelevantData(question, 10);
+            
+            // DEBUG: Log what we found
+            console.log(`🔍 DEBUG: Found ${results.length} total results for UI query`);
+            results.forEach((result, index) => {
+                console.log(`🔍 DEBUG: UI Result ${index}:`, {
+                    hasMetadata: !!result.metadata,
+                    metadataType: result.metadata?.type,
+                    elementType: result.metadata?.elementType,
+                    label: result.metadata?.label,
+                    selector: result.metadata?.selector,
+                    allKeys: Object.keys(result)
+                });
+            });
             
             // Filter for UI-related results
             const uiResults = results.filter(result => 
@@ -465,5 +518,56 @@ export class VectorRAGClient {
         const mag1 = Math.sqrt(vec1.reduce((sum, a) => sum + a * a, 0));
         const mag2 = Math.sqrt(vec2.reduce((sum, a) => sum + a * a, 0));
         return dotProduct / (mag1 * mag2);
+    }
+
+    // ===== NEW METHOD FOR DYNAMIC TEST DATA EXTRACTION =====
+
+    async extractSampleValues(fieldType: string): Promise<string[]> {
+        console.log(`🔍 Extracting sample values for field type: ${fieldType}`);
+        
+        try {
+            // Query RAG for field values of specific types
+            const query = `What are the ${fieldType} field values in the TSV data?`;
+            const tsvKnowledge = await this.queryTSVKnowledge(query);
+            
+            if (!tsvKnowledge || tsvKnowledge.length === 0) {
+                throw new Error(`No ${fieldType} data available in RAG for sample extraction. NO FALLBACK AVAILABLE.`);
+            }
+            
+            // Extract diverse sample values
+            const sampleValues = new Set<string>();
+            
+            for (const knowledge of tsvKnowledge) {
+                if (knowledge.metadata?.type === 'tsv_record' && knowledge.records) {
+                    knowledge.records.forEach((record: any) => {
+                        Object.entries(record).forEach(([field, value]) => {
+                            if (typeof value === 'string' && value.length > 0 && value.length < 50) {
+                                // Filter by field type if specified
+                                if (fieldType === 'categorical' || fieldType === 'string') {
+                                    // Skip IDs, codes, and very long values
+                                    if (!value.match(/^[A-Z0-9_-]+$/) && !value.includes('http')) {
+                                        sampleValues.add(value.trim());
+                                    }
+                                }
+                            }
+                        });
+                    });
+                }
+            }
+            
+            // Convert to array and take diverse samples
+            const values = Array.from(sampleValues).slice(0, 10);
+            
+            if (values.length === 0) {
+                throw new Error(`No suitable ${fieldType} values found in TSV data. NO FALLBACK AVAILABLE.`);
+            }
+            
+            console.log(`✅ Extracted ${values.length} ${fieldType} sample values: ${values.slice(0, 3).join(', ')}${values.length > 3 ? '...' : ''}`);
+            return values;
+            
+        } catch (error: any) {
+            console.error(`❌ Failed to extract ${fieldType} sample values:`, error);
+            throw new Error(`${fieldType} sample extraction failed: ${error.message}. NO FALLBACK AVAILABLE.`);
+        }
     }
 }

@@ -16,7 +16,7 @@ export class PlaywrightLearningOrchestrator {
     private vectorRAG: VectorRAGClient; // NEW
     private currentWebsiteUrl: string = '';
     private executionTrace: any[] = []; // Add this line
-    private readonly timeout = 120000; // 120 seconds instead of 60
+    private readonly timeout = 300000; // 300 seconds (5 minutes) for comprehensive LLM-guided exploration
     private currentTSVFiles: any[] = []; // Add this line
     private currentTSVData: any[] = []; // Parsed TSV data for dynamic test value extraction
 
@@ -69,7 +69,7 @@ export class PlaywrightLearningOrchestrator {
         
         // Add timeout wrapper
         const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('Learning process timeout after 60 seconds')), 60000);
+            setTimeout(() => reject(new Error('Learning process timeout after 300 seconds')), 300000);
         });
         
         const learningPromise = this.performLearning(websiteUrl, tsvFiles);
@@ -255,17 +255,7 @@ export class PlaywrightLearningOrchestrator {
                 console.log('📸 No existing screenshot analysis - using HTML-only approach');
             }
             
-            const uiAnalysis = await this.analyzeRealUI(pageContent, pageText, screenshot, existingScreenshotAnalysis);
-            this.storeLLMResponse('UI Analysis', 'Analyzing UI elements from website content', uiAnalysis, uiAnalysis);
-            
-            this.logStep('13', 'LLM', 'Database Analysis', 
-                { tsvCount: tsvFiles?.length || 0 }, 
-                'Analyzing TSV files...');
-            
-            const dbAnalysis = await this.analyzeTSVFiles(tsvFiles);
-            this.storeLLMResponse('Database Analysis', 'Analyzing TSV files for database structure', dbAnalysis, dbAnalysis);
-            
-            // Phase: RAG Vector Indexing (REQUIRED)
+            // CRITICAL: Index TSV data FIRST before UI analysis (needed for Phase 2 LLM prioritization)
             console.log('\n🔍 Validating TSV files before RAG indexing...');
             if (!tsvFiles || tsvFiles.length === 0) {
                 throw new Error('No TSV files provided to performCompleteLearning. Cannot proceed.');
@@ -276,17 +266,33 @@ export class PlaywrightLearningOrchestrator {
                 console.log(`  ${index + 1}. ${file.name || 'unnamed'} - ${file.content?.length || 0} chars`);
             });
 
-            this.logStep('15', 'RAG', 'Vector Embedding Creation',
+            this.logStep('13', 'RAG', 'Vector Embedding Creation',
                 { tsvFiles: tsvFiles.length },
                 'Creating vector embeddings for semantic search...');
 
             try {
+                console.log('🔍 DEBUG: Starting TSV indexing with', tsvFiles.length, 'files');
                 await this.vectorRAG.indexTSVData(tsvFiles);
+                console.log('✅ DEBUG: TSV indexing completed successfully');
             } catch (error: any) {
                 console.error('❌ RAG indexing failed:', error);
                 console.error('Stack trace:', error.stack);
                 throw new Error(`RAG indexing failed: ${error.message}. Pure AI system cannot proceed.`);
             }
+            
+            this.logStep('14', 'LLM', 'UI Analysis', 
+                { pageContentLength: pageContent.length }, 
+                'Analyzing UI elements...');
+            
+            const uiAnalysis = await this.analyzeRealUI(pageContent, pageText, screenshot, existingScreenshotAnalysis);
+            this.storeLLMResponse('UI Analysis', 'Analyzing UI elements from website content', uiAnalysis, uiAnalysis);
+            
+            this.logStep('15', 'LLM', 'Database Analysis', 
+                { tsvCount: tsvFiles?.length || 0 }, 
+                'Analyzing TSV files...');
+            
+            const dbAnalysis = await this.analyzeTSVFiles(tsvFiles);
+            this.storeLLMResponse('Database Analysis', 'Analyzing TSV files for database structure', dbAnalysis, dbAnalysis);
 
             this.logStep('16', 'RAG', 'Vector Store Complete',
                 { embeddings: 'completed' },
@@ -408,14 +414,466 @@ async analyzeRealUI(pageContent: string, pageText: string, screenshot: any, exis
     }
 }
 
+    // NEW METHOD: Navigate to specific study data before UI exploration
+    private async navigateToStudyData(): Promise<void> {
+        console.log('🎯 Navigating to study data...');
+        
+        try {
+            // Extract study names from TSV files (now returns array)
+            const studyNames = await this.extractStudyNameFromTSV();
+            console.log(`📊 Detected study name(s): ${studyNames.length > 0 ? studyNames.join(', ') : 'NONE'}`);
+            
+            if (!studyNames || studyNames.length === 0) {
+                console.warn('⚠️ No study name found in TSV files, proceeding with current data');
+                return;
+            }
+            
+            // Try to navigate to each detected study until one succeeds
+            let studyFound = false;
+            for (const studyName of studyNames) {
+                console.log(`🔍 Attempting to navigate to study: ${studyName}`);
+                
+                // Try to find and click on the study filter/navigation
+                const studySelectors = [
+                    `[data-testid*="${studyName.toLowerCase()}"]`,
+                    `[aria-label*="${studyName}"]`,
+                    `button:contains("${studyName}")`,
+                    `a:contains("${studyName}")`,
+                    `[title*="${studyName}"]`,
+                    `[class*="${studyName.toLowerCase()}"]`
+                ];
+                
+                for (const selector of studySelectors) {
+                    try {
+                        console.log(`🔍 Looking for study selector: ${selector}`);
+                        
+                        // Check if element exists
+                        const checkResult = await this.mcpClient.callTools([{
+                            name: 'playwright_evaluate',
+                            parameters: {
+                                script: `document.querySelector('${selector}') ? 'found' : 'not-found'`
+                            },
+                            id: `check-study-${Date.now()}`
+                        }]);
+                        
+                        if (checkResult[0]?.result?.content?.[0]?.text === 'found') {
+                            console.log(`✅ Found study element: ${selector}`);
+                            
+                            // Click on the study element
+                            await this.mcpClient.callTools([{
+                                name: 'playwright_click',
+                                parameters: { selector: selector },
+                                id: `click-study-${Date.now()}`
+                            }]);
+                            
+                            console.log(`✅ Clicked on ${studyName} study`);
+                            studyFound = true;
+                            break;
+                        }
+                    } catch (error) {
+                        console.log(`⚠️ Selector ${selector} not found or clickable`);
+                        continue;
+                    }
+                }
+                
+                if (studyFound) break;
+                
+                // Try text-based search if selectors didn't work
+                console.warn(`⚠️ Could not find ${studyName} study selector, trying text-based search`);
+                
+                const textSearchResult = await this.mcpClient.callTools([{
+                    name: 'playwright_evaluate',
+                    parameters: {
+                        script: `
+                            const elements = Array.from(document.querySelectorAll('*'));
+                            const studyElement = elements.find(el => 
+                                el.textContent && el.textContent.includes('${studyName}') && 
+                                (el.tagName === 'BUTTON' || el.tagName === 'A' || el.onclick)
+                            );
+                            return studyElement ? studyElement.tagName + '.' + studyElement.className : 'not-found';
+                        `
+                    },
+                    id: `text-search-study-${Date.now()}`
+                }]);
+                
+                if (textSearchResult[0]?.result?.content?.[0]?.text !== 'not-found') {
+                    console.log(`✅ Found study element via text search: ${textSearchResult[0].result.content[0].text}`);
+                    // Try to click it
+                    await this.mcpClient.callTools([{
+                        name: 'playwright_evaluate',
+                        parameters: {
+                            script: `
+                                const elements = Array.from(document.querySelectorAll('*'));
+                                const studyElement = elements.find(el => 
+                                    el.textContent && el.textContent.includes('${studyName}') && 
+                                    (el.tagName === 'BUTTON' || el.tagName === 'A' || el.onclick)
+                                );
+                                if (studyElement) {
+                                    studyElement.click();
+                                    return 'clicked';
+                                }
+                                return 'not-clickable';
+                            `
+                        },
+                        id: `click-study-text-${Date.now()}`
+                    }]);
+                    
+                    studyFound = true;
+                    break;
+                }
+            }
+            
+            if (studyFound) {
+                // Wait for data to load
+                console.log('⏳ Waiting for study data to load...');
+                await new Promise(resolve => setTimeout(resolve, 3000));
+                
+                // Verify we're showing the right data (check if any study name appears)
+                const studyNamesStr = studyNames.join('|');
+                const verifyResult = await this.mcpClient.callTools([{
+                    name: 'playwright_evaluate',
+                    parameters: {
+                        script: `document.body.textContent.match(/${studyNamesStr}/i) ? 'verified' : 'not-verified'`
+                    },
+                    id: `verify-study-${Date.now()}`
+                }]);
+                
+                if (verifyResult[0]?.result?.content?.[0]?.text === 'verified') {
+                    console.log(`✅ Successfully navigated to study data`);
+                } else {
+                    console.warn(`⚠️ Navigation to study may not have worked`);
+                }
+            } else {
+                console.warn(`⚠️ Could not navigate to any detected study, proceeding with current data`);
+            }
+            
+        } catch (error: any) {
+            console.error(`❌ Failed to navigate to study data:`, error);
+            console.warn('⚠️ Proceeding with current data');
+        }
+    }
+    
+    /**
+     * Identify the study details TSV file by filename pattern or content analysis
+     */
+    private identifyStudyDetailsFile(): any | null {
+        try {
+            // Check filenames for study details patterns
+            for (const file of this.currentTSVFiles) {
+                if (file.name) {
+                    const lowerName = file.name.toLowerCase();
+                    if (lowerName.includes('study') && 
+                        (lowerName.includes('detail') || lowerName.includes('info') || 
+                         lowerName.includes('metadata') || lowerName.includes('meta'))) {
+                        console.log(`📋 Identified study details file by filename: ${file.name}`);
+                        return file;
+                    }
+                }
+            }
+            
+            // Analyze content for study metadata fields
+            for (const file of this.currentTSVFiles) {
+                if (file.content) {
+                    const lines = file.content.split('\n').filter(line => line.trim());
+                    if (lines.length >= 2) {
+                        const headers = lines[0].toLowerCase().split('\t');
+                        const studyFields = ['study_name', 'study_code', 'study_id', 'study_title', 
+                                           'study_identifier', 'study', 'study_id'];
+                        const hasStudyFields = studyFields.some(field => 
+                            headers.some(header => header.trim() === field)
+                        );
+                        
+                        if (hasStudyFields && headers.length <= 20) { // Study details files are typically smaller
+                            console.log(`📋 Identified study details file by content: ${file.name}`);
+                            return file;
+                        }
+                    }
+                }
+            }
+            
+            return null;
+        } catch (error) {
+            console.error('❌ Error identifying study details file:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Extract study names from the study details TSV file
+     */
+    private extractStudyFromDetailsFile(studyFile: any): string[] {
+        const studies: string[] = [];
+        try {
+            if (!studyFile || !studyFile.content) {
+                return studies;
+            }
+            
+            const lines = studyFile.content.split('\n').filter(line => line.trim());
+            if (lines.length < 2) {
+                return studies;
+            }
+            
+            const headers = lines[0].split('\t').map(h => h.trim().toLowerCase());
+            const studyFieldIndices: number[] = [];
+            
+            // Find indices of study-related fields
+            headers.forEach((header, index) => {
+                if (header.includes('study_name') || header.includes('study_code') || 
+                    header.includes('study_id') || header.includes('study_title') ||
+                    header.includes('study_identifier') || (header === 'study')) {
+                    studyFieldIndices.push(index);
+                }
+            });
+            
+            if (studyFieldIndices.length === 0) {
+                return studies;
+            }
+            
+            // Extract study values from all rows
+            for (let i = 1; i < lines.length; i++) {
+                const values = lines[i].split('\t');
+                studyFieldIndices.forEach(index => {
+                    const value = values[index]?.trim();
+                    if (value && value.length > 0 && !studies.includes(value)) {
+                        studies.push(value);
+                    }
+                });
+            }
+            
+            console.log(`📊 Extracted ${studies.length} study name(s) from study details file: ${studies.join(', ')}`);
+            return studies;
+        } catch (error) {
+            console.error('❌ Error extracting study from details file:', error);
+            return studies;
+        }
+    }
+
+    /**
+     * Extract study name pattern from TSV filename
+     */
+    private extractStudyFromFilename(filename: string): string[] {
+        const studies: string[] = [];
+        try {
+            if (!filename) return studies;
+            
+            // Pattern 1: {STUDY}_*.tsv (e.g., OSA04_study.tsv)
+            const match1 = filename.match(/^([A-Z0-9]+)_/i);
+            if (match1 && match1[1]) {
+                studies.push(match1[1].toUpperCase());
+            }
+            
+            // Pattern 2: *_{STUDY}.tsv (e.g., data_OSA04.tsv)
+            const match2 = filename.match(/_([A-Z0-9]+)\.tsv$/i);
+            if (match2 && match2[1] && !studies.includes(match2[1].toUpperCase())) {
+                studies.push(match2[1].toUpperCase());
+            }
+            
+            // Pattern 3: {STUDY}-*.tsv (e.g., OSA04-data.tsv)
+            const match3 = filename.match(/^([A-Z0-9]+)-/i);
+            if (match3 && match3[1] && !studies.includes(match3[1].toUpperCase())) {
+                studies.push(match3[1].toUpperCase());
+            }
+            
+            // Pattern 4: Extract uppercase alphanumeric codes (e.g., OSA04, COTC007B)
+            const codeMatch = filename.match(/\b([A-Z]{2,}[0-9]+[A-Z0-9]*)\b/);
+            if (codeMatch && codeMatch[1] && !studies.includes(codeMatch[1])) {
+                studies.push(codeMatch[1]);
+            }
+            
+            return studies;
+        } catch (error) {
+            console.error('❌ Error extracting study from filename:', error);
+            return studies;
+        }
+    }
+
+    /**
+     * Analyze TSV data to find most frequent study codes
+     */
+    private analyzeStudyFrequency(): string[] {
+        const studies: string[] = [];
+        const studyCounts: Map<string, number> = new Map();
+        
+        try {
+            if (!this.currentTSVData || this.currentTSVData.length === 0) {
+                return studies;
+            }
+            
+            // Count occurrences of study codes
+            this.currentTSVData.forEach(record => {
+                const studyFields = ['study_code', 'study', 'study_name', 'study_id'];
+                studyFields.forEach(field => {
+                    if (record[field]) {
+                        const studyValue = String(record[field]).trim();
+                        if (studyValue.length > 0) {
+                            studyCounts.set(studyValue, (studyCounts.get(studyValue) || 0) + 1);
+                        }
+                    }
+                });
+            });
+            
+            // Get studies that appear in >10% of records
+            const totalRecords = this.currentTSVData.length;
+            const threshold = Math.max(1, Math.floor(totalRecords * 0.1));
+            
+            studyCounts.forEach((count, study) => {
+                if (count >= threshold && !studies.includes(study)) {
+                    studies.push(study);
+                }
+            });
+            
+            console.log(`📊 Found ${studies.length} study code(s) in data: ${studies.join(', ')}`);
+            return studies;
+        } catch (error) {
+            console.error('❌ Error analyzing study frequency:', error);
+            return studies;
+        }
+    }
+
+    /**
+     * Use LLM to infer study name from TSV data patterns
+     */
+    private async inferStudyNameWithLLM(): Promise<string[]> {
+        const studies: string[] = [];
+        try {
+            if (!this.currentTSVFiles || this.currentTSVFiles.length === 0) {
+                return studies;
+            }
+            
+            // Prepare sample data for LLM
+            const sampleData = this.currentTSVFiles.slice(0, 2).map(file => ({
+                name: file.name,
+                headers: file.content ? file.content.split('\n')[0] : '',
+                sampleRows: file.content ? file.content.split('\n').slice(1, 4).join('\n') : ''
+            }));
+            
+            const prompt = `Analyze these TSV files and identify what study or studies are represented in this data.
+
+TSV Files:
+${JSON.stringify(sampleData, null, 2)}
+
+Extract study names, study codes, or study identifiers from the data. Look for:
+- Study codes in filenames (e.g., OSA04, COTC007B)
+- Study fields in headers (study_name, study_code, study_id, etc.)
+- Study values in data rows
+- Any patterns that indicate study identifiers
+
+Return ONLY a JSON array of study names/codes found, for example: ["OSA04"] or ["COTC007B", "OSA04"]
+If no study can be identified, return an empty array: []
+
+Response (JSON array only):`;
+
+            const response = await this.bedrockClient.generateResponse(
+                [{ role: 'user', content: prompt }],
+                []
+            );
+            
+            // Parse LLM response
+            const responseText = response.content.trim();
+            let parsedStudies: string[] = [];
+            
+            try {
+                // Try to extract JSON array from response
+                const jsonMatch = responseText.match(/\[.*?\]/s);
+                if (jsonMatch) {
+                    parsedStudies = JSON.parse(jsonMatch[0]);
+                } else {
+                    // Try parsing entire response
+                    parsedStudies = JSON.parse(responseText);
+                }
+                
+                if (Array.isArray(parsedStudies)) {
+                    parsedStudies.forEach(study => {
+                        const studyStr = String(study).trim();
+                        if (studyStr.length > 0 && !studies.includes(studyStr)) {
+                            studies.push(studyStr);
+                        }
+                    });
+                }
+            } catch (parseError) {
+                console.warn('⚠️ Could not parse LLM response for study inference:', parseError);
+            }
+            
+            console.log(`🤖 LLM inferred ${studies.length} study name(s): ${studies.join(', ')}`);
+            return studies;
+        } catch (error) {
+            console.error('❌ Error inferring study name with LLM:', error);
+            return studies;
+        }
+    }
+
+    /**
+     * Multi-layered study name extraction (no hardcoding)
+     * Returns array of detected study names
+     */
+    private async extractStudyNameFromTSV(): Promise<string[]> {
+        const allStudies: Set<string> = new Set();
+        
+        try {
+            console.log('🔍 Starting multi-layered study name extraction...');
+            
+            // Layer 1: Extract from study details TSV file (PRIMARY)
+            const studyDetailsFile = this.identifyStudyDetailsFile();
+            if (studyDetailsFile) {
+                const studiesFromDetails = this.extractStudyFromDetailsFile(studyDetailsFile);
+                studiesFromDetails.forEach(study => allStudies.add(study));
+                if (allStudies.size > 0) {
+                    console.log('✅ Found study name(s) from study details file');
+                }
+            }
+            
+            // Layer 2: Extract from TSV filename patterns
+            if (allStudies.size === 0) {
+                for (const file of this.currentTSVFiles) {
+                    if (file.name) {
+                        const studiesFromFilename = this.extractStudyFromFilename(file.name);
+                        studiesFromFilename.forEach(study => allStudies.add(study));
+                    }
+                }
+                if (allStudies.size > 0) {
+                    console.log('✅ Found study name(s) from filename patterns');
+                }
+            }
+            
+            // Layer 3: Analyze TSV data for study codes
+            if (allStudies.size === 0) {
+                const studiesFromData = this.analyzeStudyFrequency();
+                studiesFromData.forEach(study => allStudies.add(study));
+                if (allStudies.size > 0) {
+                    console.log('✅ Found study name(s) from data analysis');
+                }
+            }
+            
+            // Layer 4: Use LLM to infer study name (FINAL FALLBACK)
+            if (allStudies.size === 0) {
+                const studiesFromLLM = await this.inferStudyNameWithLLM();
+                studiesFromLLM.forEach(study => allStudies.add(study));
+                if (allStudies.size > 0) {
+                    console.log('✅ Found study name(s) from LLM inference');
+                }
+            }
+            
+            const result = Array.from(allStudies);
+            console.log(`📊 Final extracted study name(s): ${result.length > 0 ? result.join(', ') : 'NONE'}`);
+            return result;
+        } catch (error) {
+            console.error('❌ Error extracting study name:', error);
+            return [];
+        }
+    }
+
     // NEW METHOD: Active UI Exploration (replaces static DOM analysis)
     private async performActiveUIExploration(): Promise<any> {
         console.log('🔍 Starting Active UI Exploration...');
         
+        // Step 1: Navigate to the specific study data (OSA04)
+        await this.navigateToStudyData();
+        
         const explorer = new ActiveUIExplorer(
             this.mcpClient,
             new UIStateCapturer(this.mcpClient),
-            this.vectorRAG
+            this.vectorRAG,
+            this.bedrockClient
         );
         
         // Explore UI and store in RAG

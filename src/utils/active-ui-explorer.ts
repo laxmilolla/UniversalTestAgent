@@ -1,6 +1,7 @@
 import { MCPPlaywrightClient } from '../chatbot/mcp-client';
 import { UIStateCapturer, UIState, StateChanges } from './ui-state-capturer';
 import { VectorRAGClient } from './vector-rag-client';
+import { BedrockClient } from '../chatbot/bedrock-client';
 
 export interface UIExplorationResult {
     elementType: string;
@@ -9,6 +10,11 @@ export interface UIExplorationResult {
     allOptions: string[];
     sampledTests: Array<{
         option: string;
+        changes: StateChanges;
+    }>;
+    // For checkboxes and radio buttons
+    states?: Array<{
+        state: string;
         changes: StateChanges;
     }>;
 }
@@ -22,29 +28,69 @@ export interface DiscoveredElement {
     ariaLabel?: string;
 }
 
+export interface DiscoveredCheckbox extends DiscoveredElement {
+    checked: boolean;
+}
+
+export interface DiscoveredRadioGroup {
+    groupName: string;
+    options: DiscoveredElement[];
+}
+
+export interface DiscoveredWithOptions extends DiscoveredElement {
+    allOptions: string[];
+    optionCount: number;
+}
+
+export interface PrioritizedDropdown extends DiscoveredWithOptions {
+    priority: number;
+    reason: string;
+    tsvField: string;
+}
+
 export class ActiveUIExplorer {
+    private readonly MAX_DROPDOWNS_TO_EXPLORE = 10;
+    private readonly SAMPLES_PER_DROPDOWN = 5; // Increased from 2 to 5
+
     constructor(
         private mcpClient: MCPPlaywrightClient,
         private stateCapturer: UIStateCapturer,
-        private vectorRAG: VectorRAGClient
+        private vectorRAG: VectorRAGClient,
+        private bedrockClient: BedrockClient
     ) {}
 
     async exploreAllElements(): Promise<UIExplorationResult[]> {
-        console.log('🔍 Starting Active UI Exploration...');
+        console.log('🔍 Starting LLM-Guided Intelligent Exploration... [VERSION 3.0 - Enhanced]');
         
         const results: UIExplorationResult[] = [];
         
         try {
-            // 1. Discover all interactive elements
-            const dropdowns = await this.discoverDropdowns();
+            // Phase 1: Fast discovery - find all UI elements and their options
+            console.log('📋 Phase 1: Fast Discovery - START');
+            const discoveredDropdowns = await this.discoverAllDropdownsWithOptions();
+            console.log(`📋 Phase 1: COMPLETE - Found ${discoveredDropdowns.length} dropdowns`);
+            
             const searchBoxes = await this.discoverSearchBoxes();
-            const filters = await this.discoverFilters();
+            console.log(`📋 Phase 1: COMPLETE - Found ${searchBoxes.length} search boxes`);
             
-            console.log(`📋 Discovered: ${dropdowns.length} dropdowns, ${searchBoxes.length} search boxes, ${filters.length} filters`);
+            const checkboxes = await this.discoverCheckboxes();
+            console.log(`📋 Phase 1: COMPLETE - Found ${checkboxes.length} checkboxes`);
             
-            // 2. Explore each dropdown (hybrid: sample 2-3 options)
-            for (const dropdown of dropdowns) {
-                console.log(`🔍 Exploring dropdown: ${dropdown.label}`);
+            const radioGroups = await this.discoverRadioButtons();
+            console.log(`📋 Phase 1: COMPLETE - Found ${radioGroups.length} radio button groups`);
+            
+            // Phase 2: LLM prioritization - rank elements by TSV field relevance
+            console.log('🧠 Phase 2: LLM Prioritization - START');
+            const prioritized = await this.prioritizeWithLLM(discoveredDropdowns);
+            console.log(`🧠 Phase 2: COMPLETE - Prioritized ${prioritized.length} dropdowns`);
+            
+            // Phase 3: Deep exploration of top priority only
+            console.log('🎯 Phase 3: Targeted Exploration - START');
+            const topPriority = prioritized.slice(0, this.MAX_DROPDOWNS_TO_EXPLORE);
+            console.log(`🎯 Exploring top ${topPriority.length} priority dropdowns`);
+            
+            for (const dropdown of topPriority) {
+                console.log(`🔍 Exploring priority dropdown: ${dropdown.label} (${dropdown.priority})`);
                 const dropdownResult = await this.exploreDropdown(dropdown);
                 results.push(dropdownResult);
                 
@@ -53,22 +99,158 @@ export class ActiveUIExplorer {
                 console.log(`✅ Stored ${dropdown.label} exploration in RAG`);
             }
             
-            // 3. Explore search boxes
+            // Explore search boxes with dynamic TSV terms
             for (const searchBox of searchBoxes) {
-                console.log(`🔍 Exploring search box: ${searchBox.label}`);
-                const searchResult = await this.exploreSearchBox(searchBox);
-                results.push(searchResult);
-                
-                await this.vectorRAG.indexUIExplorationData([searchResult]);
-                console.log(`✅ Stored ${searchBox.label} exploration in RAG`);
+                try {
+                    console.log(`🔍 Exploring search box: ${searchBox.label}`);
+                    const searchResult = await Promise.race([
+                        this.exploreSearchBox(searchBox),
+                        new Promise<UIExplorationResult>((_, reject) => 
+                            setTimeout(() => reject(new Error('timeout')), 30000)
+                        )
+                    ]);
+                    results.push(searchResult);
+                    
+                    await this.vectorRAG.indexUIExplorationData([searchResult]);
+                    console.log(`✅ Stored ${searchBox.label} exploration in RAG`);
+                } catch (error) {
+                    console.warn(`⚠️ Skipping search box ${searchBox.label}: ${error.message}`);
+                    continue;
+                }
             }
             
-            console.log(`✅ Explored ${results.length} UI elements total`);
+            // Explore all checkboxes (fast - only 2 states each)
+            for (const checkbox of checkboxes) {
+                try {
+                    console.log(`🔍 Exploring checkbox: ${checkbox.label}`);
+                    const checkboxResult = await this.exploreCheckbox(checkbox);
+                    results.push(checkboxResult);
+                    
+                    await this.vectorRAG.indexUIExplorationData([checkboxResult]);
+                    console.log(`✅ Stored ${checkbox.label} exploration in RAG`);
+                } catch (error) {
+                    console.warn(`⚠️ Skipping checkbox ${checkbox.label}: ${error.message}`);
+                    continue;
+                }
+            }
+            
+            // Explore all radio button groups
+            for (const radioGroup of radioGroups) {
+                try {
+                    console.log(`🔍 Exploring radio group: ${radioGroup.groupName}`);
+                    const radioResult = await this.exploreRadioGroup(radioGroup);
+                    results.push(radioResult);
+                    
+                    await this.vectorRAG.indexUIExplorationData([radioResult]);
+                    console.log(`✅ Stored ${radioGroup.groupName} exploration in RAG`);
+                } catch (error) {
+                    console.warn(`⚠️ Skipping radio group ${radioGroup.groupName}: ${error.message}`);
+                    continue;
+                }
+            }
+            
+            console.log(`✅ Enhanced LLM-Guided Exploration COMPLETE: ${results.length} elements explored`);
             return results;
             
         } catch (error: any) {
-            console.error('❌ Active UI exploration failed:', error);
-            throw new Error(`Active UI exploration failed: ${error.message}. NO FALLBACK AVAILABLE.`);
+            console.error('❌ Enhanced LLM-Guided exploration FAILED:', error);
+            console.error('❌ Error stack:', error.stack);
+            throw new Error(`Enhanced LLM-Guided exploration failed: ${error.message}. NO FALLBACK AVAILABLE.`);
+        }
+    }
+
+    async discoverAllDropdownsWithOptions(): Promise<DiscoveredWithOptions[]> {
+        console.log('🔍 Fast discovery: Getting all dropdowns with their options...');
+        const dropdowns = await this.discoverDropdowns();
+        console.log(`📊 discoverDropdowns() returned ${dropdowns.length} dropdowns`);
+        
+        if (dropdowns.length === 0) {
+            console.warn('⚠️ NO DROPDOWNS FOUND! Fast discovery will return empty results.');
+        }
+        
+        const results: DiscoveredWithOptions[] = [];
+        
+        for (const dropdown of dropdowns) {
+            try {
+                // Just get options, don't test yet
+                const options = await this.getDropdownOptions(dropdown.selector);
+                results.push({
+                    ...dropdown,
+                    allOptions: options,
+                    optionCount: options.length
+                });
+                console.log(`📋 ${dropdown.label}: ${options.length} options`);
+            } catch (error) {
+                console.warn(`⚠️ Could not get options for ${dropdown.label}: ${error.message}`);
+                // Still add it with empty options
+                results.push({
+                    ...dropdown,
+                    allOptions: [],
+                    optionCount: 0
+                });
+            }
+        }
+        
+        console.log(`✅ Fast discovery complete: ${results.length} dropdowns catalogued`);
+        return results;
+    }
+
+    async prioritizeWithLLM(dropdowns: DiscoveredWithOptions[]): Promise<PrioritizedDropdown[]> {
+        console.log('🧠 LLM prioritization: Analyzing dropdowns against TSV fields...');
+        
+        try {
+            // Query RAG for TSV fields
+            const tsvFields = await this.vectorRAG.queryTSVKnowledge(
+                "List all TSV field names and their data types"
+            );
+            
+            // Ask LLM to prioritize
+            const prompt = `You are analyzing a data exploration website.
+
+UI DROPDOWNS FOUND:
+${dropdowns.map(d => `- ${d.label}: ${d.optionCount} options (${d.allOptions.slice(0, 3).join(', ')}...)`).join('\n')}
+
+TSV DATABASE FIELDS:
+${tsvFields.map(f => `- ${f.text}`).join('\n')}
+
+TASK: Rank dropdowns by testing priority (1=highest).
+Prioritize dropdowns that:
+1. Map to TSV fields (semantic match)
+2. Filter critical data (diagnosis, breed vs cosmetic filters)
+3. Have reasonable option counts (5-50 options, not 1 or 500)
+
+Return JSON array:
+[
+  {"label": "Breed", "priority": 1, "reason": "Maps to 'breed' TSV field, 20 options", "tsvField": "breed"},
+  {"label": "Diagnosis", "priority": 2, "reason": "Maps to 'diagnosis', critical filter", "tsvField": "diagnosis"}
+]`;
+
+            const response = await this.bedrockClient.generateResponse([{
+                role: 'user',
+                content: prompt
+            }], []);
+            
+            const prioritized = JSON.parse(response.content);
+            
+            // Sort by priority and return
+            const sorted = prioritized.sort((a: any, b: any) => a.priority - b.priority);
+            
+            console.log(`✅ LLM prioritization complete: ${sorted.length} dropdowns ranked`);
+            sorted.forEach((d: any, i: number) => {
+                console.log(`  ${i + 1}. ${d.label} (${d.priority}): ${d.reason}`);
+            });
+            
+            return sorted;
+            
+        } catch (error: any) {
+            console.error('❌ LLM prioritization failed:', error);
+            // Fallback: return dropdowns in original order with default priority
+            return dropdowns.map((dropdown, index) => ({
+                ...dropdown,
+                priority: index + 1,
+                reason: 'Default priority due to LLM failure',
+                tsvField: 'unknown'
+            }));
         }
     }
 
@@ -94,7 +276,7 @@ export class ActiveUIExplorer {
             console.log(`📋 Found ${options.length} options: ${options.slice(0, 5).join(', ')}${options.length > 5 ? '...' : ''}`);
             
             // 4. Sample 2-3 options to test
-            const samplesToTest = this.sampleOptions(options, 2);
+            const samplesToTest = this.sampleOptions(options, this.SAMPLES_PER_DROPDOWN);
             console.log(`🎯 Testing samples: ${samplesToTest.join(', ')}`);
             
             const sampleResults = [];
@@ -145,8 +327,8 @@ export class ActiveUIExplorer {
         try {
             const before = await this.stateCapturer.captureState();
             
-            // Test with sample search terms
-            const sampleTerms = ['test', 'sample', 'data'];
+            // Extract dynamic search terms from TSV data
+            const sampleTerms = await this.extractSearchTermsFromTSV();
             const sampleResults = [];
             
             for (const term of sampleTerms) {
@@ -220,53 +402,95 @@ export class ActiveUIExplorer {
     private async discoverDropdowns(): Promise<DiscoveredElement[]> {
         const dropdowns: DiscoveredElement[] = [];
         
+        console.log('🔍 discoverDropdowns(): Starting dropdown discovery...');
+        
         try {
+            // Target actual interactive dropdowns, not section headers
             const selectors = [
-                'select',
-                '[role="combobox"]',
-                '.dropdown',
-                '[class*="dropdown"]',
-                '[class*="select"]'
+                'select', // Native HTML select
+                '[role="combobox"]', // MUI/Ant Design dropdowns
+                '[role="button"][aria-expanded]', // MUI Select components
+                '.MuiSelect-select', // MUI specific
+                '[class*="MuiSelect"]', // MUI Select variants
+                '[class*="ant-select"]', // Ant Design
+                '[class*="dropdown-menu"]', // Bootstrap dropdowns
+                'button[data-toggle="dropdown"]' // Bootstrap dropdown triggers
             ];
             
+            console.log(`🔍 Testing ${selectors.length} dropdown selectors...`);
+            
             for (const selector of selectors) {
-            const result = await this.mcpClient.callTools([{
-                name: 'playwright_evaluate',
-                parameters: { 
-                    script: `Array.from(document.querySelectorAll('${selector}')).map(el => ({
-                        tagName: el.tagName,
-                        id: el.id,
-                        className: el.className,
-                        textContent: el.textContent?.trim(),
-                        innerHTML: el.innerHTML,
-                        attributes: Array.from(el.attributes).reduce((acc, attr) => {
-                            acc[attr.name] = attr.value;
-                            return acc;
-                        }, {})
-                    }))`
-                },
-                id: `discover-dropdowns-${Date.now()}`
-            }]);
-                
-                const elements = result[0]?.result || [];
-                for (const element of elements) {
-                    const label = this.extractElementLabel(element);
-                    const elementSelector = this.generateSelector(element, selector);
+                console.log(`🔍 Testing selector: ${selector}`);
+                const result = await this.mcpClient.callTools([{
+                    name: 'playwright_evaluate',
+                    parameters: { 
+                        script: `Array.from(document.querySelectorAll('${selector}')).map(el => ({
+                            tagName: el.tagName,
+                            id: el.id,
+                            className: el.className,
+                            textContent: el.textContent?.trim(),
+                            innerHTML: el.innerHTML,
+                            attributes: Array.from(el.attributes).reduce((acc, attr) => {
+                                acc[attr.name] = attr.value;
+                                return acc;
+                            }, {})
+                        }))`
+                    },
+                    id: `discover-dropdowns-${Date.now()}`
+                }]);
                     
-                    dropdowns.push({
-                        type: 'dropdown',
-                        label: label || `Dropdown ${dropdowns.length + 1}`,
-                        selector: elementSelector,
-                        text: element.textContent?.trim(),
-                        ariaLabel: element.getAttribute?.('aria-label')
-                    });
+                    const elements = result[0]?.result || [];
+                    console.log(`🔍 Selector "${selector}" found ${elements.length} elements`);
+                    
+                    for (const element of elements) {
+                        // Skip non-interactive elements (section headers, etc.)
+                        if (this.isInteractiveDropdown(element)) {
+                            const label = this.extractElementLabel(element);
+                            const elementSelector = this.generateSelector(element, selector);
+                            
+                            dropdowns.push({
+                                type: 'dropdown',
+                                label: label || `Dropdown ${dropdowns.length + 1}`,
+                                selector: elementSelector,
+                                text: element.textContent?.trim(),
+                                ariaLabel: element.getAttribute?.('aria-label')
+                            });
+                            console.log(`✅ Added dropdown: ${label || `Dropdown ${dropdowns.length}`}`);
+                        } else {
+                            console.log(`⚠️ Skipped non-interactive element: ${element.textContent?.trim()}`);
+                        }
+                    }
                 }
-            }
+            
+            console.log(`✅ discoverDropdowns(): Found ${dropdowns.length} total dropdowns`);
+            return dropdowns;
+            
         } catch (error) {
-            console.error('Error discovering dropdowns:', error);
+            console.error('❌ discoverDropdowns() FAILED:', error);
+            return [];
+        }
+    }
+
+    private isInteractiveDropdown(element: any): boolean {
+        // Skip section headers and non-interactive elements
+        if (element.className?.includes('dropdownIconTextWrapper') || 
+            element.className?.includes('facetSectionName')) {
+            return false;
         }
         
-        return dropdowns;
+        // Must be interactive (clickable, selectable, etc.)
+        const tagName = element.tagName?.toLowerCase();
+        const role = element.attributes?.role;
+        
+        return (
+            tagName === 'select' ||
+            tagName === 'button' ||
+            role === 'combobox' ||
+            role === 'button' ||
+            element.className?.includes('MuiSelect') ||
+            element.className?.includes('ant-select') ||
+            element.className?.includes('dropdown-menu')
+        );
     }
 
     private async discoverSearchBoxes(): Promise<DiscoveredElement[]> {
@@ -330,7 +554,8 @@ export class ActiveUIExplorer {
 
     private async getDropdownOptions(selector: string): Promise<string[]> {
         try {
-            const result = await this.mcpClient.callTools([{
+            // First try to get options from native select elements
+            const nativeResult = await this.mcpClient.callTools([{
                 name: 'playwright_evaluate',
                 parameters: { 
                     script: `Array.from(document.querySelectorAll('${selector} option')).map(el => ({
@@ -345,20 +570,78 @@ export class ActiveUIExplorer {
                         }, {})
                     }))`
                 },
-                id: `get-options-${Date.now()}`
+                id: `get-native-options-${Date.now()}`
             }]);
             
-            const options: string[] = [];
-            const elements = result[0]?.result || [];
+            const nativeOptions: string[] = [];
+            const nativeElements = nativeResult[0]?.result || [];
             
-            for (const element of elements) {
+            for (const element of nativeElements) {
                 const text = element.textContent?.trim();
                 if (text && text !== '') {
-                    options.push(text);
+                    nativeOptions.push(text);
                 }
             }
             
-            return options;
+            if (nativeOptions.length > 0) {
+                return nativeOptions;
+            }
+            
+            // If no native options, try to click dropdown and get MUI/Ant Design options
+            console.log(`🔍 No native options found, trying to open dropdown for MUI/Ant Design...`);
+            
+            // Click to open dropdown
+            await this.mcpClient.callTools([{
+                name: 'playwright_click',
+                parameters: { selector },
+                id: `open-dropdown-${Date.now()}`
+            }]);
+            
+            // Wait for dropdown to open
+            await this.waitForStability();
+            
+            // Look for dropdown menu items
+            const menuResult = await this.mcpClient.callTools([{
+                name: 'playwright_evaluate',
+                parameters: { 
+                    script: `Array.from(document.querySelectorAll('[role="option"], .MuiMenuItem-root, .ant-select-item, [class*="menu-item"], [class*="dropdown-item"]')).map(el => ({
+                        tagName: el.tagName,
+                        id: el.id,
+                        className: el.className,
+                        textContent: el.textContent?.trim(),
+                        innerHTML: el.innerHTML,
+                        attributes: Array.from(el.attributes).reduce((acc, attr) => {
+                            acc[attr.name] = attr.value;
+                            return acc;
+                        }, {})
+                    }))`
+                },
+                id: `get-menu-options-${Date.now()}`
+            }]);
+            
+            const menuOptions: string[] = [];
+            const menuElements = menuResult[0]?.result || [];
+            
+            for (const element of menuElements) {
+                const text = element.textContent?.trim();
+                if (text && text !== '' && text !== 'All' && text !== 'None') {
+                    menuOptions.push(text);
+                }
+            }
+            
+            // Close dropdown by clicking outside or pressing Escape
+            try {
+                await this.mcpClient.callTools([{
+                    name: 'playwright_press_key',
+                    parameters: { key: 'Escape' },
+                    id: `close-dropdown-${Date.now()}`
+                }]);
+            } catch (error) {
+                // Ignore if escape doesn't work
+            }
+            
+            return menuOptions;
+            
         } catch (error) {
             console.error('Error getting dropdown options:', error);
             return [];
@@ -367,14 +650,57 @@ export class ActiveUIExplorer {
 
     private async selectOption(selector: string, option: string): Promise<void> {
         try {
-            // Try to select by option text
+            // First try native select option selection
+            try {
+                await this.mcpClient.callTools([{
+                    name: 'playwright_click',
+                    parameters: { 
+                        selector: `${selector} option:contains("${option}")` 
+                    },
+                    id: `select-native-option-${Date.now()}`
+                }]);
+                return;
+            } catch (error) {
+                // Native selection failed, try MUI/Ant Design approach
+            }
+            
+            // For MUI/Ant Design dropdowns: click dropdown, then click option
+            console.log(`🔍 Selecting MUI/Ant Design option: "${option}"`);
+            
+            // Click dropdown to open
             await this.mcpClient.callTools([{
                 name: 'playwright_click',
-                parameters: { 
-                    selector: `${selector} option:contains("${option}")` 
-                },
-                id: `select-option-${Date.now()}`
+                parameters: { selector },
+                id: `open-dropdown-for-select-${Date.now()}`
             }]);
+            
+            await this.waitForStability();
+            
+            // Look for the specific option and click it
+            const optionSelectors = [
+                `[role="option"]:contains("${option}")`,
+                `.MuiMenuItem-root:contains("${option}")`,
+                `.ant-select-item:contains("${option}")`,
+                `[class*="menu-item"]:contains("${option}")`,
+                `[class*="dropdown-item"]:contains("${option}")`
+            ];
+            
+            for (const optionSelector of optionSelectors) {
+                try {
+                    await this.mcpClient.callTools([{
+                        name: 'playwright_click',
+                        parameters: { selector: optionSelector },
+                        id: `select-option-${Date.now()}`
+                    }]);
+                    console.log(`✅ Selected option: "${option}"`);
+                    return;
+                } catch (error) {
+                    // Try next selector
+                }
+            }
+            
+            console.warn(`⚠️ Could not select option "${option}" with any method`);
+            
         } catch (error) {
             console.error(`Error selecting option "${option}":`, error);
         }
@@ -433,8 +759,52 @@ export class ActiveUIExplorer {
             return options;
         }
         
-        // Take first few options as samples
-        return options.slice(0, count);
+        // Intelligent sampling: first, last, 2 random middle, 1 TSV match
+        const samples = new Set<string>();
+        
+        // Always include first option
+        samples.add(options[0]);
+        
+        // Always include last option
+        samples.add(options[options.length - 1]);
+        
+        // Add 2 random middle options
+        const middleStart = Math.floor(options.length * 0.25);
+        const middleEnd = Math.floor(options.length * 0.75);
+        for (let i = 0; i < 2 && samples.size < count; i++) {
+            const randomIndex = middleStart + Math.floor(Math.random() * (middleEnd - middleStart));
+            samples.add(options[randomIndex]);
+        }
+        
+        // Try to find one option that might match TSV data (simple heuristic)
+        // Look for common categorical values
+        const categoricalPatterns = [
+            /male|female/i,
+            /yes|no/i,
+            /active|inactive/i,
+            /enabled|disabled/i,
+            /public|private/i,
+            /open|closed/i
+        ];
+        
+        for (const option of options) {
+            if (samples.size >= count) break;
+            
+            for (const pattern of categoricalPatterns) {
+                if (pattern.test(option) && !samples.has(option)) {
+                    samples.add(option);
+                    break;
+                }
+            }
+        }
+        
+        // Fill remaining slots with random options if needed
+        while (samples.size < count && samples.size < options.length) {
+            const randomIndex = Math.floor(Math.random() * options.length);
+            samples.add(options[randomIndex]);
+        }
+        
+        return Array.from(samples);
     }
 
     private async waitForStability(): Promise<void> {
@@ -474,5 +844,313 @@ export class ActiveUIExplorer {
         }
         
         return baseSelector;
+    }
+
+    // ===== NEW METHODS FOR CHECKBOX AND RADIO BUTTON SUPPORT =====
+
+    async discoverCheckboxes(): Promise<DiscoveredCheckbox[]> {
+        console.log('🔍 Discovering checkboxes...');
+        
+        const checkboxSelectors = [
+            'input[type="checkbox"]',
+            '[role="checkbox"]',
+            '.MuiCheckbox-root',
+            '[class*="ant-checkbox"]',
+            '[class*="checkbox"]'
+        ];
+        
+        const checkboxes: DiscoveredCheckbox[] = [];
+        
+        for (const selector of checkboxSelectors) {
+            try {
+                const result = await this.mcpClient.callTools([{
+                    name: 'playwright_evaluate',
+                    parameters: {
+                        script: `
+                            Array.from(document.querySelectorAll('${selector}')).map(el => ({
+                                selector: '${selector}',
+                                label: el.getAttribute('aria-label') || 
+                                       el.getAttribute('title') || 
+                                       el.closest('label')?.textContent?.trim() ||
+                                       el.parentElement?.textContent?.trim() ||
+                                       'Checkbox',
+                                checked: el.checked || el.getAttribute('aria-checked') === 'true',
+                                id: el.id,
+                                className: el.className
+                            }))
+                        `
+                    },
+                    id: `discover-checkboxes-${Date.now()}`
+                }]);
+                
+                if (result[0]?.result?.content && result[0].result.content[0]?.text) {
+                    const elements = JSON.parse(result[0].result.content[0].text);
+                    elements.forEach((el: any) => {
+                        const checkbox: DiscoveredCheckbox = {
+                            type: 'checkbox',
+                            label: el.label,
+                            selector: el.id ? `#${el.id}` : `${selector}:nth-child(${checkboxes.length + 1})`,
+                            checked: el.checked
+                        };
+                        checkboxes.push(checkbox);
+                    });
+                }
+            } catch (error) {
+                console.warn(`⚠️ Failed to discover checkboxes with selector ${selector}:`, error);
+            }
+        }
+        
+        console.log(`✅ Discovered ${checkboxes.length} checkboxes`);
+        return checkboxes;
+    }
+
+    async discoverRadioButtons(): Promise<DiscoveredRadioGroup[]> {
+        console.log('🔍 Discovering radio button groups...');
+        
+        const radioSelectors = [
+            'input[type="radio"]',
+            '[role="radio"]',
+            '.MuiRadio-root',
+            '[class*="ant-radio"]',
+            '[class*="radio"]'
+        ];
+        
+        const radioGroups: DiscoveredRadioGroup[] = [];
+        const processedGroups = new Set<string>();
+        
+        for (const selector of radioSelectors) {
+            try {
+                const result = await this.mcpClient.callTools([{
+                    name: 'playwright_evaluate',
+                    parameters: {
+                        script: `
+                            Array.from(document.querySelectorAll('${selector}')).map(el => ({
+                                selector: '${selector}',
+                                label: el.getAttribute('aria-label') || 
+                                       el.getAttribute('title') || 
+                                       el.closest('label')?.textContent?.trim() ||
+                                       el.parentElement?.textContent?.trim() ||
+                                       'Radio Option',
+                                name: el.name || el.getAttribute('name') || 'unnamed',
+                                value: el.value || el.getAttribute('value') || '',
+                                checked: el.checked || el.getAttribute('aria-checked') === 'true',
+                                id: el.id,
+                                className: el.className
+                            }))
+                        `
+                    },
+                    id: `discover-radios-${Date.now()}`
+                }]);
+                
+                if (result[0]?.result?.content && result[0].result.content[0]?.text) {
+                    const elements = JSON.parse(result[0].result.content[0].text);
+                    
+                    // Group by name attribute
+                    const groups: { [key: string]: any[] } = {};
+                    elements.forEach((el: any) => {
+                        const groupName = el.name || 'unnamed';
+                        if (!groups[groupName]) {
+                            groups[groupName] = [];
+                        }
+                        groups[groupName].push(el);
+                    });
+                    
+                    // Create radio groups
+                    Object.entries(groups).forEach(([groupName, options]) => {
+                        if (!processedGroups.has(groupName) && options.length > 1) {
+                            const radioGroup: DiscoveredRadioGroup = {
+                                groupName: groupName,
+                                options: options.map((el: any, index: number) => ({
+                                    type: 'radio',
+                                    label: el.label,
+                                    selector: el.id ? `#${el.id}` : `${selector}:nth-child(${index + 1})`,
+                                    text: el.value
+                                }))
+                            };
+                            radioGroups.push(radioGroup);
+                            processedGroups.add(groupName);
+                        }
+                    });
+                }
+            } catch (error) {
+                console.warn(`⚠️ Failed to discover radio buttons with selector ${selector}:`, error);
+            }
+        }
+        
+        console.log(`✅ Discovered ${radioGroups.length} radio button groups`);
+        return radioGroups;
+    }
+
+    async exploreCheckbox(checkbox: DiscoveredCheckbox): Promise<UIExplorationResult> {
+        console.log(`🔍 Exploring checkbox: ${checkbox.label}`);
+        
+        try {
+            const states = [];
+            
+            // Test unchecked state (if currently checked)
+            if (checkbox.checked) {
+                console.log(`🔍 Testing unchecked state for ${checkbox.label}`);
+                const beforeUncheck = await this.stateCapturer.captureState();
+                
+                await this.mcpClient.callTools([{
+                    name: 'playwright_click',
+                    parameters: { selector: checkbox.selector },
+                    id: `uncheck-${Date.now()}`
+                }]);
+                
+                await this.waitForStability();
+                const afterUncheck = await this.stateCapturer.captureState();
+                const uncheckChanges = this.stateCapturer.detectChanges(beforeUncheck, afterUncheck);
+                
+                states.push({
+                    state: 'unchecked',
+                    changes: uncheckChanges
+                });
+                
+                console.log(`📊 Unchecked changes:`, uncheckChanges);
+            }
+            
+            // Test checked state
+            console.log(`🔍 Testing checked state for ${checkbox.label}`);
+            const beforeCheck = await this.stateCapturer.captureState();
+            
+            await this.mcpClient.callTools([{
+                name: 'playwright_click',
+                parameters: { selector: checkbox.selector },
+                id: `check-${Date.now()}`
+            }]);
+            
+            await this.waitForStability();
+            const afterCheck = await this.stateCapturer.captureState();
+            const checkChanges = this.stateCapturer.detectChanges(beforeCheck, afterCheck);
+            
+            states.push({
+                state: 'checked',
+                changes: checkChanges
+            });
+            
+            console.log(`📊 Checked changes:`, checkChanges);
+            
+            const result: UIExplorationResult = {
+                elementType: 'checkbox',
+                label: checkbox.label,
+                selector: checkbox.selector,
+                allOptions: ['checked', 'unchecked'],
+                sampledTests: [], // Not used for checkboxes
+                states: states
+            };
+            
+            console.log(`✅ Explored checkbox ${checkbox.label}: ${states.length} states tested`);
+            return result;
+            
+        } catch (error: any) {
+            console.error(`❌ Failed to explore checkbox ${checkbox.label}:`, error);
+            throw new Error(`Checkbox exploration failed for ${checkbox.label}: ${error.message}. NO FALLBACK AVAILABLE.`);
+        }
+    }
+
+    async exploreRadioGroup(radioGroup: DiscoveredRadioGroup): Promise<UIExplorationResult> {
+        console.log(`🔍 Exploring radio group: ${radioGroup.groupName}`);
+        
+        try {
+            const sampledTests = [];
+            
+            for (const option of radioGroup.options) {
+                console.log(`🔍 Testing radio option: ${option.label}`);
+                
+                const before = await this.stateCapturer.captureState();
+                
+                await this.mcpClient.callTools([{
+                    name: 'playwright_click',
+                    parameters: { selector: option.selector },
+                    id: `radio-${Date.now()}`
+                }]);
+                
+                await this.waitForStability();
+                const after = await this.stateCapturer.captureState();
+                const changes = this.stateCapturer.detectChanges(before, after);
+                
+                sampledTests.push({
+                    option: option.label,
+                    changes: changes
+                });
+                
+                console.log(`📊 Radio option "${option.label}" changes:`, changes);
+            }
+            
+            const result: UIExplorationResult = {
+                elementType: 'radio',
+                label: radioGroup.groupName,
+                selector: radioGroup.options[0]?.selector || '',
+                allOptions: radioGroup.options.map(opt => opt.label),
+                sampledTests: sampledTests
+            };
+            
+            console.log(`✅ Explored radio group ${radioGroup.groupName}: ${sampledTests.length} options tested`);
+            return result;
+            
+        } catch (error: any) {
+            console.error(`❌ Failed to explore radio group ${radioGroup.groupName}:`, error);
+            throw new Error(`Radio group exploration failed for ${radioGroup.groupName}: ${error.message}. NO FALLBACK AVAILABLE.`);
+        }
+    }
+
+    async extractSearchTermsFromTSV(): Promise<string[]> {
+        console.log('🔍 Extracting search terms from TSV data...');
+        
+        try {
+            // Query RAG for TSV field values
+            const tsvKnowledge = await this.vectorRAG.queryTSVKnowledge('What are all the string and categorical field values in the TSV data?');
+            
+            if (!tsvKnowledge || tsvKnowledge.length === 0) {
+                throw new Error('No TSV data available in RAG for search term extraction. NO FALLBACK AVAILABLE.');
+            }
+            
+            // Extract diverse sample values
+            const searchTerms = new Set<string>();
+            
+            for (const knowledge of tsvKnowledge) {
+                // Handle flat TSV records (actual structure found in logs)
+                if (!knowledge.metadata && !knowledge.records && knowledge['type']) {
+                    // Extract string/categorical values from flat record
+                    Object.values(knowledge).forEach((value: any) => {
+                        if (typeof value === 'string' && value.length > 0 && value.length < 50) {
+                            // Skip IDs, codes, and very long values
+                            if (!value.match(/^[A-Z0-9_-]+$/) && !value.includes('http')) {
+                                searchTerms.add(value.trim());
+                            }
+                        }
+                    });
+                }
+                // Handle records array structure (if it exists)
+                else if (knowledge.metadata?.type === 'tsv_record' && knowledge.records) {
+                    // Extract string/categorical values from records
+                    knowledge.records.forEach((record: any) => {
+                        Object.values(record).forEach((value: any) => {
+                            if (typeof value === 'string' && value.length > 0 && value.length < 50) {
+                                // Skip IDs, codes, and very long values
+                                if (!value.match(/^[A-Z0-9_-]+$/) && !value.includes('http')) {
+                                    searchTerms.add(value.trim());
+                                }
+                            }
+                        });
+                    });
+                }
+            }
+            
+            // Convert to array and take 3-5 diverse samples
+            const terms = Array.from(searchTerms).slice(0, 5);
+            
+            if (terms.length === 0) {
+                throw new Error('No suitable search terms found in TSV data. NO FALLBACK AVAILABLE.');
+            }
+            
+            console.log(`✅ Extracted ${terms.length} search terms: ${terms.join(', ')}`);
+            return terms;
+            
+        } catch (error: any) {
+            console.error(`❌ Failed to extract search terms from TSV:`, error);
+            throw new Error(`Search term extraction failed: ${error.message}. NO FALLBACK AVAILABLE.`);
+        }
     }
 }
