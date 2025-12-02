@@ -358,7 +358,7 @@ export class UIStateCapturer {
             const result = await this.mcpClient.callTools([{
                 name: 'playwright_evaluate',
                 parameters: {
-                    script: `
+                    script: `(() => {
                         const radioGroups = {};
                         Array.from(document.querySelectorAll('input[type="radio"], [role="radio"], .MuiRadio-root, [class*="ant-radio"], [class*="radio"]')).forEach(el => {
                             const groupName = el.name || el.getAttribute('name') || 'unnamed';
@@ -378,8 +378,8 @@ export class UIStateCapturer {
                         return Object.entries(radioGroups).map(([groupName, options]) => ({
                             groupName: groupName,
                             selectedOption: options.find(opt => opt.checked)?.label || 'None'
-                        }))
-                    `
+                        }));
+                    })()`
                 },
                 id: `get-radio-states-${Date.now()}`
             }]);

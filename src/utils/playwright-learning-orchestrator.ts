@@ -318,17 +318,22 @@ export class PlaywrightLearningOrchestrator {
             console.log('🔍 DEBUG - mappingAnalysis:', JSON.stringify(mappingAnalysis, null, 2));
 
             // DEBUG: Calculate and log each part
-            const uiElementsCalc = (uiAnalysis.forms?.length || 0) + 
-                                 (uiAnalysis.buttons?.length || 0) + 
-                                 (uiAnalysis.tables?.length || 0) + 
-                                 (uiAnalysis.inputs?.length || 0) + 
-                                 (uiAnalysis.links?.length || 0) + 
-                                 (uiAnalysis.dropdowns?.length || 0) +
-                                 (uiAnalysis.charts?.length || 0) +
-                                 (uiAnalysis.navigation?.length || 0) +
-                                 (uiAnalysis.filters?.length || 0);
+            // Support both old format (forms, buttons, etc.) and new format (totalElements, filters, dropdowns, etc.)
+            const uiElementsCalc = uiAnalysis.totalElements !== undefined 
+                ? uiAnalysis.totalElements 
+                : (uiAnalysis.forms?.length || 0) + 
+                  (uiAnalysis.buttons?.length || 0) + 
+                  (uiAnalysis.tables?.length || 0) + 
+                  (uiAnalysis.inputs?.length || 0) + 
+                  (uiAnalysis.links?.length || 0) + 
+                  (uiAnalysis.dropdowns?.length || 0) +
+                  (uiAnalysis.charts?.length || 0) +
+                  (uiAnalysis.navigation?.length || 0) +
+                  (uiAnalysis.filters?.length || 0) +
+                  (uiAnalysis.searchBoxes?.length || 0);
 
             console.log('🔍 DEBUG - UI Elements Calculation:', {
+                totalElements: uiAnalysis.totalElements,
                 forms: uiAnalysis.forms?.length || 0,
                 buttons: uiAnalysis.buttons?.length || 0,
                 tables: uiAnalysis.tables?.length || 0,
@@ -338,7 +343,8 @@ export class PlaywrightLearningOrchestrator {
                 charts: uiAnalysis.charts?.length || 0,
                 navigation: uiAnalysis.navigation?.length || 0,
                 filters: uiAnalysis.filters?.length || 0,
-                total: uiElementsCalc,
+                searchBoxes: uiAnalysis.searchBoxes?.length || 0,
+                calculatedTotal: uiElementsCalc,
                 analysisMethod: uiAnalysis.analysisMethod || 'unknown',
                 htmlElements: uiAnalysis.htmlElements || 0,
                 screenshotElements: uiAnalysis.screenshotElements || 0
