@@ -81,8 +81,21 @@ export class ActiveUIExplorer {
             
             // Phase 2: LLM prioritization - rank elements by TSV field relevance
             console.log('🧠 Phase 2: LLM Prioritization - START');
-            const prioritized = await this.prioritizeWithLLM(discoveredDropdowns);
-            console.log(`🧠 Phase 2: COMPLETE - Prioritized ${prioritized.length} dropdowns`);
+            let prioritized: PrioritizedDropdown[];
+            try {
+                prioritized = await this.prioritizeWithLLM(discoveredDropdowns);
+                console.log(`🧠 Phase 2: COMPLETE - Prioritized ${prioritized.length} dropdowns`);
+            } catch (error: any) {
+                console.warn(`⚠️ LLM prioritization failed, using default priority: ${error.message}`);
+                // Fallback: use dropdowns in original order
+                prioritized = discoveredDropdowns.map((dropdown, index) => ({
+                    ...dropdown,
+                    priority: index + 1,
+                    reason: 'Default priority due to LLM failure',
+                    tsvField: 'unknown'
+                }));
+                console.log(`🧠 Phase 2: FALLBACK - Using ${prioritized.length} dropdowns with default priority`);
+            }
             
             // Phase 3: Deep exploration of top priority only
             console.log('🎯 Phase 3: Targeted Exploration - START');

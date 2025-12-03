@@ -506,7 +506,8 @@ async analyzeRealUI(pageContent: string, pageText: string, screenshot: any, exis
                     id: `text-search-study-${Date.now()}`
                 }]);
                 
-                if (textSearchResult[0]?.result?.content?.[0]?.text !== 'not-found') {
+                if (textSearchResult && textSearchResult[0]?.result?.content?.[0]?.text && 
+                    textSearchResult[0].result.content[0].text !== 'not-found') {
                     console.log(`✅ Found study element via text search: ${textSearchResult[0].result.content[0].text}`);
                     // Try to click it
                     await this.mcpClient.callTools([{
@@ -890,6 +891,14 @@ Response (JSON array only):`;
         const explorationResults = await explorer.exploreAllElements();
         
         console.log(`✅ Explored ${explorationResults.length} UI elements`);
+        console.log(`🔍 DEBUG: Exploration results breakdown:`, {
+            total: explorationResults.length,
+            dropdowns: explorationResults.filter(r => r.elementType === 'dropdown').length,
+            searchBoxes: explorationResults.filter(r => r.elementType === 'searchBox').length,
+            checkboxes: explorationResults.filter(r => r.elementType === 'checkbox').length,
+            radio: explorationResults.filter(r => r.elementType === 'radio').length,
+            elementTypes: explorationResults.map(r => r.elementType)
+        });
         
         // Convert exploration results to the expected format
         const result = {
@@ -947,6 +956,15 @@ Response (JSON array only):`;
             confidence: 0.95,
             explorationResults: explorationResults
         };
+        
+        console.log(`🔍 DEBUG: Final result object:`, {
+            filters: result.filters.length,
+            dropdowns: result.dropdowns.length,
+            searchBoxes: result.searchBoxes.length,
+            checkboxes: result.checkboxes.length,
+            radioGroups: result.radioGroups.length,
+            totalElements: result.totalElements
+        });
         
         return result;
     }
