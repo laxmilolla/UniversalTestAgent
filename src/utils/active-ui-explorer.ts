@@ -826,14 +826,27 @@ Return JSON array:
                     }
                 }
                 
-                // Click to expand if not already expanded
+                // Try to expand if not already expanded (but continue even if click fails)
                 if (!isExpanded) {
-                    await this.mcpClient.callTools([{
-                        name: 'playwright_click',
-                        parameters: { selector },
-                        id: `expand-panel-${Date.now()}`
-                    }]);
-                    await this.waitForStability();
+                    try {
+                        // Try using JavaScript to expand instead of click (more reliable)
+                        await this.mcpClient.callTools([{
+                            name: 'playwright_evaluate',
+                            parameters: { 
+                                script: `(() => {
+                                    const el = document.querySelector('${selector}');
+                                    if (el && el.getAttribute('aria-expanded') === 'false') {
+                                        el.click();
+                                    }
+                                    return { clicked: true };
+                                })()`
+                            },
+                            id: `expand-panel-js-${Date.now()}`
+                        }]);
+                        await this.waitForStability();
+                    } catch (error) {
+                        console.warn(`⚠️ Failed to expand panel, trying to extract options anyway...`);
+                    }
                 }
                 
                 // Get all checkboxes within this filter panel
@@ -844,18 +857,57 @@ Return JSON array:
                         script: `(() => {
                             const panel = document.querySelector('${selector}');
                             if (!panel) return [];
-                            // Find the expanded content area (sibling or parent's next sibling)
-                            const expandedContent = panel.closest('[id]')?.parentElement?.querySelector('[role="region"]') ||
-                                                   panel.parentElement?.querySelector('[role="region"]');
+                            
+                            // Find the expanded content area - look for sibling div with role="region"
+                            // Structure: panel -> parent -> next sibling with role="region"
+                            let expandedContent = null;
+                            
+                            // Method 1: Find parent container, then look for role="region" within it
+                            const parentContainer = panel.closest('div[id]')?.parentElement || panel.parentElement?.parentElement;
+                            if (parentContainer) {
+                                expandedContent = parentContainer.querySelector('div[role="region"]');
+                            }
+                            
+                            // Method 2: Look for next sibling with role="region"
+                            if (!expandedContent) {
+                                let sibling = panel.parentElement?.nextElementSibling;
+                                while (sibling && !expandedContent) {
+                                    if (sibling.getAttribute('role') === 'region') {
+                                        expandedContent = sibling;
+                                        break;
+                                    }
+                                    sibling = sibling.nextElementSibling;
+                                }
+                            }
+                            
+                            // Method 3: Find any div[role="region"] that contains checkboxes related to this panel
+                            if (!expandedContent) {
+                                const allRegions = document.querySelectorAll('div[role="region"]');
+                                for (const region of allRegions) {
+                                    const checkboxes = region.querySelectorAll('input[type="checkbox"]');
+                                    if (checkboxes.length > 0) {
+                                        // Check if this region is near our panel (within same parent)
+                                        const panelParent = panel.closest('div[id]')?.parentElement;
+                                        const regionParent = region.closest('div[id]')?.parentElement;
+                                        if (panelParent === regionParent || region.contains(panel) || panel.contains(region)) {
+                                            expandedContent = region;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            
                             if (!expandedContent) return [];
+                            
                             // Find all checkbox labels
                             const labels = Array.from(expandedContent.querySelectorAll('input[type="checkbox"]')).map(cb => {
                                 // Find the label text next to the checkbox
                                 const row = cb.closest('div[role="button"]');
                                 if (!row) return null;
-                                const labelEl = row.querySelector('p.filter_by_casesNameUnChecked, p[class*="filter_by_casesName"]');
+                                const labelEl = row.querySelector('p.filter_by_casesNameUnChecked, p[class*="filter_by_casesName"], p[class*="filter_by_cases"]');
                                 return labelEl ? labelEl.textContent?.trim() : null;
                             }).filter(l => l && l.length > 0);
+                            
                             return labels;
                         })()`
                     },
