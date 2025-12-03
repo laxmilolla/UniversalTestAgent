@@ -16,7 +16,7 @@ export class PlaywrightLearningOrchestrator {
     private vectorRAG: VectorRAGClient; // NEW
     private currentWebsiteUrl: string = '';
     private executionTrace: any[] = []; // Add this line
-    private readonly timeout = 300000; // 300 seconds (5 minutes) for comprehensive LLM-guided exploration
+    private readonly timeout = 600000; // 600 seconds (10 minutes) for comprehensive LLM-guided exploration
     private currentTSVFiles: any[] = []; // Add this line
     private currentTSVData: any[] = []; // Parsed TSV data for dynamic test value extraction
 
@@ -69,7 +69,7 @@ export class PlaywrightLearningOrchestrator {
         
         // Add timeout wrapper
         const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('Learning process timeout after 300 seconds')), 300000);
+            setTimeout(() => reject(new Error('Learning process timeout after 600 seconds')), this.timeout);
         });
         
         const learningPromise = this.performLearning(websiteUrl, tsvFiles);
@@ -322,13 +322,13 @@ export class PlaywrightLearningOrchestrator {
             const uiElementsCalc = uiAnalysis.totalElements !== undefined 
                 ? uiAnalysis.totalElements 
                 : (uiAnalysis.forms?.length || 0) + 
-                  (uiAnalysis.buttons?.length || 0) + 
-                  (uiAnalysis.tables?.length || 0) + 
-                  (uiAnalysis.inputs?.length || 0) + 
-                  (uiAnalysis.links?.length || 0) + 
-                  (uiAnalysis.dropdowns?.length || 0) +
-                  (uiAnalysis.charts?.length || 0) +
-                  (uiAnalysis.navigation?.length || 0) +
+                                 (uiAnalysis.buttons?.length || 0) + 
+                                 (uiAnalysis.tables?.length || 0) + 
+                                 (uiAnalysis.inputs?.length || 0) + 
+                                 (uiAnalysis.links?.length || 0) + 
+                                 (uiAnalysis.dropdowns?.length || 0) +
+                                 (uiAnalysis.charts?.length || 0) +
+                                 (uiAnalysis.navigation?.length || 0) +
                   (uiAnalysis.filters?.length || 0) +
                   (uiAnalysis.searchBoxes?.length || 0) +
                   (uiAnalysis.checkboxes?.length || 0) +
@@ -788,7 +788,7 @@ Response (JSON array only):`;
                 const jsonMatch = responseText.match(/\[.*?\]/s);
                 if (jsonMatch) {
                     parsedStudies = JSON.parse(jsonMatch[0]);
-                } else {
+        } else {
                     // Try parsing entire response
                     parsedStudies = JSON.parse(responseText);
                 }
@@ -867,7 +867,7 @@ Response (JSON array only):`;
             const result = Array.from(allStudies);
             console.log(`📊 Final extracted study name(s): ${result.length > 0 ? result.join(', ') : 'NONE'}`);
             return result;
-        } catch (error) {
+    } catch (error) {
             console.error('❌ Error extracting study name:', error);
             return [];
         }
@@ -888,56 +888,8 @@ Response (JSON array only):`;
         );
         
         // Explore UI and store in RAG
-        let explorationResults: any[] = [];
-        try {
-            explorationResults = await explorer.exploreAllElements();
-            console.log(`✅ Explored ${explorationResults.length} UI elements`);
-        } catch (error: any) {
-            console.error(`❌ Exploration failed or timed out: ${error.message}`);
-            console.warn(`⚠️ Will use discovered elements even if exploration incomplete`);
-            // Try to get at least the discovered elements
-            try {
-                const discoveredDropdowns = await explorer.discoverAllDropdownsWithOptions();
-                const discoveredSearchBoxes = await explorer.discoverSearchBoxes();
-                const discoveredCheckboxes = await explorer.discoverCheckboxes();
-                const discoveredRadioGroups = await explorer.discoverRadioButtons();
-                
-                // Create minimal results from discovered elements
-                explorationResults = [
-                    ...discoveredDropdowns.map(d => ({
-                        elementType: 'dropdown',
-                        label: d.label,
-                        selector: d.selector,
-                        allOptions: d.allOptions,
-                        sampledTests: []
-                    })),
-                    ...discoveredSearchBoxes.map(s => ({
-                        elementType: 'searchBox',
-                        label: s.label,
-                        selector: s.selector,
-                        allOptions: [],
-                        sampledTests: []
-                    })),
-                    ...discoveredCheckboxes.map(c => ({
-                        elementType: 'checkbox',
-                        label: c.label,
-                        selector: c.selector,
-                        allOptions: ['checked', 'unchecked'],
-                        sampledTests: []
-                    })),
-                    ...discoveredRadioGroups.map(r => ({
-                        elementType: 'radio',
-                        label: r.groupName,
-                        selector: r.options[0]?.selector || '',
-                        allOptions: r.options.map(o => o.label),
-                        sampledTests: []
-                    }))
-                ];
-                console.log(`✅ Created ${explorationResults.length} results from discovered elements (exploration incomplete)`);
-            } catch (discoverError) {
-                console.error(`❌ Could not even get discovered elements: ${discoverError.message}`);
-            }
-        }
+        const explorationResults = await explorer.exploreAllElements();
+        console.log(`✅ Explored ${explorationResults.length} UI elements`);
         
         console.log(`🔍 DEBUG: Exploration results breakdown:`, {
             total: explorationResults.length,
@@ -1649,7 +1601,7 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
                 mappings: llmMappings.mappings,
                 testCases: testCases,
                 validationRules: this.extractValidationRulesFromLLM(llmMappings),
-                missingMappings: [],
+                    missingMappings: [],
                 dataRelationships: llmMappings.dataRelationships || []
             };
             
@@ -1697,7 +1649,7 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
                 const words = visibleText.split(/\s+/).filter(word => word.length > 2);
                 uiElementTexts.push(...words.slice(0, 20)); // Add first 20 meaningful words
                 console.log(`🔍 Extracted ${words.length} words from page text`);
-            } catch (error) {
+        } catch (error) {
                 console.error('❌ Failed to extract visible text:', error);
             }
         }
