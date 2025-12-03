@@ -526,7 +526,7 @@ async analyzeRealUI(pageContent: string, pageText: string, screenshot: any, exis
                     parameters: {
                         script: `(() => {
                             const panel = document.querySelector('${studyPanelSelector}');
-                            if (!panel) return { found: false, selector: null };
+                            if (!panel) return { found: false, selector: null, debug: 'Panel not found' };
                             
                             // Find expanded content area (same logic as getDropdownOptions)
                             let expandedContent = null;
@@ -544,10 +544,27 @@ async analyzeRealUI(pageContent: string, pageText: string, screenshot: any, exis
                                     sibling = sibling.nextElementSibling;
                                 }
                             }
-                            if (!expandedContent) return { found: false, selector: null };
+                            if (!expandedContent) {
+                                // Try alternative: look for any div[role="region"] near the panel
+                                const allRegions = document.querySelectorAll('div[role="region"]');
+                                for (const region of allRegions) {
+                                    const checkboxes = region.querySelectorAll('input[type="checkbox"]');
+                                    if (checkboxes.length > 0) {
+                                        const panelParent = panel.closest('div[id]')?.parentElement;
+                                        const regionParent = region.closest('div[id]')?.parentElement;
+                                        if (panelParent === regionParent || region.contains(panel) || panel.contains(region)) {
+                                            expandedContent = region;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            if (!expandedContent) return { found: false, selector: null, debug: 'Expanded content not found' };
                             
                             // Find all checkboxes and their labels
                             const checkboxes = expandedContent.querySelectorAll('input[type="checkbox"]');
+                            const allLabels: string[] = [];
+                            
                             for (const cb of checkboxes) {
                                 const row = cb.closest('div[role="button"]');
                                 if (!row) continue;
@@ -557,25 +574,47 @@ async analyzeRealUI(pageContent: string, pageText: string, screenshot: any, exis
                                 const labelText = labelEl ? labelEl.textContent?.trim() : '';
                                 
                                 if (!labelText) continue;
+                                allLabels.push(labelText);
                                 
                                 // Flexible matching: "OSA04" matches "OSA04 (000018)"
                                 // Case-insensitive, handle variations
                                 const studyNameLower = '${studyName}'.toLowerCase();
                                 const labelLower = labelText.toLowerCase();
                                 
-                                // Exact match or partial match (study name is substring of label)
+                                // Extract study code from label (e.g., "OSA04" from "OSA04 (000018)")
+                                const labelCode = labelLower.split(' ')[0].split('(')[0].trim();
+                                const studyCode = studyNameLower.split(' ')[0].split('(')[0].trim();
+                                
+                                // Multiple matching strategies:
+                                // 1. Exact match
+                                // 2. Study code matches label code
+                                // 3. Study name is substring of label
+                                // 4. Label code is substring of study name
                                 if (labelLower === studyNameLower || 
+                                    labelCode === studyCode ||
                                     labelLower.includes(studyNameLower) || 
-                                    studyNameLower.includes(labelLower.split(' ')[0]) ||
-                                    labelLower.split(' ')[0] === studyNameLower) {
+                                    studyNameLower.includes(labelCode) ||
+                                    labelCode.includes(studyCode) ||
+                                    studyCode.includes(labelCode)) {
+                                    // Generate selector: prefer ID, fallback to label-based selector
+                                    let selector = null;
+                                    if (cb.id) {
+                                        selector = '#' + cb.id;
+                                    } else {
+                                        // We'll find it by label text when clicking (no selector needed)
+                                        selector = null;
+                                    }
                                     return {
                                         found: true,
-                                        selector: cb.id ? '#' + cb.id : null,
-                                        label: labelText
+                                        selector: selector,
+                                        checkboxId: cb.id,
+                                        label: labelText,
+                                        debug: 'Match found',
+                                        allLabels: allLabels
                                     };
                                 }
                             }
-                            return { found: false, selector: null };
+                            return { found: false, selector: null, debug: 'No matching checkbox', allLabels: allLabels };
                         })()`
                     },
                     id: `find-study-checkbox-${Date.now()}`
@@ -588,8 +627,8 @@ async analyzeRealUI(pageContent: string, pageText: string, screenshot: any, exis
                         if (item.type === 'text' && item.text && item.text.startsWith('{')) {
                             try {
                                 const parsed = JSON.parse(item.text);
+                                checkboxInfo = parsed; // Store even if not found, to get debug info
                                 if (parsed.found) {
-                                    checkboxInfo = parsed;
                                     break;
                                 }
                             } catch (e) {}
@@ -597,20 +636,94 @@ async analyzeRealUI(pageContent: string, pageText: string, screenshot: any, exis
                     }
                 }
                 
+                // Log debug information
+                if (checkboxInfo) {
+                    if (checkboxInfo.allLabels && checkboxInfo.allLabels.length > 0) {
+                        console.log(`🔍 DEBUG: Found ${checkboxInfo.allLabels.length} checkboxes in Study panel: ${checkboxInfo.allLabels.slice(0, 5).join(', ')}${checkboxInfo.allLabels.length > 5 ? '...' : ''}`);
+                    }
+                    if (checkboxInfo.debug) {
+                        console.log(`🔍 DEBUG: ${checkboxInfo.debug}`);
+                    }
+                }
+                
                 if (checkboxInfo && checkboxInfo.found) {
-                    const checkboxSelector = checkboxInfo.selector || `input[type="checkbox"]`;
                     console.log(`✅ Found matching checkbox for ${studyName}: "${checkboxInfo.label}"`);
                     
                     // Step 4: Click the checkbox
                     console.log('🔍 Step 4: Clicking study checkbox...');
-                    await this.mcpClient.callTools([{
-                        name: 'playwright_click',
-                        parameters: { selector: checkboxSelector },
-                        id: `click-study-checkbox-${Date.now()}`
+                    
+                    // Use JavaScript click to find and click the checkbox by label (more reliable)
+                    const targetLabel = checkboxInfo.label;
+                    const clickResult = await this.mcpClient.callTools([{
+                        name: 'playwright_evaluate',
+                        parameters: {
+                            script: `(() => {
+                                const panel = document.querySelector('${studyPanelSelector}');
+                                if (!panel) return { clicked: false, error: 'Panel not found' };
+                                
+                                // Find expanded content (same logic as before)
+                                let expandedContent = null;
+                                const parentContainer = panel.closest('div[id]')?.parentElement || panel.parentElement?.parentElement;
+                                if (parentContainer) {
+                                    expandedContent = parentContainer.querySelector('div[role="region"]');
+                                }
+                                if (!expandedContent) {
+                                    const allRegions = document.querySelectorAll('div[role="region"]');
+                                    for (const region of allRegions) {
+                                        const checkboxes = region.querySelectorAll('input[type="checkbox"]');
+                                        if (checkboxes.length > 0) {
+                                            const panelParent = panel.closest('div[id]')?.parentElement;
+                                            const regionParent = region.closest('div[id]')?.parentElement;
+                                            if (panelParent === regionParent || region.contains(panel) || panel.contains(region)) {
+                                                expandedContent = region;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                                if (!expandedContent) return { clicked: false, error: 'Expanded content not found' };
+                                
+                                // Find checkbox by label
+                                const targetLabel = ${JSON.stringify(targetLabel)};
+                                const checkboxes = expandedContent.querySelectorAll('input[type="checkbox"]');
+                                for (const cb of checkboxes) {
+                                    const row = cb.closest('div[role="button"]');
+                                    if (!row) continue;
+                                    const labelEl = row.querySelector('p.filter_by_casesNameUnChecked, p[class*="filter_by_casesName"], p[class*="filter_by_cases"]');
+                                    const labelText = labelEl ? labelEl.textContent?.trim() : '';
+                                    if (labelText === targetLabel) {
+                                        cb.click();
+                                        return { clicked: true, label: labelText };
+                                    }
+                                }
+                                return { clicked: false, error: 'Checkbox not found by label' };
+                            })()`
+                        },
+                        id: `click-study-checkbox-js-${Date.now()}`
                     }]);
                     
-                    console.log(`✅ Clicked checkbox for study: ${studyName}`);
-                    studyCheckboxFound = true;
+                    // Check if click was successful
+                    let clickSuccess = false;
+                    if (clickResult[0]?.result && Array.isArray(clickResult[0].result)) {
+                        for (const item of clickResult[0].result) {
+                            if (item.type === 'text' && item.text && item.text.startsWith('{')) {
+                                try {
+                                    const parsed = JSON.parse(item.text);
+                                    if (parsed.clicked) {
+                                        clickSuccess = true;
+                                        break;
+                                    }
+                                } catch (e) {}
+                            }
+                        }
+                    }
+                    
+                    if (clickSuccess) {
+                        console.log(`✅ Clicked checkbox for study: ${studyName}`);
+                        studyCheckboxFound = true;
+                    } else {
+                        console.warn(`⚠️ Failed to click checkbox for study: ${studyName}`);
+                    }
                     
                     // Step 5: Wait for filter to apply
                     console.log('⏳ Waiting for filter to apply...');
@@ -639,7 +752,11 @@ async analyzeRealUI(pageContent: string, pageText: string, screenshot: any, exis
                     
                     break; // Found and clicked, no need to try other study names
                 } else {
-                    console.log(`⚠️ No checkbox found matching study: ${studyName}`);
+                    if (checkboxInfo && checkboxInfo.allLabels && checkboxInfo.allLabels.length > 0) {
+                        console.log(`⚠️ No checkbox found matching study: ${studyName}. Available checkboxes: ${checkboxInfo.allLabels.slice(0, 10).join(', ')}`);
+                    } else {
+                        console.log(`⚠️ No checkbox found matching study: ${studyName}. No checkboxes found in Study panel.`);
+                    }
                 }
             }
             
@@ -953,7 +1070,30 @@ Response (JSON array only):`;
                 }
             }
             
-            const result = Array.from(allStudies);
+            // Filter out common TSV file names that are not study codes
+            const fileNamesToExclude = ['case', 'demographic', 'diagnosis', 'enrollment', 'investigator', 
+                                       'publication', 'sample', 'site', 'study', 'data', 'metadata', 
+                                       'info', 'detail', 'summary', 'report'];
+            const filteredStudies = Array.from(allStudies).filter(study => {
+                const studyLower = study.toLowerCase();
+                // Exclude if it's a common file name
+                if (fileNamesToExclude.includes(studyLower)) {
+                    return false;
+                }
+                // Prefer study codes that match pattern: 2-4 letters followed by numbers (e.g., OSA04, COTC007B)
+                const studyCodePattern = /^[A-Z]{2,4}[0-9]+[A-Z0-9]*$/i;
+                if (studyCodePattern.test(study)) {
+                    return true; // This looks like a study code
+                }
+                // Include if it's longer than 2 chars and not obviously a file name
+                return study.length > 2;
+            });
+            
+            // Sort: study codes first, then others
+            const studyCodes = filteredStudies.filter(s => /^[A-Z]{2,4}[0-9]+[A-Z0-9]*$/i.test(s));
+            const others = filteredStudies.filter(s => !/^[A-Z]{2,4}[0-9]+[A-Z0-9]*$/i.test(s));
+            const result = [...studyCodes, ...others];
+            
             console.log(`📊 Final extracted study name(s): ${result.length > 0 ? result.join(', ') : 'NONE'}`);
             return result;
     } catch (error) {
