@@ -767,9 +767,35 @@ Return JSON array:
             }
             
             // Check if this is an expandable filter panel (customExpansionPanelSummaryRoot)
-            // If so, we need to expand it and get checkbox options
-            const isExpandablePanel = selector.includes('customExpansionPanelSummaryRoot') || 
-                                     selector.includes('id=') && !selector.includes('option');
+            // Check by examining the element's class directly
+            const elementCheck = await this.mcpClient.callTools([{
+                name: 'playwright_evaluate',
+                parameters: { 
+                    script: `(() => {
+                        const el = document.querySelector('${selector}');
+                        if (!el) return { isExpandable: false };
+                        const className = el.className || '';
+                        return { 
+                            isExpandable: className.includes('customExpansionPanelSummaryRoot') || 
+                                        (el.getAttribute('role') === 'button' && el.getAttribute('aria-expanded') !== null)
+                        };
+                    })()`
+                },
+                id: `check-expandable-${Date.now()}`
+            }]);
+            
+            let isExpandablePanel = false;
+            if (elementCheck[0]?.result && Array.isArray(elementCheck[0].result)) {
+                for (const item of elementCheck[0].result) {
+                    if (item.type === 'text' && item.text && item.text.startsWith('{')) {
+                        try {
+                            const parsed = JSON.parse(item.text);
+                            isExpandablePanel = parsed.isExpandable === true;
+                            break;
+                        } catch (e) {}
+                    }
+                }
+            }
             
             if (isExpandablePanel) {
                 console.log(`🔍 Detected expandable filter panel, expanding to get checkbox options...`);
@@ -931,9 +957,35 @@ Return JSON array:
 
     private async selectOption(selector: string, option: string): Promise<void> {
         try {
-            // Check if this is an expandable filter panel
-            const isExpandablePanel = selector.includes('customExpansionPanelSummaryRoot') || 
-                                     (selector.startsWith('#') && !selector.includes('option'));
+            // Check if this is an expandable filter panel by examining the element's class
+            const elementCheck = await this.mcpClient.callTools([{
+                name: 'playwright_evaluate',
+                parameters: { 
+                    script: `(() => {
+                        const el = document.querySelector('${selector}');
+                        if (!el) return { isExpandable: false };
+                        const className = el.className || '';
+                        return { 
+                            isExpandable: className.includes('customExpansionPanelSummaryRoot') || 
+                                        (el.getAttribute('role') === 'button' && el.getAttribute('aria-expanded') !== null)
+                        };
+                    })()`
+                },
+                id: `check-expandable-for-select-${Date.now()}`
+            }]);
+            
+            let isExpandablePanel = false;
+            if (elementCheck[0]?.result && Array.isArray(elementCheck[0].result)) {
+                for (const item of elementCheck[0].result) {
+                    if (item.type === 'text' && item.text && item.text.startsWith('{')) {
+                        try {
+                            const parsed = JSON.parse(item.text);
+                            isExpandablePanel = parsed.isExpandable === true;
+                            break;
+                        } catch (e) {}
+                    }
+                }
+            }
             
             if (isExpandablePanel) {
                 console.log(`🔍 Selecting checkbox option in expandable filter panel: "${option}"`);
