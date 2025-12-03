@@ -426,7 +426,7 @@ async analyzeRealUI(pageContent: string, pageText: string, screenshot: any, exis
 
     // NEW METHOD: Navigate to specific study data before UI exploration
     private async navigateToStudyData(): Promise<void> {
-        console.log('🎯 Navigating to study data...');
+        console.log('🎯 Navigating to study data using dynamic filter panel discovery...');
         
         try {
             // Extract study names from TSV files (now returns array)
@@ -438,124 +438,213 @@ async analyzeRealUI(pageContent: string, pageText: string, screenshot: any, exis
                 return;
             }
             
-            // Try to navigate to each detected study until one succeeds
-            let studyFound = false;
-            for (const studyName of studyNames) {
-                console.log(`🔍 Attempting to navigate to study: ${studyName}`);
-                
-                // Try to find and click on the study filter/navigation
-                const studySelectors = [
-                    `[data-testid*="${studyName.toLowerCase()}"]`,
-                    `[aria-label*="${studyName}"]`,
-                    `button:contains("${studyName}")`,
-                    `a:contains("${studyName}")`,
-                    `[title*="${studyName}"]`,
-                    `[class*="${studyName.toLowerCase()}"]`
-                ];
-                
-                for (const selector of studySelectors) {
-                    try {
-                        console.log(`🔍 Looking for study selector: ${selector}`);
-                        
-                        // Check if element exists
-                        const checkResult = await this.mcpClient.callTools([{
-                            name: 'playwright_evaluate',
-                            parameters: {
-                                script: `document.querySelector('${selector}') ? 'found' : 'not-found'`
-                            },
-                            id: `check-study-${Date.now()}`
-                        }]);
-                        
-                        if (checkResult[0]?.result?.content?.[0]?.text === 'found') {
-                            console.log(`✅ Found study element: ${selector}`);
-                            
-                            // Click on the study element
-                            await this.mcpClient.callTools([{
-                                name: 'playwright_click',
-                                parameters: { selector: selector },
-                                id: `click-study-${Date.now()}`
-                            }]);
-                            
-                            console.log(`✅ Clicked on ${studyName} study`);
-                            studyFound = true;
-                            break;
+            // Step 1: Find the "Study" filter panel using the same discovery mechanism as dropdowns
+            console.log('🔍 Step 1: Finding Study filter panel...');
+            const studyPanelResult = await this.mcpClient.callTools([{
+                name: 'playwright_evaluate',
+                parameters: {
+                    script: `(() => {
+                        // Find all expandable filter panels (same as dropdown discovery)
+                        const panels = Array.from(document.querySelectorAll('div.customExpansionPanelSummaryRoot[role="button"]'));
+                        // Find panel with id or label matching "Study" (case-insensitive, flexible)
+                        const studyPanel = panels.find(panel => {
+                            const id = panel.id?.toLowerCase() || '';
+                            const textContent = panel.textContent?.toLowerCase() || '';
+                            return id.includes('study') || textContent.includes('study');
+                        });
+                        if (studyPanel) {
+                            return {
+                                found: true,
+                                id: studyPanel.id,
+                                selector: studyPanel.id ? '#' + studyPanel.id : null,
+                                isExpanded: studyPanel.getAttribute('aria-expanded') === 'true'
+                            };
                         }
-                    } catch (error) {
-                        console.log(`⚠️ Selector ${selector} not found or clickable`);
-                        continue;
+                        return { found: false };
+                    })()`
+                },
+                id: `find-study-panel-${Date.now()}`
+            }]);
+            
+            // Parse result
+            let studyPanelInfo: any = null;
+            if (studyPanelResult[0]?.result && Array.isArray(studyPanelResult[0].result)) {
+                for (const item of studyPanelResult[0].result) {
+                    if (item.type === 'text' && item.text && item.text.startsWith('{')) {
+                        try {
+                            const parsed = JSON.parse(item.text);
+                            if (parsed.found) {
+                                studyPanelInfo = parsed;
+                                break;
+                            }
+                        } catch (e) {}
                     }
-                }
-                
-                if (studyFound) break;
-                
-                // Try text-based search if selectors didn't work
-                console.warn(`⚠️ Could not find ${studyName} study selector, trying text-based search`);
-                
-                const textSearchResult = await this.mcpClient.callTools([{
-                    name: 'playwright_evaluate',
-                    parameters: {
-                        script: `
-                            const elements = Array.from(document.querySelectorAll('*'));
-                            const studyElement = elements.find(el => 
-                                el.textContent && el.textContent.includes('${studyName}') && 
-                                (el.tagName === 'BUTTON' || el.tagName === 'A' || el.onclick)
-                            );
-                            return studyElement ? studyElement.tagName + '.' + studyElement.className : 'not-found';
-                        `
-                    },
-                    id: `text-search-study-${Date.now()}`
-                }]);
-                
-                if (textSearchResult && textSearchResult[0]?.result?.content?.[0]?.text && 
-                    textSearchResult[0].result.content[0].text !== 'not-found') {
-                    console.log(`✅ Found study element via text search: ${textSearchResult[0].result.content[0].text}`);
-                    // Try to click it
-                    await this.mcpClient.callTools([{
-                        name: 'playwright_evaluate',
-                        parameters: {
-                            script: `
-                                const elements = Array.from(document.querySelectorAll('*'));
-                                const studyElement = elements.find(el => 
-                                    el.textContent && el.textContent.includes('${studyName}') && 
-                                    (el.tagName === 'BUTTON' || el.tagName === 'A' || el.onclick)
-                                );
-                                if (studyElement) {
-                                    studyElement.click();
-                                    return 'clicked';
-                                }
-                                return 'not-clickable';
-                            `
-                        },
-                        id: `click-study-text-${Date.now()}`
-                    }]);
-                    
-                    studyFound = true;
-                    break;
                 }
             }
             
-            if (studyFound) {
-                // Wait for data to load
-                console.log('⏳ Waiting for study data to load...');
-                await new Promise(resolve => setTimeout(resolve, 3000));
-                
-                // Verify we're showing the right data (check if any study name appears)
-                const studyNamesStr = studyNames.join('|');
-                const verifyResult = await this.mcpClient.callTools([{
+            if (!studyPanelInfo || !studyPanelInfo.found) {
+                console.warn('⚠️ Study filter panel not found, proceeding with current data');
+                return;
+            }
+            
+            const studyPanelSelector = studyPanelInfo.selector || `#${studyPanelInfo.id}`;
+            console.log(`✅ Found Study filter panel: ${studyPanelSelector}`);
+            
+            // Step 2: Expand the Study panel if not already expanded
+            if (!studyPanelInfo.isExpanded) {
+                console.log('🔍 Step 2: Expanding Study filter panel...');
+                await this.mcpClient.callTools([{
                     name: 'playwright_evaluate',
                     parameters: {
-                        script: `document.body.textContent.match(/${studyNamesStr}/i) ? 'verified' : 'not-verified'`
+                        script: `(() => {
+                            const panel = document.querySelector('${studyPanelSelector}');
+                            if (panel && panel.getAttribute('aria-expanded') === 'false') {
+                                panel.click();
+                                return { expanded: true };
+                            }
+                            return { expanded: false };
+                        })()`
                     },
-                    id: `verify-study-${Date.now()}`
+                    id: `expand-study-panel-${Date.now()}`
                 }]);
                 
-                if (verifyResult[0]?.result?.content?.[0]?.text === 'verified') {
-                    console.log(`✅ Successfully navigated to study data`);
-                } else {
-                    console.warn(`⚠️ Navigation to study may not have worked`);
-                }
+                // Wait for panel to expand
+                await new Promise(resolve => setTimeout(resolve, 1000));
             } else {
-                console.warn(`⚠️ Could not navigate to any detected study, proceeding with current data`);
+                console.log('✅ Study filter panel already expanded');
+            }
+            
+            // Step 3: Find checkboxes within the expanded Study panel and match to study names
+            console.log('🔍 Step 3: Finding matching study checkbox...');
+            let studyCheckboxFound = false;
+            
+            for (const studyName of studyNames) {
+                console.log(`🔍 Looking for checkbox matching study: ${studyName}`);
+                
+                const checkboxMatchResult = await this.mcpClient.callTools([{
+                    name: 'playwright_evaluate',
+                    parameters: {
+                        script: `(() => {
+                            const panel = document.querySelector('${studyPanelSelector}');
+                            if (!panel) return { found: false, selector: null };
+                            
+                            // Find expanded content area (same logic as getDropdownOptions)
+                            let expandedContent = null;
+                            const parentContainer = panel.closest('div[id]')?.parentElement || panel.parentElement?.parentElement;
+                            if (parentContainer) {
+                                expandedContent = parentContainer.querySelector('div[role="region"]');
+                            }
+                            if (!expandedContent) {
+                                let sibling = panel.parentElement?.nextElementSibling;
+                                while (sibling && !expandedContent) {
+                                    if (sibling.getAttribute('role') === 'region') {
+                                        expandedContent = sibling;
+                                        break;
+                                    }
+                                    sibling = sibling.nextElementSibling;
+                                }
+                            }
+                            if (!expandedContent) return { found: false, selector: null };
+                            
+                            // Find all checkboxes and their labels
+                            const checkboxes = expandedContent.querySelectorAll('input[type="checkbox"]');
+                            for (const cb of checkboxes) {
+                                const row = cb.closest('div[role="button"]');
+                                if (!row) continue;
+                                
+                                // Get label text (same pattern as getDropdownOptions)
+                                const labelEl = row.querySelector('p.filter_by_casesNameUnChecked, p[class*="filter_by_casesName"], p[class*="filter_by_cases"]');
+                                const labelText = labelEl ? labelEl.textContent?.trim() : '';
+                                
+                                if (!labelText) continue;
+                                
+                                // Flexible matching: "OSA04" matches "OSA04 (000018)"
+                                // Case-insensitive, handle variations
+                                const studyNameLower = '${studyName}'.toLowerCase();
+                                const labelLower = labelText.toLowerCase();
+                                
+                                // Exact match or partial match (study name is substring of label)
+                                if (labelLower === studyNameLower || 
+                                    labelLower.includes(studyNameLower) || 
+                                    studyNameLower.includes(labelLower.split(' ')[0]) ||
+                                    labelLower.split(' ')[0] === studyNameLower) {
+                                    return {
+                                        found: true,
+                                        selector: cb.id ? '#' + cb.id : null,
+                                        label: labelText
+                                    };
+                                }
+                            }
+                            return { found: false, selector: null };
+                        })()`
+                    },
+                    id: `find-study-checkbox-${Date.now()}`
+                }]);
+                
+                // Parse checkbox match result
+                let checkboxInfo: any = null;
+                if (checkboxMatchResult[0]?.result && Array.isArray(checkboxMatchResult[0].result)) {
+                    for (const item of checkboxMatchResult[0].result) {
+                        if (item.type === 'text' && item.text && item.text.startsWith('{')) {
+                            try {
+                                const parsed = JSON.parse(item.text);
+                                if (parsed.found) {
+                                    checkboxInfo = parsed;
+                                    break;
+                                }
+                            } catch (e) {}
+                        }
+                    }
+                }
+                
+                if (checkboxInfo && checkboxInfo.found) {
+                    const checkboxSelector = checkboxInfo.selector || `input[type="checkbox"]`;
+                    console.log(`✅ Found matching checkbox for ${studyName}: "${checkboxInfo.label}"`);
+                    
+                    // Step 4: Click the checkbox
+                    console.log('🔍 Step 4: Clicking study checkbox...');
+                    await this.mcpClient.callTools([{
+                        name: 'playwright_click',
+                        parameters: { selector: checkboxSelector },
+                        id: `click-study-checkbox-${Date.now()}`
+                    }]);
+                    
+                    console.log(`✅ Clicked checkbox for study: ${studyName}`);
+                    studyCheckboxFound = true;
+                    
+                    // Step 5: Wait for filter to apply
+                    console.log('⏳ Waiting for filter to apply...');
+                    await new Promise(resolve => setTimeout(resolve, 3000));
+                    
+                    // Verify filter applied by checking if result count changed or study name appears in results
+                    const verifyResult = await this.mcpClient.callTools([{
+                        name: 'playwright_evaluate',
+                        parameters: {
+                            script: `(() => {
+                                const bodyText = document.body.textContent || '';
+                                const studyName = '${studyName}';
+                                // Check if study name appears in visible text (indicating filter applied)
+                                return bodyText.includes(studyName) ? 'verified' : 'not-verified';
+                            })()`
+                        },
+                        id: `verify-study-filter-${Date.now()}`
+                    }]);
+                    
+                    const verification = verifyResult[0]?.result?.content?.[0]?.text;
+                    if (verification === 'verified') {
+                        console.log(`✅ Successfully filtered for study: ${studyName}`);
+                    } else {
+                        console.warn(`⚠️ Filter may not have applied correctly for ${studyName}`);
+                    }
+                    
+                    break; // Found and clicked, no need to try other study names
+                } else {
+                    console.log(`⚠️ No checkbox found matching study: ${studyName}`);
+                }
+            }
+            
+            if (!studyCheckboxFound) {
+                console.warn(`⚠️ Could not find checkbox for any detected study, proceeding with current data`);
             }
             
         } catch (error: any) {
