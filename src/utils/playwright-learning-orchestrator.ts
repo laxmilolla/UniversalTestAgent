@@ -330,7 +330,9 @@ export class PlaywrightLearningOrchestrator {
                   (uiAnalysis.charts?.length || 0) +
                   (uiAnalysis.navigation?.length || 0) +
                   (uiAnalysis.filters?.length || 0) +
-                  (uiAnalysis.searchBoxes?.length || 0);
+                  (uiAnalysis.searchBoxes?.length || 0) +
+                  (uiAnalysis.checkboxes?.length || 0) +
+                  (uiAnalysis.radioGroups?.length || 0);
 
             console.log('🔍 DEBUG - UI Elements Calculation:', {
                 totalElements: uiAnalysis.totalElements,
@@ -344,6 +346,8 @@ export class PlaywrightLearningOrchestrator {
                 navigation: uiAnalysis.navigation?.length || 0,
                 filters: uiAnalysis.filters?.length || 0,
                 searchBoxes: uiAnalysis.searchBoxes?.length || 0,
+                checkboxes: uiAnalysis.checkboxes?.length || 0,
+                radioGroups: uiAnalysis.radioGroups?.length || 0,
                 calculatedTotal: uiElementsCalc,
                 analysisMethod: uiAnalysis.analysisMethod || 'unknown',
                 htmlElements: uiAnalysis.htmlElements || 0,
@@ -912,6 +916,24 @@ Response (JSON array only):`;
                 source: 'active-exploration',
                 allOptions: r.allOptions,
                 sampledTests: r.sampledTests
+            })),
+            checkboxes: explorationResults.filter(r => r.elementType === 'checkbox').map(r => ({
+                selector: r.selector,
+                type: 'checkbox',
+                text: r.label,
+                source: 'active-exploration',
+                allOptions: r.allOptions,
+                sampledTests: r.sampledTests,
+                states: r.states
+            })),
+            radioGroups: explorationResults.filter(r => r.elementType === 'radio').map(r => ({
+                selector: r.selector,
+                type: 'radio',
+                text: r.label,
+                source: 'active-exploration',
+                allOptions: r.allOptions,
+                sampledTests: r.sampledTests,
+                states: r.states
             })),
             buttons: [],
             forms: [],
@@ -1594,6 +1616,8 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
             dropdowns: uiAnalysis.dropdowns?.length || 0,
             tables: uiAnalysis.tables?.length || 0,
             searchBoxes: uiAnalysis.searchBoxes?.length || 0,
+            checkboxes: uiAnalysis.checkboxes?.length || 0,
+            radioGroups: uiAnalysis.radioGroups?.length || 0,
             buttons: uiAnalysis.buttons?.length || 0,
             forms: uiAnalysis.forms?.length || 0,
             navigation: uiAnalysis.navigation?.length || 0,
