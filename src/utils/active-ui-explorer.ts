@@ -420,13 +420,15 @@ Return JSON array:
         
         try {
             console.log('🔍 discoverDropdowns(): Inside try block');
-            // Use EXACT same selectors as UI state capturer (which finds 20 dropdowns)
+            // These are expandable filter panels, not traditional dropdowns
+            // Target: div.customExpansionPanelSummaryRoot[role="button"] with id="Study", "Program", etc.
             const selectors = [
-                'select',
-                '[role="combobox"]',
-                '.dropdown',
-                '[class*="dropdown"]',
-                '[class*="select"]'
+                'div.customExpansionPanelSummaryRoot[role="button"]', // Primary: expandable filter panels
+                'select', // Fallback: native selects
+                '[role="combobox"]', // Fallback: comboboxes
+                '.dropdown', // Fallback: dropdown classes
+                '[class*="dropdown"]', // Fallback: any dropdown
+                '[class*="select"]' // Fallback: any select
             ];
             
             console.log(`🔍 Testing ${selectors.length} dropdown selectors...`);
@@ -499,106 +501,61 @@ Return JSON array:
                     }
                     
                     for (const element of elements) {
-                        // Extract label from element properties (handle both direct and nested)
-                        // Try multiple sources to get the actual dropdown name like "Study", "Program", etc.
+                        // Skip obvious non-interactive elements
+                        const className = element.className || '';
+                        const textContent = element.textContent?.trim() || '';
                         
-                        // 1. Try ID (often contains the name like id="Study")
-                        let label = element.id && element.id.length < 50 ? element.id : null;
-                        
-                        // 2. Try aria-label
-                        if (!label) {
-                            label = element.attributes?.ariaLabel || 
-                                   element.attributes?.['aria-label'];
+                        // Skip buttons, tooltips, and action items
+                        if (className.includes('dropdownIconTextWrapper') ||
+                            className.includes('add_selected_file') ||
+                            className.includes('tooltip') ||
+                            textContent.includes('Add Files') ||
+                            textContent.includes('Filter By Cases') ||
+                            textContent.includes('Add Selected') ||
+                            textContent.length > 100) { // Too long text is likely not a dropdown label
+                            console.log(`⚠️ Skipped non-dropdown element: "${textContent.substring(0, 30)}"`);
+                            continue;
                         }
                         
-                        // 3. Try title attribute
-                        if (!label) {
-                            label = element.attributes?.title;
-                        }
+                        // Extract label using improved method
+                        let label = this.extractElementLabel(element);
                         
-                        // 4. Try placeholder
-                        if (!label) {
-                            label = element.attributes?.placeholder;
+                        // Skip if label is empty or too generic
+                        if (!label || label.length === 0 || label.length > 50) {
+                            console.log(`⚠️ Skipped element with invalid label: "${label}"`);
+                            continue;
                         }
-                        
-                        // 5. Try textContent (direct text)
-                        if (!label && element.textContent) {
-                            const text = element.textContent.trim();
-                            // Take first meaningful text (not too long, not empty, not just whitespace)
-                            if (text && text.length > 0 && text.length < 100 && text.length > 1) {
-                                // Clean up text - remove extra whitespace
-                                const cleaned = text.replace(/\s+/g, ' ').trim();
-                                if (cleaned && cleaned.length < 50) {
-                                    label = cleaned;
-                                }
-                            }
-                        }
-                        
-                        // 6. Try to extract from innerHTML - look for sectionSummaryText or similar patterns
-                        if (!label && element.innerHTML) {
-                            // Look for class="sectionSummaryText" or similar patterns
-                            const sectionMatch = element.innerHTML.match(/class="[^"]*sectionSummaryText[^"]*"[^>]*>([^<]+)</);
-                            if (sectionMatch && sectionMatch[1]) {
-                                label = sectionMatch[1].trim();
-                            } else {
-                                // Look for any text content in divs (like <div>Study</div>)
-                                const divTextMatch = element.innerHTML.match(/<div[^>]*>([^<]{1,50})<\/div>/);
-                                if (divTextMatch && divTextMatch[1]) {
-                                    const extracted = divTextMatch[1].trim();
-                                    if (extracted && extracted.length > 0 && extracted.length < 50) {
-                                        label = extracted;
-                                    }
-                                } else {
-                                    // Last resort: extract any text between tags
-                                    const textMatch = element.innerHTML.match(/>([^<]{1,50})</);
-                                    if (textMatch && textMatch[1]) {
-                                        const extracted = textMatch[1].trim();
-                                        if (extracted && extracted.length > 0 && extracted.length < 50 && !extracted.match(/^\s*$/)) {
-                                            label = extracted;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        
-                        // Fallback to generic label
-                        if (!label || label.length === 0) {
-                            label = `Dropdown ${dropdowns.length + 1}`;
-                        }
-                        
-                        // Clean up label - remove extra whitespace and limit length
-                        label = label.trim().substring(0, 50);
                         
                         // Use same selector generation as UI state capturer
                         const elementSelector = element.id ? `#${element.id}` : 
                                              element.className ? `.${element.className.split(' ')[0]}` : 
                                              `${selector}:nth-child(${elements.indexOf(element) + 1})`;
                         
-                        // Log element details
-                        console.log(`🔍 Element: label="${label}", tagName=${element.tagName}, className=${element.className?.substring(0, 30)}, text=${element.textContent?.trim()?.substring(0, 30)}`);
-                        
-                        // TEMPORARILY: Accept all elements to see what UI state capturer finds
-                        // We'll add back filtering once we see what we're getting
+                        // Check if it's actually an interactive dropdown
+                        if (!this.isInteractiveDropdown(element)) {
+                            console.log(`⚠️ Skipped non-interactive element: "${label}"`);
+                            continue;
+                        }
                         
                         // Deduplicate: Check if we already have this dropdown (by selector or text)
                         const isDuplicate = dropdowns.some(d => 
                             d.selector === elementSelector || 
-                            (d.text && element.textContent?.trim() && d.text === element.textContent.trim())
+                            (d.text && textContent && d.text === textContent)
                         );
                         
                         if (isDuplicate) {
-                            console.log(`⚠️ Skipped duplicate dropdown: ${label || elementSelector}`);
+                            console.log(`⚠️ Skipped duplicate dropdown: ${label}`);
                             continue;
                         }
                         
                         dropdowns.push({
                             type: 'dropdown',
-                            label: label || `Dropdown ${dropdowns.length + 1}`,
+                            label: label,
                             selector: elementSelector,
-                            text: element.textContent?.trim(),
+                            text: textContent,
                             ariaLabel: element.attributes?.ariaLabel || element.attributes?.['aria-label']
                         });
-                        console.log(`✅ Added dropdown ${dropdowns.length}: ${label || `Dropdown ${dropdowns.length}`} (${elementSelector})`);
+                        console.log(`✅ Added dropdown ${dropdowns.length}: "${label}" (${elementSelector})`);
                     }
                 }
             
@@ -623,17 +580,23 @@ Return JSON array:
     }
 
     private isInteractiveDropdown(element: any): boolean {
-        // Skip obvious non-interactive elements (section headers, labels, etc.)
         const className = element.className || '';
+        const tagName = element.tagName?.toLowerCase();
+        const role = element.attributes?.role;
+        
+        // PRIORITY: Expandable filter panels (customExpansionPanelSummaryRoot)
+        // These are the main filter sections like "Study", "Program", "Breed"
+        if (className.includes('customExpansionPanelSummaryRoot') && role === 'button') {
+            return true;
+        }
+        
+        // Skip obvious non-interactive elements (section headers, labels, etc.)
         if (className.includes('dropdownIconTextWrapper') || 
             className.includes('facetSectionName') ||
             className.includes('facetHeader') ||
             (className.includes('header') && !className.includes('select') && !className.includes('dropdown'))) {
             return false;
         }
-        
-        const tagName = element.tagName?.toLowerCase();
-        const role = element.attributes?.role;
         
         // Native select elements are always interactive
         if (tagName === 'select') {
@@ -780,13 +743,22 @@ Return JSON array:
                 id: `get-native-options-${Date.now()}`
             }]);
             
-            const nativeOptions: string[] = [];
-            const nativeElements = nativeResult[0]?.result || [];
-            
-            for (const element of nativeElements) {
-                const text = element.textContent?.trim();
-                if (text && text !== '') {
-                    nativeOptions.push(text);
+            // Parse native options
+            let nativeOptions: string[] = [];
+            if (nativeResult[0]?.result && Array.isArray(nativeResult[0].result)) {
+                // Find JSON array in result
+                for (const item of nativeResult[0].result) {
+                    if (item.type === 'text' && item.text && (item.text.startsWith('[') || item.text === '[]')) {
+                        try {
+                            const parsed = JSON.parse(item.text);
+                            if (Array.isArray(parsed)) {
+                                nativeOptions = parsed.map((el: any) => el.textContent?.trim()).filter((t: string) => t && t !== '');
+                                break;
+                            }
+                        } catch (e) {
+                            // Not JSON
+                        }
+                    }
                 }
             }
             
@@ -794,7 +766,98 @@ Return JSON array:
                 return nativeOptions;
             }
             
-            // If no native options, try to click dropdown and get MUI/Ant Design options
+            // Check if this is an expandable filter panel (customExpansionPanelSummaryRoot)
+            // If so, we need to expand it and get checkbox options
+            const isExpandablePanel = selector.includes('customExpansionPanelSummaryRoot') || 
+                                     selector.includes('id=') && !selector.includes('option');
+            
+            if (isExpandablePanel) {
+                console.log(`🔍 Detected expandable filter panel, expanding to get checkbox options...`);
+                
+                // Check if already expanded
+                const expandedCheck = await this.mcpClient.callTools([{
+                    name: 'playwright_evaluate',
+                    parameters: { 
+                        script: `(() => {
+                            const el = document.querySelector('${selector}');
+                            if (!el) return { expanded: false };
+                            return { expanded: el.getAttribute('aria-expanded') === 'true' };
+                        })()`
+                    },
+                    id: `check-expanded-${Date.now()}`
+                }]);
+                
+                let isExpanded = false;
+                if (expandedCheck[0]?.result && Array.isArray(expandedCheck[0].result)) {
+                    for (const item of expandedCheck[0].result) {
+                        if (item.type === 'text' && item.text && item.text.startsWith('{')) {
+                            try {
+                                const parsed = JSON.parse(item.text);
+                                isExpanded = parsed.expanded === true;
+                                break;
+                            } catch (e) {}
+                        }
+                    }
+                }
+                
+                // Click to expand if not already expanded
+                if (!isExpanded) {
+                    await this.mcpClient.callTools([{
+                        name: 'playwright_click',
+                        parameters: { selector },
+                        id: `expand-panel-${Date.now()}`
+                    }]);
+                    await this.waitForStability();
+                }
+                
+                // Get all checkboxes within this filter panel
+                // Pattern: checkbox labels are in <p class="filter_by_casesNameUnChecked">COTC007B (000001)</p>
+                const checkboxResult = await this.mcpClient.callTools([{
+                    name: 'playwright_evaluate',
+                    parameters: { 
+                        script: `(() => {
+                            const panel = document.querySelector('${selector}');
+                            if (!panel) return [];
+                            // Find the expanded content area (sibling or parent's next sibling)
+                            const expandedContent = panel.closest('[id]')?.parentElement?.querySelector('[role="region"]') ||
+                                                   panel.parentElement?.querySelector('[role="region"]');
+                            if (!expandedContent) return [];
+                            // Find all checkbox labels
+                            const labels = Array.from(expandedContent.querySelectorAll('input[type="checkbox"]')).map(cb => {
+                                // Find the label text next to the checkbox
+                                const row = cb.closest('div[role="button"]');
+                                if (!row) return null;
+                                const labelEl = row.querySelector('p.filter_by_casesNameUnChecked, p[class*="filter_by_casesName"]');
+                                return labelEl ? labelEl.textContent?.trim() : null;
+                            }).filter(l => l && l.length > 0);
+                            return labels;
+                        })()`
+                    },
+                    id: `get-checkbox-options-${Date.now()}`
+                }]);
+                
+                // Parse checkbox options
+                const checkboxOptions: string[] = [];
+                if (checkboxResult[0]?.result && Array.isArray(checkboxResult[0].result)) {
+                    for (const item of checkboxResult[0].result) {
+                        if (item.type === 'text' && item.text && item.text.startsWith('[')) {
+                            try {
+                                const parsed = JSON.parse(item.text);
+                                if (Array.isArray(parsed)) {
+                                    checkboxOptions.push(...parsed.filter((opt: any) => opt && typeof opt === 'string' && opt.length > 0));
+                                    break;
+                                }
+                            } catch (e) {}
+                        }
+                    }
+                }
+                
+                if (checkboxOptions.length > 0) {
+                    return checkboxOptions;
+                }
+            }
+            
+            // Fallback: Try to click dropdown and get MUI/Ant Design options
             console.log(`🔍 No native options found, trying to open dropdown for MUI/Ant Design...`);
             
             // Click to open dropdown
@@ -827,12 +890,23 @@ Return JSON array:
             }]);
             
             const menuOptions: string[] = [];
-            const menuElements = menuResult[0]?.result || [];
-            
-            for (const element of menuElements) {
-                const text = element.textContent?.trim();
-                if (text && text !== '' && text !== 'All' && text !== 'None') {
-                    menuOptions.push(text);
+            // Parse menu options
+            if (menuResult[0]?.result && Array.isArray(menuResult[0].result)) {
+                for (const item of menuResult[0].result) {
+                    if (item.type === 'text' && item.text && item.text.startsWith('[')) {
+                        try {
+                            const parsed = JSON.parse(item.text);
+                            if (Array.isArray(parsed)) {
+                                parsed.forEach((el: any) => {
+                                    const text = el.textContent?.trim();
+                                    if (text && text !== '' && text !== 'All' && text !== 'None') {
+                                        menuOptions.push(text);
+                                    }
+                                });
+                                break;
+                            }
+                        } catch (e) {}
+                    }
                 }
             }
             
@@ -857,7 +931,107 @@ Return JSON array:
 
     private async selectOption(selector: string, option: string): Promise<void> {
         try {
-            // First try native select option selection
+            // Check if this is an expandable filter panel
+            const isExpandablePanel = selector.includes('customExpansionPanelSummaryRoot') || 
+                                     (selector.startsWith('#') && !selector.includes('option'));
+            
+            if (isExpandablePanel) {
+                console.log(`🔍 Selecting checkbox option in expandable filter panel: "${option}"`);
+                
+                // Expand panel if not already expanded
+                const expandedCheck = await this.mcpClient.callTools([{
+                    name: 'playwright_evaluate',
+                    parameters: { 
+                        script: `(() => {
+                            const el = document.querySelector('${selector}');
+                            if (!el) return { expanded: false };
+                            return { expanded: el.getAttribute('aria-expanded') === 'true' };
+                        })()`
+                    },
+                    id: `check-expanded-for-select-${Date.now()}`
+                }]);
+                
+                let isExpanded = false;
+                if (expandedCheck[0]?.result && Array.isArray(expandedCheck[0].result)) {
+                    for (const item of expandedCheck[0].result) {
+                        if (item.type === 'text' && item.text && item.text.startsWith('{')) {
+                            try {
+                                const parsed = JSON.parse(item.text);
+                                isExpanded = parsed.expanded === true;
+                                break;
+                            } catch (e) {}
+                        }
+                    }
+                }
+                
+                if (!isExpanded) {
+                    await this.mcpClient.callTools([{
+                        name: 'playwright_click',
+                        parameters: { selector },
+                        id: `expand-panel-for-select-${Date.now()}`
+                    }]);
+                    await this.waitForStability();
+                }
+                
+                // Find and click the checkbox with matching label
+                // Pattern: checkbox label is in <p class="filter_by_casesNameUnChecked">OSA04 (000018)</p>
+                const checkboxClick = await this.mcpClient.callTools([{
+                    name: 'playwright_evaluate',
+                    parameters: { 
+                        script: `(() => {
+                            const panel = document.querySelector('${selector}');
+                            if (!panel) return { found: false, selector: null };
+                            const expandedContent = panel.closest('[id]')?.parentElement?.querySelector('[role="region"]') ||
+                                                   panel.parentElement?.querySelector('[role="region"]');
+                            if (!expandedContent) return { found: false, selector: null };
+                            // Find checkbox with matching label text
+                            const checkboxes = expandedContent.querySelectorAll('input[type="checkbox"]');
+                            for (const cb of checkboxes) {
+                                const row = cb.closest('div[role="button"]');
+                                if (!row) continue;
+                                const labelEl = row.querySelector('p.filter_by_casesNameUnChecked, p[class*="filter_by_casesName"]');
+                                if (labelEl && labelEl.textContent?.trim() === '${option}') {
+                                    return { found: true, selector: '#' + cb.id || 'input[type="checkbox"]' };
+                                }
+                            }
+                            return { found: false, selector: null };
+                        })()`
+                    },
+                    id: `find-checkbox-${Date.now()}`
+                }]);
+                
+                // Parse result to get checkbox selector
+                let checkboxSelector = null;
+                if (checkboxClick[0]?.result && Array.isArray(checkboxClick[0].result)) {
+                    for (const item of checkboxClick[0].result) {
+                        if (item.type === 'text' && item.text && item.text.startsWith('{')) {
+                            try {
+                                const parsed = JSON.parse(item.text);
+                                if (parsed.found && parsed.selector) {
+                                    checkboxSelector = parsed.selector;
+                                    break;
+                                }
+                            } catch (e) {}
+                        }
+                    }
+                }
+                
+                if (checkboxSelector) {
+                    // Click the checkbox
+                    await this.mcpClient.callTools([{
+                        name: 'playwright_click',
+                        parameters: { selector: checkboxSelector },
+                        id: `click-checkbox-${Date.now()}`
+                    }]);
+                    console.log(`✅ Selected checkbox option: "${option}"`);
+                    await this.waitForStability();
+                    return;
+                } else {
+                    console.warn(`⚠️ Could not find checkbox with label "${option}"`);
+                }
+            }
+            
+            // Fallback: Try native select option selection
             try {
                 await this.mcpClient.callTools([{
                     name: 'playwright_click',
@@ -1020,23 +1194,55 @@ Return JSON array:
     }
 
     private extractElementLabel(element: any): string {
-        // Try to get label from various sources
-        const ariaLabel = element.getAttribute?.('aria-label');
-        if (ariaLabel) return ariaLabel;
+        // PRIORITY 1: ID attribute (most reliable - contains "Study", "Program", "Breed", etc.)
+        // Based on HTML: <div ... id="Study" class="customExpansionPanelSummaryRoot">
+        if (element.id && element.id.length > 1 && element.id.length < 50) {
+            // Skip IDs that look like object references or invalid
+            if (element.id !== '[object Object]' && !element.id.includes('checkbox_')) {
+                return element.id;
+            }
+        }
+
+        // PRIORITY 2: Look for sectionSummaryText in innerHTML (exact pattern from HTML)
+        // Pattern: <div id="Study" class="sectionSummaryText">Study</div>
+        if (element.innerHTML) {
+            // Try exact match first: <div id="..." class="sectionSummaryText">...</div>
+            const sectionMatch = element.innerHTML.match(/<div[^>]*id="([^"]*)"[^>]*class="[^"]*sectionSummaryText[^"]*"[^>]*>/i);
+            if (sectionMatch && sectionMatch[1]) {
+                return sectionMatch[1].trim();
+            }
+            // Fallback: any div with sectionSummaryText class
+            const sectionMatch2 = element.innerHTML.match(/<div[^>]*class="[^"]*sectionSummaryText[^"]*"[^>]*>([^<]+)<\/div>/i);
+            if (sectionMatch2 && sectionMatch2[1]) {
+                const text = sectionMatch2[1].trim();
+                if (text.length > 0 && text.length < 50) {
+                    return text;
+                }
+            }
+        }
+
+        // PRIORITY 3: Try aria-label
+        const ariaLabel = element.attributes?.ariaLabel || element.attributes?.['aria-label'];
+        if (ariaLabel && ariaLabel.length > 0 && ariaLabel.length < 50) return ariaLabel;
         
-        const placeholder = element.placeholder;
-        if (placeholder) return placeholder;
-        
+        // PRIORITY 4: Try placeholder
+        const placeholder = element.attributes?.placeholder;
+        if (placeholder && placeholder.length > 0 && placeholder.length < 50) return placeholder;
+
+        // PRIORITY 5: Try textContent (but filter out long text)
         const text = element.textContent?.trim();
-        if (text && text.length < 50) return text;
-        
-        // Look for associated label
-        const id = element.id;
-        if (id) {
-            // This would need to be implemented with additional DOM queries
-            return `Element with ID ${id}`;
+        if (text && text.length > 1 && text.length < 50) {
+            // Clean up text - remove extra whitespace
+            const cleaned = text.replace(/\s+/g, ' ').trim();
+            if (cleaned && cleaned.length > 0 && cleaned.length < 50) {
+                return cleaned;
+            }
         }
         
+        // PRIORITY 6: Fallback to title attribute
+        const title = element.attributes?.title;
+        if (title && title.length > 0 && title.length < 50) return title;
+
         return '';
     }
 
