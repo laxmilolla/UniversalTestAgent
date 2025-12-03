@@ -413,11 +413,13 @@ Return JSON array:
     }
 
     private async discoverDropdowns(): Promise<DiscoveredElement[]> {
+        console.log('🔍🔍🔍 discoverDropdowns() CALLED - Method entry point');
         const dropdowns: DiscoveredElement[] = [];
         
         console.log('🔍 discoverDropdowns(): Starting dropdown discovery...');
         
         try {
+            console.log('🔍 discoverDropdowns(): Inside try block');
             // Target actual interactive dropdowns, not section headers
             // Use same selectors as UI state capturer for consistency
             const selectors = [
