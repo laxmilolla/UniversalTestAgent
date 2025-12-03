@@ -117,7 +117,7 @@ export class VectorRAGClient {
         }
         
         const k = topK || parseInt(process.env.RAG_TOP_K_RESULTS || '10');
-        const minSimilarity = parseFloat(process.env.RAG_MIN_SIMILARITY || '0.7');
+        const minSimilarity = parseFloat(process.env.RAG_MIN_SIMILARITY || '0.3');
         
         console.log(`\n🔍 RAG: SEMANTIC SEARCH (Pure AI Mode)`);
         console.log(`  ├─ Query: "${query}"`);
@@ -145,7 +145,17 @@ export class VectorRAGClient {
         
         console.log(`  ✅ Found ${topResults.length} relevant chunks\n`);
         
-        return topResults.flatMap(r => r.records);
+        // Return chunks directly (they contain text, metadata, and embedding)
+        // For TSV records, the metadata contains the record data
+        return topResults.map(r => ({
+            text: r.text,
+            metadata: r.metadata,
+            similarity: r.similarity,
+            id: r.id,
+            // For backward compatibility, include records if they exist in metadata
+            records: r.metadata?.records || (r.metadata?.type === 'tsv_record' ? [r.metadata] : []),
+            fileName: r.metadata?.fileName
+        }));
     }
     
     private async createEmbedding(text: string): Promise<any> {
