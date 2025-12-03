@@ -97,22 +97,78 @@ export class ActiveUIExplorer {
                 console.log(`🧠 Phase 2: FALLBACK - Using ${prioritized.length} dropdowns with default priority`);
             }
             
-            // Phase 3: Deep exploration of top priority only
+            // Convert discovered elements to results format immediately (so they're returned even if Phase 3 times out)
+            // This is NOT a fallback - it's returning what was actually discovered
+            for (const dropdown of discoveredDropdowns) {
+                results.push({
+                    elementType: 'dropdown',
+                    label: dropdown.label,
+                    selector: dropdown.selector,
+                    allOptions: dropdown.allOptions,
+                    sampledTests: [] // Will be populated in Phase 3 if time permits
+                });
+            }
+            for (const searchBox of searchBoxes) {
+                results.push({
+                    elementType: 'searchBox',
+                    label: searchBox.label,
+                    selector: searchBox.selector,
+                    allOptions: [],
+                    sampledTests: []
+                });
+            }
+            for (const checkbox of checkboxes) {
+                results.push({
+                    elementType: 'checkbox',
+                    label: checkbox.label,
+                    selector: checkbox.selector,
+                    allOptions: ['checked', 'unchecked'],
+                    sampledTests: [],
+                    states: []
+                });
+            }
+            for (const radioGroup of radioGroups) {
+                results.push({
+                    elementType: 'radio',
+                    label: radioGroup.groupName,
+                    selector: radioGroup.options[0]?.selector || '',
+                    allOptions: radioGroup.options.map(o => o.label),
+                    sampledTests: [],
+                    states: []
+                });
+            }
+            console.log(`✅ Converted ${results.length} discovered elements to results format`);
+            
+            // Phase 3: Deep exploration of top priority only (enhances existing results)
             console.log('🎯 Phase 3: Targeted Exploration - START');
             const topPriority = prioritized.slice(0, this.MAX_DROPDOWNS_TO_EXPLORE);
             console.log(`🎯 Exploring top ${topPriority.length} priority dropdowns`);
             
+            // Update results with detailed exploration (if time permits)
             for (const dropdown of topPriority) {
-                console.log(`🔍 Exploring priority dropdown: ${dropdown.label} (${dropdown.priority})`);
-                const dropdownResult = await this.exploreDropdown(dropdown);
-                results.push(dropdownResult);
-                
-                // Store in RAG immediately
-                await this.vectorRAG.indexUIExplorationData([dropdownResult]);
-                console.log(`✅ Stored ${dropdown.label} exploration in RAG`);
+                try {
+                    console.log(`🔍 Exploring priority dropdown: ${dropdown.label} (${dropdown.priority})`);
+                    const dropdownResult = await this.exploreDropdown(dropdown);
+                    
+                    // Update the existing result with detailed exploration
+                    const existingIndex = results.findIndex(r => r.label === dropdown.label && r.elementType === 'dropdown');
+                    if (existingIndex >= 0) {
+                        results[existingIndex] = dropdownResult;
+                    } else {
+                        results.push(dropdownResult);
+                    }
+                    
+                    // Store in RAG immediately
+                    await this.vectorRAG.indexUIExplorationData([dropdownResult]);
+                    console.log(`✅ Stored ${dropdown.label} exploration in RAG`);
+                } catch (error: any) {
+                    console.warn(`⚠️ Could not complete detailed exploration for ${dropdown.label}: ${error.message}`);
+                    // Keep the basic result from Phase 1
+                    continue;
+                }
             }
             
-            // Explore search boxes with dynamic TSV terms
+            // Explore search boxes with dynamic TSV terms (updates existing results)
             for (const searchBox of searchBoxes) {
                 try {
                     console.log(`🔍 Exploring search box: ${searchBox.label}`);
@@ -122,42 +178,60 @@ export class ActiveUIExplorer {
                             setTimeout(() => reject(new Error('timeout')), 30000)
                         )
                     ]);
-                    results.push(searchResult);
+                    
+                    // Update existing result
+                    const existingIndex = results.findIndex(r => r.label === searchBox.label && r.elementType === 'searchBox');
+                    if (existingIndex >= 0) {
+                        results[existingIndex] = searchResult;
+                    }
                     
                     await this.vectorRAG.indexUIExplorationData([searchResult]);
                     console.log(`✅ Stored ${searchBox.label} exploration in RAG`);
                 } catch (error) {
-                    console.warn(`⚠️ Skipping search box ${searchBox.label}: ${error.message}`);
+                    console.warn(`⚠️ Could not complete detailed exploration for search box ${searchBox.label}: ${error.message}`);
+                    // Keep the basic result from Phase 1
                     continue;
                 }
             }
             
-            // Explore all checkboxes (fast - only 2 states each)
+            // Explore all checkboxes (fast - only 2 states each) (updates existing results)
             for (const checkbox of checkboxes) {
                 try {
                     console.log(`🔍 Exploring checkbox: ${checkbox.label}`);
                     const checkboxResult = await this.exploreCheckbox(checkbox);
-                    results.push(checkboxResult);
+                    
+                    // Update existing result
+                    const existingIndex = results.findIndex(r => r.label === checkbox.label && r.elementType === 'checkbox');
+                    if (existingIndex >= 0) {
+                        results[existingIndex] = checkboxResult;
+                    }
                     
                     await this.vectorRAG.indexUIExplorationData([checkboxResult]);
                     console.log(`✅ Stored ${checkbox.label} exploration in RAG`);
                 } catch (error) {
-                    console.warn(`⚠️ Skipping checkbox ${checkbox.label}: ${error.message}`);
+                    console.warn(`⚠️ Could not complete detailed exploration for checkbox ${checkbox.label}: ${error.message}`);
+                    // Keep the basic result from Phase 1
                     continue;
                 }
             }
             
-            // Explore all radio button groups
+            // Explore all radio button groups (updates existing results)
             for (const radioGroup of radioGroups) {
                 try {
                     console.log(`🔍 Exploring radio group: ${radioGroup.groupName}`);
                     const radioResult = await this.exploreRadioGroup(radioGroup);
-                    results.push(radioResult);
+                    
+                    // Update existing result
+                    const existingIndex = results.findIndex(r => r.label === radioGroup.groupName && r.elementType === 'radio');
+                    if (existingIndex >= 0) {
+                        results[existingIndex] = radioResult;
+                    }
                     
                     await this.vectorRAG.indexUIExplorationData([radioResult]);
                     console.log(`✅ Stored ${radioGroup.groupName} exploration in RAG`);
                 } catch (error) {
-                    console.warn(`⚠️ Skipping radio group ${radioGroup.groupName}: ${error.message}`);
+                    console.warn(`⚠️ Could not complete detailed exploration for radio group ${radioGroup.groupName}: ${error.message}`);
+                    // Keep the basic result from Phase 1
                     continue;
                 }
             }
