@@ -465,14 +465,20 @@ Return JSON array:
                     console.log(`🔍 Selector "${selector}" found ${elements.length} elements`);
                     
                     for (const element of elements) {
+                        const label = this.extractElementLabel(element);
+                        const elementSelector = this.generateSelector(element, selector);
+                        
+                        // Log all elements found for debugging
+                        console.log(`🔍 Element found: tagName=${element.tagName}, className=${element.className?.substring(0, 50)}, text=${element.textContent?.trim()?.substring(0, 30)}`);
+                        
                         // Only process interactive dropdowns
-                        if (!this.isInteractiveDropdown(element)) {
+                        const isInteractive = this.isInteractiveDropdown(element);
+                        console.log(`   → isInteractive: ${isInteractive}`);
+                        
+                        if (!isInteractive) {
                             console.log(`⚠️ Skipped non-interactive element: ${element.textContent?.trim()?.substring(0, 50)}`);
                             continue;
                         }
-                        
-                        const label = this.extractElementLabel(element);
-                        const elementSelector = this.generateSelector(element, selector);
                         
                         // Deduplicate: Check if we already have this dropdown (by selector or text)
                         const isDuplicate = dropdowns.some(d => 
