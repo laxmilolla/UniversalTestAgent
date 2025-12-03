@@ -455,17 +455,22 @@ Return JSON array:
                     id: `discover-dropdowns-${Date.now()}`
                 }]);
                     
-                    // Parse MCP result format: result[0].result.content[0].text contains JSON string
+                    // Parse MCP result format - handle multiple possible formats
                     let elements: any[] = [];
-                    if (result[0]?.result?.content?.[0]?.text) {
+                    if (!result || !result[0] || !result[0].result) {
+                        console.warn(`⚠️ No result returned for selector "${selector}"`);
+                    } else if (Array.isArray(result[0].result)) {
+                        // Format 1: Result is directly an array (like UI state capturer uses)
+                        elements = result[0].result;
+                    } else if (result[0].result?.content?.[0]?.text) {
+                        // Format 2: Result is in content[0].text as JSON string
                         try {
                             elements = JSON.parse(result[0].result.content[0].text);
                         } catch (e) {
-                            console.warn(`⚠️ Failed to parse result for selector "${selector}":`, e);
+                            console.warn(`⚠️ Failed to parse JSON for selector "${selector}":`, e);
                         }
-                    } else if (result[0]?.result && Array.isArray(result[0].result)) {
-                        // Fallback: if result is already an array
-                        elements = result[0].result;
+                    } else {
+                        console.warn(`⚠️ Unexpected result format for selector "${selector}":`, JSON.stringify(result[0].result).substring(0, 200));
                     }
                     
                     console.log(`🔍 Selector "${selector}" found ${elements.length} elements`);
@@ -553,17 +558,22 @@ Return JSON array:
                 id: `discover-search-${Date.now()}`
             }]);
                 
-                // Parse MCP result format: result[0].result.content[0].text contains JSON string
+                // Parse MCP result format - handle multiple possible formats
                 let elements: any[] = [];
-                if (result[0]?.result?.content?.[0]?.text) {
+                if (!result || !result[0] || !result[0].result) {
+                    console.warn(`⚠️ No result returned for search selector "${selector}"`);
+                } else if (Array.isArray(result[0].result)) {
+                    // Format 1: Result is directly an array (like UI state capturer uses)
+                    elements = result[0].result;
+                } else if (result[0].result?.content?.[0]?.text) {
+                    // Format 2: Result is in content[0].text as JSON string
                     try {
                         elements = JSON.parse(result[0].result.content[0].text);
                     } catch (e) {
-                        console.warn(`⚠️ Failed to parse result for search selector "${selector}":`, e);
+                        console.warn(`⚠️ Failed to parse JSON for search selector "${selector}":`, e);
                     }
-                } else if (result[0]?.result && Array.isArray(result[0].result)) {
-                    // Fallback: if result is already an array
-                    elements = result[0].result;
+                } else {
+                    console.warn(`⚠️ Unexpected result format for search selector "${selector}":`, JSON.stringify(result[0].result).substring(0, 200));
                 }
                 
                 for (const element of elements) {
