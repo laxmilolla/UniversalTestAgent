@@ -457,6 +457,12 @@ Return JSON array:
                     
                     console.log(`🔍 Selector "${selector}" found ${elements.length} elements`);
                     
+                    // Debug: Log first element structure to understand format
+                    if (elements.length > 0 && elements[0]) {
+                        console.log(`🔍 DEBUG: First element keys:`, Object.keys(elements[0]));
+                        console.log(`🔍 DEBUG: First element sample:`, JSON.stringify(elements[0]).substring(0, 500));
+                    }
+                    
                     for (const element of elements) {
                         const label = this.extractElementLabel(element);
                         // Use same selector generation as UI state capturer
