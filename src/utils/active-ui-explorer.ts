@@ -420,19 +420,18 @@ Return JSON array:
         
         try {
             console.log('🔍 discoverDropdowns(): Inside try block');
-            // Target actual interactive dropdowns, not section headers
-            // Use same selectors as UI state capturer for consistency
+            // Target actual interactive dropdowns only
+            // Use specific selectors to avoid non-interactive elements
             const selectors = [
                 'select', // Native HTML select
                 '[role="combobox"]', // MUI/Ant Design dropdowns
                 '[role="button"][aria-expanded]', // MUI Select components
                 '.MuiSelect-select', // MUI specific
-                '[class*="MuiSelect"]', // MUI Select variants
-                '[class*="ant-select"]', // Ant Design
-                '[class*="dropdown-menu"]', // Bootstrap dropdowns
+                '.MuiSelect-root', // MUI Select root
+                '[class*="MuiSelect-select"]', // MUI Select variants (more specific)
+                '[class*="ant-select-selector"]', // Ant Design selector
                 'button[data-toggle="dropdown"]', // Bootstrap dropdown triggers
-                '[class*="select"]', // Broad selector for any element with "select" in class (matches UI state capturer)
-                '[class*="dropdown"]' // Broad selector for any element with "dropdown" in class (matches UI state capturer)
+                'button[aria-haspopup="listbox"]' // ARIA dropdown buttons
             ];
             
             console.log(`🔍 Testing ${selectors.length} dropdown selectors...`);
@@ -464,10 +463,25 @@ Return JSON array:
                     console.log(`🔍 Selector "${selector}" found ${elements.length} elements`);
                     
                     for (const element of elements) {
-                        // TEMPORARILY: Accept all elements (like UI state capturer does) to debug
-                        // TODO: Add back filtering once we confirm discovery is working
+                        // Only process interactive dropdowns
+                        if (!this.isInteractiveDropdown(element)) {
+                            console.log(`⚠️ Skipped non-interactive element: ${element.textContent?.trim()?.substring(0, 50)}`);
+                            continue;
+                        }
+                        
                         const label = this.extractElementLabel(element);
                         const elementSelector = this.generateSelector(element, selector);
+                        
+                        // Deduplicate: Check if we already have this dropdown (by selector or text)
+                        const isDuplicate = dropdowns.some(d => 
+                            d.selector === elementSelector || 
+                            (d.text && element.textContent?.trim() && d.text === element.textContent.trim())
+                        );
+                        
+                        if (isDuplicate) {
+                            console.log(`⚠️ Skipped duplicate dropdown: ${label || elementSelector}`);
+                            continue;
+                        }
                         
                         dropdowns.push({
                             type: 'dropdown',
@@ -492,23 +506,54 @@ Return JSON array:
     private isInteractiveDropdown(element: any): boolean {
         // Skip section headers and non-interactive elements
         if (element.className?.includes('dropdownIconTextWrapper') || 
-            element.className?.includes('facetSectionName')) {
+            element.className?.includes('facetSectionName') ||
+            element.className?.includes('header') ||
+            element.className?.includes('title')) {
             return false;
         }
         
         // Must be interactive (clickable, selectable, etc.)
         const tagName = element.tagName?.toLowerCase();
         const role = element.attributes?.role;
+        const className = element.className || '';
         
-        return (
-            tagName === 'select' ||
-            tagName === 'button' ||
+        // Native select elements are always interactive
+        if (tagName === 'select') {
+            return true;
+        }
+        
+        // Buttons with dropdown-related attributes
+        if (tagName === 'button' && (
             role === 'combobox' ||
-            role === 'button' ||
-            element.className?.includes('MuiSelect') ||
-            element.className?.includes('ant-select') ||
-            element.className?.includes('dropdown-menu')
-        );
+            element.attributes?.['aria-expanded'] !== undefined ||
+            element.attributes?.['data-toggle'] === 'dropdown' ||
+            className.includes('MuiSelect') ||
+            className.includes('ant-select-selector')
+        )) {
+            return true;
+        }
+        
+        // Elements with combobox role
+        if (role === 'combobox') {
+            return true;
+        }
+        
+        // MUI Select components (specific classes)
+        if (className.includes('MuiSelect-select') || 
+            className.includes('MuiSelect-root') ||
+            className.includes('MuiSelect-nativeInput')) {
+            return true;
+        }
+        
+        // Ant Design select components (specific classes)
+        if (className.includes('ant-select-selector') ||
+            className.includes('ant-select-selection')) {
+            return true;
+        }
+        
+        // Skip generic "select" or "dropdown" in class name - too broad
+        // Only accept if it's part of a known component pattern
+        return false;
     }
 
     private async discoverSearchBoxes(): Promise<DiscoveredElement[]> {
