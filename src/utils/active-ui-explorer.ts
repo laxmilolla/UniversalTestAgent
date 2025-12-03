@@ -462,34 +462,30 @@ Return JSON array:
                         }
                     }
                     
-                    // Parse MCP result - handle both direct array and JSON string formats
+                    // Parse MCP result - result[0].result is an array of content items
+                    // Format: [{type:"text", text:"Executed JavaScript:"}, {type:"text", text:"<script>"}, {type:"text", text:"Result:"}, {type:"text", text:"<JSON array>"}]
                     let elements: any[] = [];
-                    if (result[0]?.result) {
-                        // Check if result.content exists (MCP tool response format)
-                        if (result[0].result.content && Array.isArray(result[0].result.content)) {
-                            // Find the text content that contains the JSON array
-                            for (const contentItem of result[0].result.content) {
-                                if (contentItem.text && contentItem.text !== 'Executed JavaScript:' && contentItem.text !== 'Result:') {
+                    if (result[0]?.result && Array.isArray(result[0].result)) {
+                        // Find the element that contains the JSON array (usually after "Result:")
+                        let foundResult = false;
+                        for (const item of result[0].result) {
+                            if (item.type === 'text' && item.text) {
+                                if (item.text === 'Result:') {
+                                    foundResult = true;
+                                    continue; // Next item should be the actual data
+                                }
+                                if (foundResult || item.text.startsWith('[') || item.text.startsWith('{')) {
+                                    // This should be the JSON data
                                     try {
-                                        const parsed = JSON.parse(contentItem.text);
+                                        const parsed = JSON.parse(item.text);
                                         if (Array.isArray(parsed)) {
                                             elements = parsed;
                                             break;
                                         }
                                     } catch (e) {
-                                        // Not JSON, continue
+                                        // Not valid JSON, continue
                                     }
                                 }
-                            }
-                        } else if (Array.isArray(result[0].result)) {
-                            // Direct array format
-                            elements = result[0].result;
-                        } else if (result[0].result?.content?.[0]?.text) {
-                            // JSON string format (old check)
-                            try {
-                                elements = JSON.parse(result[0].result.content[0].text);
-                            } catch (e) {
-                                console.warn(`⚠️ Failed to parse JSON:`, e);
                             }
                         }
                     }
