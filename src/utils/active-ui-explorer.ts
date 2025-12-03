@@ -419,6 +419,7 @@ Return JSON array:
         
         try {
             // Target actual interactive dropdowns, not section headers
+            // Use same selectors as UI state capturer for consistency
             const selectors = [
                 'select', // Native HTML select
                 '[role="combobox"]', // MUI/Ant Design dropdowns
@@ -427,7 +428,9 @@ Return JSON array:
                 '[class*="MuiSelect"]', // MUI Select variants
                 '[class*="ant-select"]', // Ant Design
                 '[class*="dropdown-menu"]', // Bootstrap dropdowns
-                'button[data-toggle="dropdown"]' // Bootstrap dropdown triggers
+                'button[data-toggle="dropdown"]', // Bootstrap dropdown triggers
+                '[class*="select"]', // Broad selector for any element with "select" in class (matches UI state capturer)
+                '[class*="dropdown"]' // Broad selector for any element with "dropdown" in class (matches UI state capturer)
             ];
             
             console.log(`🔍 Testing ${selectors.length} dropdown selectors...`);
@@ -452,7 +455,19 @@ Return JSON array:
                     id: `discover-dropdowns-${Date.now()}`
                 }]);
                     
-                    const elements = result[0]?.result || [];
+                    // Parse MCP result format: result[0].result.content[0].text contains JSON string
+                    let elements: any[] = [];
+                    if (result[0]?.result?.content?.[0]?.text) {
+                        try {
+                            elements = JSON.parse(result[0].result.content[0].text);
+                        } catch (e) {
+                            console.warn(`⚠️ Failed to parse result for selector "${selector}":`, e);
+                        }
+                    } else if (result[0]?.result && Array.isArray(result[0].result)) {
+                        // Fallback: if result is already an array
+                        elements = result[0].result;
+                    }
+                    
                     console.log(`🔍 Selector "${selector}" found ${elements.length} elements`);
                     
                     for (const element of elements) {
@@ -538,7 +553,19 @@ Return JSON array:
                 id: `discover-search-${Date.now()}`
             }]);
                 
-                const elements = result[0]?.result || [];
+                // Parse MCP result format: result[0].result.content[0].text contains JSON string
+                let elements: any[] = [];
+                if (result[0]?.result?.content?.[0]?.text) {
+                    try {
+                        elements = JSON.parse(result[0].result.content[0].text);
+                    } catch (e) {
+                        console.warn(`⚠️ Failed to parse result for search selector "${selector}":`, e);
+                    }
+                } else if (result[0]?.result && Array.isArray(result[0].result)) {
+                    // Fallback: if result is already an array
+                    elements = result[0].result;
+                }
+                
                 for (const element of elements) {
                     const label = this.extractElementLabel(element);
                     const elementSelector = this.generateSelector(element, selector);
