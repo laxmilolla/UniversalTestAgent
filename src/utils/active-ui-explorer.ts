@@ -420,20 +420,13 @@ Return JSON array:
         
         try {
             console.log('🔍 discoverDropdowns(): Inside try block');
-            // Target actual interactive dropdowns
-            // Include broad selectors like UI state capturer but filter results
+            // Use EXACT same selectors as UI state capturer (which finds 20 dropdowns)
             const selectors = [
-                'select', // Native HTML select
-                '[role="combobox"]', // MUI/Ant Design dropdowns
-                '[role="button"][aria-expanded]', // MUI Select components
-                '.MuiSelect-select', // MUI specific
-                '.MuiSelect-root', // MUI Select root
-                '[class*="MuiSelect-select"]', // MUI Select variants
-                '[class*="ant-select-selector"]', // Ant Design selector
-                'button[data-toggle="dropdown"]', // Bootstrap dropdown triggers
-                'button[aria-haspopup="listbox"]', // ARIA dropdown buttons
-                '[class*="select"]', // Broad selector (will be filtered)
-                '[class*="dropdown"]' // Broad selector (will be filtered)
+                'select',
+                '[role="combobox"]',
+                '.dropdown',
+                '[class*="dropdown"]',
+                '[class*="select"]'
             ];
             
             console.log(`🔍 Testing ${selectors.length} dropdown selectors...`);
@@ -466,19 +459,16 @@ Return JSON array:
                     
                     for (const element of elements) {
                         const label = this.extractElementLabel(element);
-                        const elementSelector = this.generateSelector(element, selector);
+                        // Use same selector generation as UI state capturer
+                        const elementSelector = element.id ? `#${element.id}` : 
+                                             element.className ? `.${element.className.split(' ')[0]}` : 
+                                             `${selector}:nth-child(${elements.indexOf(element) + 1})`;
                         
                         // Log all elements found for debugging
                         console.log(`🔍 Element found: tagName=${element.tagName}, className=${element.className?.substring(0, 50)}, text=${element.textContent?.trim()?.substring(0, 30)}`);
                         
-                        // Only process interactive dropdowns
-                        const isInteractive = this.isInteractiveDropdown(element);
-                        console.log(`   → isInteractive: ${isInteractive}`);
-                        
-                        if (!isInteractive) {
-                            console.log(`⚠️ Skipped non-interactive element: ${element.textContent?.trim()?.substring(0, 50)}`);
-                            continue;
-                        }
+                        // TEMPORARILY: Accept all elements to see what UI state capturer finds
+                        // We'll add back filtering once we see what we're getting
                         
                         // Deduplicate: Check if we already have this dropdown (by selector or text)
                         const isDuplicate = dropdowns.some(d => 
