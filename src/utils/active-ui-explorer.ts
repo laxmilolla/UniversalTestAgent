@@ -457,43 +457,26 @@ Return JSON array:
                     id: `discover-dropdowns-${Date.now()}`
                 }]);
                     
-                    // Parse MCP result format - handle multiple possible formats
-                    let elements: any[] = [];
-                    if (!result || !result[0] || !result[0].result) {
-                        console.warn(`⚠️ No result returned for selector "${selector}"`);
-                    } else if (Array.isArray(result[0].result)) {
-                        // Format 1: Result is directly an array (like UI state capturer uses)
-                        elements = result[0].result;
-                    } else if (result[0].result?.content?.[0]?.text) {
-                        // Format 2: Result is in content[0].text as JSON string
-                        try {
-                            elements = JSON.parse(result[0].result.content[0].text);
-                        } catch (e) {
-                            console.warn(`⚠️ Failed to parse JSON for selector "${selector}":`, e);
-                        }
-                    } else {
-                        console.warn(`⚠️ Unexpected result format for selector "${selector}":`, JSON.stringify(result[0].result).substring(0, 200));
-                    }
+                    // Parse MCP result format - use same approach as UI state capturer (which finds 20 dropdowns)
+                    const elements = result[0]?.result || [];
+                    console.log(`🔍 Selector "${selector}" - Raw result type: ${typeof result[0]?.result}, IsArray: ${Array.isArray(result[0]?.result)}, Length: ${Array.isArray(result[0]?.result) ? result[0].result.length : 'N/A'}`);
                     
                     console.log(`🔍 Selector "${selector}" found ${elements.length} elements`);
                     
                     for (const element of elements) {
-                        // Skip non-interactive elements (section headers, etc.)
-                        if (this.isInteractiveDropdown(element)) {
-                            const label = this.extractElementLabel(element);
-                            const elementSelector = this.generateSelector(element, selector);
-                            
-                            dropdowns.push({
-                                type: 'dropdown',
-                                label: label || `Dropdown ${dropdowns.length + 1}`,
-                                selector: elementSelector,
-                                text: element.textContent?.trim(),
-                                ariaLabel: element.getAttribute?.('aria-label')
-                            });
-                            console.log(`✅ Added dropdown: ${label || `Dropdown ${dropdowns.length}`}`);
-                        } else {
-                            console.log(`⚠️ Skipped non-interactive element: ${element.textContent?.trim()}`);
-                        }
+                        // TEMPORARILY: Accept all elements (like UI state capturer does) to debug
+                        // TODO: Add back filtering once we confirm discovery is working
+                        const label = this.extractElementLabel(element);
+                        const elementSelector = this.generateSelector(element, selector);
+                        
+                        dropdowns.push({
+                            type: 'dropdown',
+                            label: label || `Dropdown ${dropdowns.length + 1}`,
+                            selector: elementSelector,
+                            text: element.textContent?.trim(),
+                            ariaLabel: element.attributes?.ariaLabel || element.attributes?.['aria-label']
+                        });
+                        console.log(`✅ Added dropdown ${dropdowns.length}: ${label || `Dropdown ${dropdowns.length}`} (${elementSelector})`);
                     }
                 }
             
