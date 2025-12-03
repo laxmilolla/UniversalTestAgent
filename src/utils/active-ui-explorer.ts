@@ -259,8 +259,13 @@ export class ActiveUIExplorer {
         
         for (const dropdown of dropdowns) {
             try {
-                // Just get options, don't test yet
-                const options = await this.getDropdownOptions(dropdown.selector);
+                // Just get options, don't test yet - with timeout to prevent blocking
+                const options = await Promise.race([
+                    this.getDropdownOptions(dropdown.selector),
+                    new Promise<string[]>((_, reject) => 
+                        setTimeout(() => reject(new Error('timeout')), 10000) // 10 second timeout per dropdown
+                    )
+                ]);
                 results.push({
                     ...dropdown,
                     allOptions: options,
@@ -348,17 +353,8 @@ Return JSON array:
             // 1. Capture before state
             const before = await this.stateCapturer.captureState();
             
-            // 2. Click dropdown to see all options
-            await this.mcpClient.callTools([{
-                name: 'playwright_click',
-                parameters: { selector: dropdown.selector },
-                id: `click-dropdown-${Date.now()}`
-            }]);
-            
-            // Wait for dropdown to open
-            await this.waitForStability();
-            
-            // 3. Get all available options
+            // 2. Get all available options (getDropdownOptions handles expansion for expandable panels)
+            // Skip the playwright_click step - getDropdownOptions will handle it
             const options = await this.getDropdownOptions(dropdown.selector);
             console.log(`📋 Found ${options.length} options: ${options.slice(0, 5).join(', ')}${options.length > 5 ? '...' : ''}`);
             
@@ -1012,11 +1008,17 @@ Return JSON array:
             // Fallback: Try to click dropdown and get MUI/Ant Design options
             console.log(`🔍 No native options found, trying to open dropdown for MUI/Ant Design...`);
             
-            // Click to open dropdown
+            // Click to open dropdown using JavaScript (more reliable than playwright_click)
             await this.mcpClient.callTools([{
-                name: 'playwright_click',
-                parameters: { selector },
-                id: `open-dropdown-${Date.now()}`
+                name: 'playwright_evaluate',
+                parameters: { 
+                    script: `(() => {
+                        const el = document.querySelector('${selector}');
+                        if (el) el.click();
+                        return { clicked: true };
+                    })()`
+                },
+                id: `open-dropdown-js-${Date.now()}`
             }]);
             
             // Wait for dropdown to open
@@ -1143,10 +1145,19 @@ Return JSON array:
                 }
                 
                 if (!isExpanded) {
+                    // Use JavaScript click instead of playwright_click (more reliable for expandable panels)
                     await this.mcpClient.callTools([{
-                        name: 'playwright_click',
-                        parameters: { selector },
-                        id: `expand-panel-for-select-${Date.now()}`
+                        name: 'playwright_evaluate',
+                        parameters: { 
+                            script: `(() => {
+                                const el = document.querySelector('${selector}');
+                                if (el && el.getAttribute('aria-expanded') === 'false') {
+                                    el.click();
+                                }
+                                return { clicked: true };
+                            })()`
+                        },
+                        id: `expand-panel-for-select-js-${Date.now()}`
                     }]);
                     await this.waitForStability();
                 }

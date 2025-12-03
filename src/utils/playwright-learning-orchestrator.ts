@@ -521,6 +521,9 @@ async analyzeRealUI(pageContent: string, pageText: string, screenshot: any, exis
             for (const studyName of studyNames) {
                 console.log(`🔍 Looking for checkbox matching study: ${studyName}`);
                 
+                // Escape study name for use in JavaScript string
+                const escapedStudyName = JSON.stringify(studyName);
+                
                 const checkboxMatchResult = await this.mcpClient.callTools([{
                     name: 'playwright_evaluate',
                     parameters: {
@@ -563,14 +566,16 @@ async analyzeRealUI(pageContent: string, pageText: string, screenshot: any, exis
                             
                             // Find all checkboxes and their labels
                             const checkboxes = expandedContent.querySelectorAll('input[type="checkbox"]');
-                            const allLabels: string[] = [];
+                            const allLabels = [];
                             
                             for (const cb of checkboxes) {
                                 const row = cb.closest('div[role="button"]');
                                 if (!row) continue;
                                 
-                                // Get label text (same pattern as getDropdownOptions)
-                                const labelEl = row.querySelector('p.filter_by_casesNameUnChecked, p[class*="filter_by_casesName"], p[class*="filter_by_cases"]');
+                                // Get label text - look for p inside div with filter_by_casesNameUnChecked class
+                                // Structure: <div class="filter_by_casesNameUnChecked"><p>Study Name</p></div>
+                                const nameDiv = row.querySelector('div.filter_by_casesNameUnChecked, div[class*="filter_by_casesName"]');
+                                const labelEl = nameDiv ? nameDiv.querySelector('p') : null;
                                 const labelText = labelEl ? labelEl.textContent?.trim() : '';
                                 
                                 if (!labelText) continue;
@@ -578,7 +583,7 @@ async analyzeRealUI(pageContent: string, pageText: string, screenshot: any, exis
                                 
                                 // Flexible matching: "OSA04" matches "OSA04 (000018)"
                                 // Case-insensitive, handle variations
-                                const studyNameLower = '${studyName}'.toLowerCase();
+                                const studyNameLower = ${escapedStudyName}.toLowerCase();
                                 const labelLower = labelText.toLowerCase();
                                 
                                 // Extract study code from label (e.g., "OSA04" from "OSA04 (000018)")
@@ -654,6 +659,7 @@ async analyzeRealUI(pageContent: string, pageText: string, screenshot: any, exis
                     
                     // Use JavaScript click to find and click the checkbox by label (more reliable)
                     const targetLabel = checkboxInfo.label;
+                    const escapedLabel = JSON.stringify(targetLabel);
                     const clickResult = await this.mcpClient.callTools([{
                         name: 'playwright_evaluate',
                         parameters: {
@@ -684,12 +690,14 @@ async analyzeRealUI(pageContent: string, pageText: string, screenshot: any, exis
                                 if (!expandedContent) return { clicked: false, error: 'Expanded content not found' };
                                 
                                 // Find checkbox by label
-                                const targetLabel = ${JSON.stringify(targetLabel)};
+                                const targetLabel = ${escapedLabel};
                                 const checkboxes = expandedContent.querySelectorAll('input[type="checkbox"]');
                                 for (const cb of checkboxes) {
                                     const row = cb.closest('div[role="button"]');
                                     if (!row) continue;
-                                    const labelEl = row.querySelector('p.filter_by_casesNameUnChecked, p[class*="filter_by_casesName"], p[class*="filter_by_cases"]');
+                                    // Get label text - look for p inside div with filter_by_casesNameUnChecked class
+                                    const nameDiv = row.querySelector('div.filter_by_casesNameUnChecked, div[class*="filter_by_casesName"]');
+                                    const labelEl = nameDiv ? nameDiv.querySelector('p') : null;
                                     const labelText = labelEl ? labelEl.textContent?.trim() : '';
                                     if (labelText === targetLabel) {
                                         cb.click();
