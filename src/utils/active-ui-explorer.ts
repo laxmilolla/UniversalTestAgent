@@ -451,13 +451,41 @@ Return JSON array:
                     id: `discover-dropdowns-${Date.now()}`
                 }]);
                     
+                    // Parse MCP result - check actual structure
+                    console.log(`🔍 DEBUG: result[0] structure:`, JSON.stringify(result[0]).substring(0, 300));
+                    console.log(`🔍 DEBUG: result[0].result type:`, typeof result[0]?.result);
+                    console.log(`🔍 DEBUG: result[0].result isArray:`, Array.isArray(result[0]?.result));
+                    if (result[0]?.result?.content) {
+                        console.log(`🔍 DEBUG: result[0].result.content length:`, result[0].result.content.length);
+                        if (result[0].result.content[0]) {
+                            console.log(`🔍 DEBUG: result[0].result.content[0] keys:`, Object.keys(result[0].result.content[0]));
+                        }
+                    }
+                    
                     // Parse MCP result - handle both direct array and JSON string formats
                     let elements: any[] = [];
                     if (result[0]?.result) {
-                        if (Array.isArray(result[0].result)) {
+                        // Check if result.content exists (MCP tool response format)
+                        if (result[0].result.content && Array.isArray(result[0].result.content)) {
+                            // Find the text content that contains the JSON array
+                            for (const contentItem of result[0].result.content) {
+                                if (contentItem.text && contentItem.text !== 'Executed JavaScript:' && contentItem.text !== 'Result:') {
+                                    try {
+                                        const parsed = JSON.parse(contentItem.text);
+                                        if (Array.isArray(parsed)) {
+                                            elements = parsed;
+                                            break;
+                                        }
+                                    } catch (e) {
+                                        // Not JSON, continue
+                                    }
+                                }
+                            }
+                        } else if (Array.isArray(result[0].result)) {
+                            // Direct array format
                             elements = result[0].result;
                         } else if (result[0].result?.content?.[0]?.text) {
-                            // JSON string format
+                            // JSON string format (old check)
                             try {
                                 elements = JSON.parse(result[0].result.content[0].text);
                             } catch (e) {
