@@ -420,18 +420,20 @@ Return JSON array:
         
         try {
             console.log('🔍 discoverDropdowns(): Inside try block');
-            // Target actual interactive dropdowns only
-            // Use specific selectors to avoid non-interactive elements
+            // Target actual interactive dropdowns
+            // Include broad selectors like UI state capturer but filter results
             const selectors = [
                 'select', // Native HTML select
                 '[role="combobox"]', // MUI/Ant Design dropdowns
                 '[role="button"][aria-expanded]', // MUI Select components
                 '.MuiSelect-select', // MUI specific
                 '.MuiSelect-root', // MUI Select root
-                '[class*="MuiSelect-select"]', // MUI Select variants (more specific)
+                '[class*="MuiSelect-select"]', // MUI Select variants
                 '[class*="ant-select-selector"]', // Ant Design selector
                 'button[data-toggle="dropdown"]', // Bootstrap dropdown triggers
-                'button[aria-haspopup="listbox"]' // ARIA dropdown buttons
+                'button[aria-haspopup="listbox"]', // ARIA dropdown buttons
+                '[class*="select"]', // Broad selector (will be filtered)
+                '[class*="dropdown"]' // Broad selector (will be filtered)
             ];
             
             console.log(`🔍 Testing ${selectors.length} dropdown selectors...`);
@@ -495,6 +497,17 @@ Return JSON array:
                 }
             
             console.log(`✅ discoverDropdowns(): Found ${dropdowns.length} total dropdowns`);
+            
+            // Print all discovered dropdowns for verification
+            console.log('\n📋 ALL DISCOVERED DROPDOWNS:');
+            dropdowns.forEach((dropdown, index) => {
+                console.log(`  ${index + 1}. "${dropdown.label}"`);
+                console.log(`     Selector: ${dropdown.selector}`);
+                console.log(`     Text: ${dropdown.text?.substring(0, 50) || 'N/A'}`);
+                console.log(`     Aria Label: ${dropdown.ariaLabel || 'N/A'}`);
+            });
+            console.log('');
+            
             return dropdowns;
             
         } catch (error) {
@@ -504,55 +517,63 @@ Return JSON array:
     }
 
     private isInteractiveDropdown(element: any): boolean {
-        // Skip section headers and non-interactive elements
-        if (element.className?.includes('dropdownIconTextWrapper') || 
-            element.className?.includes('facetSectionName') ||
-            element.className?.includes('header') ||
-            element.className?.includes('title')) {
+        // Skip obvious non-interactive elements (section headers, labels, etc.)
+        const className = element.className || '';
+        if (className.includes('dropdownIconTextWrapper') || 
+            className.includes('facetSectionName') ||
+            className.includes('facetHeader') ||
+            (className.includes('header') && !className.includes('select') && !className.includes('dropdown'))) {
             return false;
         }
         
-        // Must be interactive (clickable, selectable, etc.)
         const tagName = element.tagName?.toLowerCase();
         const role = element.attributes?.role;
-        const className = element.className || '';
         
         // Native select elements are always interactive
         if (tagName === 'select') {
             return true;
         }
         
-        // Buttons with dropdown-related attributes
-        if (tagName === 'button' && (
-            role === 'combobox' ||
-            element.attributes?.['aria-expanded'] !== undefined ||
-            element.attributes?.['data-toggle'] === 'dropdown' ||
-            className.includes('MuiSelect') ||
-            className.includes('ant-select-selector')
-        )) {
+        // Buttons are potentially interactive
+        if (tagName === 'button') {
             return true;
         }
         
-        // Elements with combobox role
-        if (role === 'combobox') {
+        // Elements with combobox or button role
+        if (role === 'combobox' || role === 'button') {
             return true;
         }
         
-        // MUI Select components (specific classes)
-        if (className.includes('MuiSelect-select') || 
-            className.includes('MuiSelect-root') ||
-            className.includes('MuiSelect-nativeInput')) {
+        // MUI Select components
+        if (className.includes('MuiSelect')) {
             return true;
         }
         
-        // Ant Design select components (specific classes)
-        if (className.includes('ant-select-selector') ||
-            className.includes('ant-select-selection')) {
+        // Ant Design select components
+        if (className.includes('ant-select')) {
             return true;
         }
         
-        // Skip generic "select" or "dropdown" in class name - too broad
-        // Only accept if it's part of a known component pattern
+        // For broad selectors: accept div/span elements with select/dropdown in class
+        // that might be interactive (will be tested during exploration)
+        if ((className.includes('select') || className.includes('dropdown')) && 
+            (tagName === 'div' || tagName === 'span')) {
+            // Accept if it has interactive attributes or is clickable
+            if (element.attributes?.['onclick'] ||
+                element.attributes?.['tabindex'] !== undefined ||
+                element.attributes?.['aria-expanded'] !== undefined) {
+                return true;
+            }
+            // Also accept if it doesn't look like just text (has nested elements or specific structure)
+            const hasNestedElements = element.innerHTML && 
+                (element.innerHTML.includes('<svg') || 
+                 element.innerHTML.includes('<input') ||
+                 element.innerHTML.includes('class='));
+            if (hasNestedElements) {
+                return true;
+            }
+        }
+        
         return false;
     }
 
