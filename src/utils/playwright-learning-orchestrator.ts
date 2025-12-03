@@ -888,9 +888,57 @@ Response (JSON array only):`;
         );
         
         // Explore UI and store in RAG
-        const explorationResults = await explorer.exploreAllElements();
+        let explorationResults: any[] = [];
+        try {
+            explorationResults = await explorer.exploreAllElements();
+            console.log(`✅ Explored ${explorationResults.length} UI elements`);
+        } catch (error: any) {
+            console.error(`❌ Exploration failed or timed out: ${error.message}`);
+            console.warn(`⚠️ Will use discovered elements even if exploration incomplete`);
+            // Try to get at least the discovered elements
+            try {
+                const discoveredDropdowns = await explorer.discoverAllDropdownsWithOptions();
+                const discoveredSearchBoxes = await explorer.discoverSearchBoxes();
+                const discoveredCheckboxes = await explorer.discoverCheckboxes();
+                const discoveredRadioGroups = await explorer.discoverRadioButtons();
+                
+                // Create minimal results from discovered elements
+                explorationResults = [
+                    ...discoveredDropdowns.map(d => ({
+                        elementType: 'dropdown',
+                        label: d.label,
+                        selector: d.selector,
+                        allOptions: d.allOptions,
+                        sampledTests: []
+                    })),
+                    ...discoveredSearchBoxes.map(s => ({
+                        elementType: 'searchBox',
+                        label: s.label,
+                        selector: s.selector,
+                        allOptions: [],
+                        sampledTests: []
+                    })),
+                    ...discoveredCheckboxes.map(c => ({
+                        elementType: 'checkbox',
+                        label: c.label,
+                        selector: c.selector,
+                        allOptions: ['checked', 'unchecked'],
+                        sampledTests: []
+                    })),
+                    ...discoveredRadioGroups.map(r => ({
+                        elementType: 'radio',
+                        label: r.groupName,
+                        selector: r.options[0]?.selector || '',
+                        allOptions: r.options.map(o => o.label),
+                        sampledTests: []
+                    }))
+                ];
+                console.log(`✅ Created ${explorationResults.length} results from discovered elements (exploration incomplete)`);
+            } catch (discoverError) {
+                console.error(`❌ Could not even get discovered elements: ${discoverError.message}`);
+            }
+        }
         
-        console.log(`✅ Explored ${explorationResults.length} UI elements`);
         console.log(`🔍 DEBUG: Exploration results breakdown:`, {
             total: explorationResults.length,
             dropdowns: explorationResults.filter(r => r.elementType === 'dropdown').length,
@@ -963,7 +1011,32 @@ Response (JSON array only):`;
             searchBoxes: result.searchBoxes.length,
             checkboxes: result.checkboxes.length,
             radioGroups: result.radioGroups.length,
-            totalElements: result.totalElements
+            totalElements: result.totalElements,
+            explorationResultsLength: explorationResults.length
+        });
+        
+        // CRITICAL: Ensure totalElements is calculated correctly
+        // Recalculate from arrays to ensure accuracy
+        const recalculatedTotal = result.filters.length + 
+                                  result.dropdowns.length + 
+                                  result.searchBoxes.length + 
+                                  result.checkboxes.length + 
+                                  result.radioGroups.length;
+        
+        if (recalculatedTotal !== result.totalElements) {
+            console.warn(`⚠️ totalElements mismatch: ${result.totalElements} vs recalculated ${recalculatedTotal}. Using recalculated value.`);
+            result.totalElements = recalculatedTotal;
+        }
+        
+        console.log(`✅ Final UI Analysis Summary:`, {
+            totalElements: result.totalElements,
+            breakdown: {
+                filters: result.filters.length,
+                dropdowns: result.dropdowns.length,
+                searchBoxes: result.searchBoxes.length,
+                checkboxes: result.checkboxes.length,
+                radioGroups: result.radioGroups.length
+            }
         });
         
         return result;

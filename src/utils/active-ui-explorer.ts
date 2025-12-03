@@ -646,7 +646,7 @@ Return JSON array:
         return false;
     }
 
-    private async discoverSearchBoxes(): Promise<DiscoveredElement[]> {
+    async discoverSearchBoxes(): Promise<DiscoveredElement[]> {
         const searchBoxes: DiscoveredElement[] = [];
         
         try {
