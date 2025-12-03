@@ -451,27 +451,107 @@ Return JSON array:
                     id: `discover-dropdowns-${Date.now()}`
                 }]);
                     
-                    // Parse MCP result format - use same approach as UI state capturer (which finds 20 dropdowns)
-                    const elements = result[0]?.result || [];
-                    console.log(`🔍 Selector "${selector}" - Raw result type: ${typeof result[0]?.result}, IsArray: ${Array.isArray(result[0]?.result)}, Length: ${Array.isArray(result[0]?.result) ? result[0].result.length : 'N/A'}`);
+                    // Parse MCP result - handle both direct array and JSON string formats
+                    let elements: any[] = [];
+                    if (result[0]?.result) {
+                        if (Array.isArray(result[0].result)) {
+                            elements = result[0].result;
+                        } else if (result[0].result?.content?.[0]?.text) {
+                            // JSON string format
+                            try {
+                                elements = JSON.parse(result[0].result.content[0].text);
+                            } catch (e) {
+                                console.warn(`⚠️ Failed to parse JSON:`, e);
+                            }
+                        }
+                    }
                     
                     console.log(`🔍 Selector "${selector}" found ${elements.length} elements`);
                     
                     // Debug: Log first element structure to understand format
                     if (elements.length > 0 && elements[0]) {
                         console.log(`🔍 DEBUG: First element keys:`, Object.keys(elements[0]));
-                        console.log(`🔍 DEBUG: First element sample:`, JSON.stringify(elements[0]).substring(0, 500));
+                        console.log(`🔍 DEBUG: First element:`, JSON.stringify(elements[0]).substring(0, 500));
                     }
                     
                     for (const element of elements) {
-                        const label = this.extractElementLabel(element);
+                        // Extract label from element properties (handle both direct and nested)
+                        // Try multiple sources to get the actual dropdown name like "Study", "Program", etc.
+                        
+                        // 1. Try ID (often contains the name like id="Study")
+                        let label = element.id && element.id.length < 50 ? element.id : null;
+                        
+                        // 2. Try aria-label
+                        if (!label) {
+                            label = element.attributes?.ariaLabel || 
+                                   element.attributes?.['aria-label'];
+                        }
+                        
+                        // 3. Try title attribute
+                        if (!label) {
+                            label = element.attributes?.title;
+                        }
+                        
+                        // 4. Try placeholder
+                        if (!label) {
+                            label = element.attributes?.placeholder;
+                        }
+                        
+                        // 5. Try textContent (direct text)
+                        if (!label && element.textContent) {
+                            const text = element.textContent.trim();
+                            // Take first meaningful text (not too long, not empty, not just whitespace)
+                            if (text && text.length > 0 && text.length < 100 && text.length > 1) {
+                                // Clean up text - remove extra whitespace
+                                const cleaned = text.replace(/\s+/g, ' ').trim();
+                                if (cleaned && cleaned.length < 50) {
+                                    label = cleaned;
+                                }
+                            }
+                        }
+                        
+                        // 6. Try to extract from innerHTML - look for sectionSummaryText or similar patterns
+                        if (!label && element.innerHTML) {
+                            // Look for class="sectionSummaryText" or similar patterns
+                            const sectionMatch = element.innerHTML.match(/class="[^"]*sectionSummaryText[^"]*"[^>]*>([^<]+)</);
+                            if (sectionMatch && sectionMatch[1]) {
+                                label = sectionMatch[1].trim();
+                            } else {
+                                // Look for any text content in divs (like <div>Study</div>)
+                                const divTextMatch = element.innerHTML.match(/<div[^>]*>([^<]{1,50})<\/div>/);
+                                if (divTextMatch && divTextMatch[1]) {
+                                    const extracted = divTextMatch[1].trim();
+                                    if (extracted && extracted.length > 0 && extracted.length < 50) {
+                                        label = extracted;
+                                    }
+                                } else {
+                                    // Last resort: extract any text between tags
+                                    const textMatch = element.innerHTML.match(/>([^<]{1,50})</);
+                                    if (textMatch && textMatch[1]) {
+                                        const extracted = textMatch[1].trim();
+                                        if (extracted && extracted.length > 0 && extracted.length < 50 && !extracted.match(/^\s*$/)) {
+                                            label = extracted;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Fallback to generic label
+                        if (!label || label.length === 0) {
+                            label = `Dropdown ${dropdowns.length + 1}`;
+                        }
+                        
+                        // Clean up label - remove extra whitespace and limit length
+                        label = label.trim().substring(0, 50);
+                        
                         // Use same selector generation as UI state capturer
                         const elementSelector = element.id ? `#${element.id}` : 
                                              element.className ? `.${element.className.split(' ')[0]}` : 
                                              `${selector}:nth-child(${elements.indexOf(element) + 1})`;
                         
-                        // Log all elements found for debugging
-                        console.log(`🔍 Element found: tagName=${element.tagName}, className=${element.className?.substring(0, 50)}, text=${element.textContent?.trim()?.substring(0, 30)}`);
+                        // Log element details
+                        console.log(`🔍 Element: label="${label}", tagName=${element.tagName}, className=${element.className?.substring(0, 30)}, text=${element.textContent?.trim()?.substring(0, 30)}`);
                         
                         // TEMPORARILY: Accept all elements to see what UI state capturer finds
                         // We'll add back filtering once we see what we're getting
