@@ -1,6 +1,7 @@
 class ChatbotUI {
     constructor() {
-        this.socket = io();
+        const basePath = getApiBasePath();
+        this.socket = io({ path: basePath ? `${basePath}/socket.io/` : '/socket.io/' });
         this.messageInput = document.getElementById('messageInput');
         this.sendButton = document.getElementById('sendButton');
         this.clearButton = document.getElementById('clearButton');
@@ -177,7 +178,7 @@ class ChatbotUI {
 
     async showTools() {
         try {
-            const response = await fetch('/api/tools');
+            const response = await fetch(`${getApiBasePath()}/api/tools`);
             const data = await response.json();
             
             this.toolsList.innerHTML = data.tools.map(tool => 
@@ -214,7 +215,7 @@ async function uploadToS3(filePath) {
         button.textContent = '⏳ Uploading...';
         button.disabled = true;
 
-        const response = await fetch('/api/upload-screenshot', {
+        const response = await fetch(`${getApiBasePath()}/api/upload-screenshot`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -272,6 +273,15 @@ document.addEventListener('DOMContentLoaded', () => {
 // ========================================
 // UNIVERSAL WEB TESTING AGENT - LEARNING PHASE FUNCTIONALITY
 // ========================================
+
+// Helper function to get the correct API base path based on current URL
+function getApiBasePath() {
+    const path = window.location.pathname;
+    if (path.startsWith('/tsv-driven')) {
+        return '/tsv-driven';
+    }
+    return '';
+}
 
 class LearningPhaseUI {
     constructor() {
@@ -373,7 +383,7 @@ class LearningPhaseUI {
                 const formData = new FormData();
                 formData.append(fileType, file);
                 
-                const response = await fetch(`/api/learn/upload/${fileType}`, {
+                const response = await fetch(`${getApiBasePath()}/api/learn/upload/${fileType}`, {
                     method: 'POST',
                     body: formData
                 });
@@ -673,7 +683,7 @@ class LearningPhaseUI {
 
         try {
             // Call the actual learning API with website URL
-            const response = await fetch('/api/learn/start', {
+            const response = await fetch(`${getApiBasePath()}/api/learn/start`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -960,7 +970,7 @@ class TestGenerationUI {
                 
                 // Call backend API to save test cases to storage
                 try {
-                    const response = await fetch('/api/test/generate', {
+                    const response = await fetch(`${getApiBasePath()}/api/test/generate`, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json'
@@ -1269,7 +1279,7 @@ class TestGenerationUI {
 
             const testCaseIds = Array.from(this.selectedTests);
             
-            const response = await fetch('/api/test/execute', {
+            const response = await fetch(`${getApiBasePath()}/api/test/execute`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -1412,7 +1422,7 @@ class TestGenerationUI {
 
     async exportTests() {
         try {
-            const response = await fetch('/api/test/export', {
+            const response = await fetch(`${getApiBasePath()}/api/test/export`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -1653,7 +1663,8 @@ class LLMBandwidthInspector {
         // Listen for real-time LLM updates via Socket.IO
         if (typeof io !== 'undefined') {
             try {
-                const socket = io();
+                const basePath = getApiBasePath();
+                const socket = io({ path: basePath ? `${basePath}/socket.io/` : '/socket.io/' });
                 socket.on('llmCallUpdate', (llmCall) => {
                     console.log('📡 Received LLM call update:', llmCall);
                     this.addLiveCall(llmCall);
