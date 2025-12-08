@@ -2261,14 +2261,33 @@ Return JSON array of test cases:
     // Helper method to parse JSON responses from LLM
     private parseJSONResponse(content: string): any {
         try {
-            // Try to extract JSON from the response
-            const jsonMatch = content.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
-            if (jsonMatch) {
-                return JSON.parse(jsonMatch[0]);
+            // Try to find JSON object or array in the response (may contain explanatory text)
+            // Look for the first valid JSON structure
+            const jsonObjectMatch = content.match(/\{[\s\S]*\}/);
+            const jsonArrayMatch = content.match(/\[[\s\S]*\]/);
+            
+            // Prefer object over array if both exist
+            if (jsonObjectMatch) {
+                try {
+                    return JSON.parse(jsonObjectMatch[0]);
+                } catch (e) {
+                    // If object parsing fails, try array
+                    if (jsonArrayMatch) {
+                        return JSON.parse(jsonArrayMatch[0]);
+                    }
+                    throw e;
+                }
             }
+            
+            if (jsonArrayMatch) {
+                return JSON.parse(jsonArrayMatch[0]);
+            }
+            
+            // If no match found, try parsing the whole content
             return JSON.parse(content);
-        } catch (error) {
+        } catch (error: any) {
             console.error('Failed to parse LLM JSON response:', error);
+            console.error('Response content (first 500 chars):', content.substring(0, 500));
             throw new Error('LLM returned invalid JSON format. NO FALLBACK AVAILABLE.');
         }
     }
