@@ -264,6 +264,28 @@ app.get('/api/learn/screenshot-analysis', (req, res) => {
     }
 });
 
+// TSV-Driven: Set UI context endpoint
+app.post('/api/learn/set-context', (req, res) => {
+  try {
+    const { filterPanelLocation, filterPanelSelector, expectedFilters } = req.body;
+    
+    if (!filterPanelLocation) {
+      return res.status(400).json({ error: 'filterPanelLocation is required (side, top, or bottom)' });
+    }
+    
+    playwrightLearningOrchestrator.setUIContext({
+      filterPanelLocation: filterPanelLocation as 'side' | 'top' | 'bottom',
+      filterPanelSelector: filterPanelSelector,
+      expectedFilters: expectedFilters
+    });
+    
+    res.json({ success: true, message: 'UI context set successfully' });
+  } catch (error: any) {
+    logger.error('Failed to set UI context:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post('/api/learn/start', async (req, res) => {
     try {
         const { websiteUrl, tsvData } = req.body;

@@ -49,8 +49,8 @@ export interface PrioritizedDropdown extends DiscoveredWithOptions {
 }
 
 export class ActiveUIExplorer {
-    private readonly MAX_DROPDOWNS_TO_EXPLORE = 10;
-    private readonly SAMPLES_PER_DROPDOWN = 5; // Increased from 2 to 5
+    private readonly MAX_DROPDOWNS_TO_EXPLORE = 7; // Reduced from 10 to prevent timeout
+    private readonly SAMPLES_PER_DROPDOWN = 3; // Reduced from 5 to 3 to prevent timeout
 
     constructor(
         private mcpClient: MCPPlaywrightClient,
@@ -59,6 +59,219 @@ export class ActiveUIExplorer {
         private bedrockClient: BedrockClient,
         private studyFilterInfo: {studyName: string, panelSelector: string, checkboxLabel: string} | null = null
     ) {}
+
+    // TSV-Driven: Focused filter panel exploration using TSV columns as source of truth
+    async exploreFilterPanelByTSVColumns(tsvColumns: string[], panelSelector: string): Promise<UIExplorationResult[]> {
+        console.log('🎯 TSV-Driven Focused Exploration: Filter Panel');
+        console.log(`📊 TSV Columns: ${tsvColumns.join(', ')}`);
+        console.log(`🎯 Panel Selector: ${panelSelector}`);
+        
+        const results: UIExplorationResult[] = [];
+        
+        try {
+            // Step 1: Find the filter panel
+            const panelResult = await this.mcpClient.callTools([{
+                name: 'playwright_evaluate',
+                parameters: {
+                    script: `(() => {
+                        const panel = document.querySelector(${JSON.stringify(panelSelector)});
+                        if (!panel) return { found: false, selector: null };
+                        return { found: true, selector: ${JSON.stringify(panelSelector)} };
+                    })()`
+                },
+                id: `find-filter-panel-${Date.now()}`
+            }]);
+            
+            if (!panelResult[0]?.success || !JSON.parse(panelResult[0].result[0].text).found) {
+                console.warn(`⚠️ Filter panel not found with selector: ${panelSelector}`);
+                return results;
+            }
+            
+            console.log(`✅ Filter panel found: ${panelSelector}`);
+            
+            // Step 2: For each TSV column, find matching UI filter in panel
+            for (const tsvColumn of tsvColumns) {
+                console.log(`\n🔍 Looking for UI filter matching TSV column: "${tsvColumn}"`);
+                
+                // Find matching filter element using direct name matching
+                const matchingFilter = await this.findMatchingFilter(tsvColumn, panelSelector);
+                
+                if (matchingFilter) {
+                    console.log(`✅ Found matching filter: ${matchingFilter.label} (${matchingFilter.type})`);
+                    
+                    // Explore this filter based on its type
+                    let explorationResult: UIExplorationResult | null = null;
+                    
+                    if (matchingFilter.type === 'dropdown') {
+                        explorationResult = await this.exploreDropdown(matchingFilter);
+                    } else if (matchingFilter.type === 'checkbox') {
+                        // Convert to DiscoveredCheckbox format
+                        const checkbox: DiscoveredCheckbox = {
+                            ...matchingFilter,
+                            checked: (matchingFilter as any).checked || false
+                        };
+                        explorationResult = await this.exploreCheckbox(checkbox);
+                    } else if (matchingFilter.type === 'searchBox') {
+                        explorationResult = await this.exploreSearchBox(matchingFilter);
+                    } else if (matchingFilter.type === 'radio') {
+                        // For radio groups, we need to find all options first
+                        // For now, skip radio groups in TSV-driven mode (can be enhanced later)
+                        console.log(`⚠️ Radio group exploration not yet implemented in TSV-driven mode`);
+                        continue;
+                    }
+                    
+                    if (explorationResult) {
+                        // Add TSV column mapping to result
+                        (explorationResult as any).tsvColumn = tsvColumn;
+                        results.push(explorationResult);
+                    }
+                } else {
+                    console.log(`⚠️ No UI filter found matching TSV column: "${tsvColumn}"`);
+                }
+            }
+            
+            console.log(`\n✅ TSV-Driven Exploration Complete: ${results.length} filters matched and explored`);
+            return results;
+            
+        } catch (error: any) {
+            console.error('❌ TSV-Driven exploration failed:', error);
+            throw new Error(`TSV-Driven exploration failed: ${error.message}`);
+        }
+    }
+
+    // TSV-Driven: Find UI filter matching TSV column name (direct fuzzy matching)
+    private async findMatchingFilter(tsvColumn: string, panelSelector: string): Promise<(DiscoveredElement & { type: string, checked?: boolean }) | null> {
+        try {
+            const result = await this.mcpClient.callTools([{
+                name: 'playwright_evaluate',
+                parameters: {
+                    script: `(() => {
+                        const panel = document.querySelector(${JSON.stringify(panelSelector)});
+                        if (!panel) return { found: false };
+                        
+                        const tsvColumn = ${JSON.stringify(tsvColumn.toLowerCase())};
+                        
+                        // Normalize TSV column name for matching
+                        const normalize = (str) => str.toLowerCase().replace(/[^a-z0-9]/g, '');
+                        const normalizedTSV = normalize(tsvColumn);
+                        
+                        // Search for dropdowns, checkboxes, search boxes, radio groups
+                        const allElements = [];
+                        
+                        // 1. Check dropdowns (expandable panels with options)
+                        const dropdownPanels = panel.querySelectorAll('div.customExpansionPanelSummaryRoot[role="button"]');
+                        for (const panel of dropdownPanels) {
+                            const label = panel.textContent?.trim() || '';
+                            const normalizedLabel = normalize(label);
+                            
+                            // Fuzzy match: exact, contains, or similar
+                            if (normalizedLabel.includes(normalizedTSV) || 
+                                normalizedTSV.includes(normalizedLabel) ||
+                                normalizedLabel === normalizedTSV) {
+                                allElements.push({
+                                    type: 'dropdown',
+                                    label: label,
+                                    selector: panel.id ? '#' + panel.id : null,
+                                    text: label
+                                });
+                            }
+                        }
+                        
+                        // 2. Check checkboxes
+                        const checkboxes = panel.querySelectorAll('input[type="checkbox"]');
+                        for (const cb of checkboxes) {
+                            const row = cb.closest('div[role="button"]');
+                            if (!row) continue;
+                            
+                            const nameDiv = row.querySelector('div.filter_by_casesNameUnChecked, div[class*="filter_by_casesName"]');
+                            const labelEl = nameDiv ? nameDiv.querySelector('p') : null;
+                            const label = labelEl ? labelEl.textContent?.trim() : '';
+                            
+                            if (!label) continue;
+                            
+                            const normalizedLabel = normalize(label);
+                            if (normalizedLabel.includes(normalizedTSV) || 
+                                normalizedTSV.includes(normalizedLabel) ||
+                                normalizedLabel === normalizedTSV) {
+                                allElements.push({
+                                    type: 'checkbox',
+                                    label: label,
+                                    selector: cb.id ? '#' + cb.id : null,
+                                    text: label,
+                                    checked: cb.checked
+                                });
+                            }
+                        }
+                        
+                        // 3. Check search boxes
+                        const searchBoxes = panel.querySelectorAll('input[type="text"], input[type="search"]');
+                        for (const sb of searchBoxes) {
+                            const label = sb.getAttribute('placeholder') || 
+                                         sb.getAttribute('aria-label') || 
+                                         sb.closest('label')?.textContent?.trim() || '';
+                            
+                            if (!label) continue;
+                            
+                            const normalizedLabel = normalize(label);
+                            if (normalizedLabel.includes(normalizedTSV) || 
+                                normalizedTSV.includes(normalizedLabel) ||
+                                normalizedLabel === normalizedTSV) {
+                                allElements.push({
+                                    type: 'searchBox',
+                                    label: label,
+                                    selector: sb.id ? '#' + sb.id : 'input[type="' + sb.type + '"]',
+                                    text: label,
+                                    placeholder: sb.getAttribute('placeholder') || ''
+                                });
+                            }
+                        }
+                        
+                        // Return first match (prioritize dropdowns)
+                        const dropdownMatch = allElements.find(e => e.type === 'dropdown');
+                        if (dropdownMatch) return { found: true, filter: dropdownMatch };
+                        if (allElements.length > 0) return { found: true, filter: allElements[0] };
+                        
+                        return { found: false };
+                    })()`
+                },
+                id: `find-matching-filter-${Date.now()}`
+            }]);
+            
+            if (result[0]?.success && result[0].result?.[0]?.text) {
+                const parsed = JSON.parse(result[0].result[0].text);
+                if (parsed.found && parsed.filter) {
+                    // Convert to DiscoveredElement format
+                    const filter = parsed.filter;
+                    return {
+                        type: filter.type,
+                        label: filter.label,
+                        selector: filter.selector || this.generateSelector(filter.type, filter.label),
+                        text: filter.text,
+                        placeholder: filter.placeholder,
+                        ariaLabel: filter.ariaLabel
+                    } as DiscoveredElement;
+                }
+            }
+            
+            return null;
+        } catch (error: any) {
+            console.error(`❌ Error finding matching filter for "${tsvColumn}":`, error);
+            return null;
+        }
+    }
+
+    // Helper: Generate selector if not provided
+    private generateSelector(type: string, label: string): string {
+        const normalized = label.toLowerCase().replace(/[^a-z0-9]/g, '-');
+        if (type === 'dropdown') {
+            return `div[role="button"]:has-text("${label}")`;
+        } else if (type === 'checkbox') {
+            return `input[type="checkbox"]`;
+        } else if (type === 'searchBox') {
+            return `input[type="text"], input[type="search"]`;
+        }
+        return '';
+    }
 
     async exploreAllElements(): Promise<UIExplorationResult[]> {
         console.log('🔍 Starting LLM-Guided Intelligent Exploration... [VERSION 3.0 - Enhanced]');
@@ -146,9 +359,13 @@ export class ActiveUIExplorer {
             console.log(`🎯 Exploring top ${topPriority.length} priority dropdowns`);
             
             // Update results with detailed exploration (if time permits)
-            for (const dropdown of topPriority) {
+            // Skip dropdowns with 0 options to save time
+            const dropdownsToExplore = topPriority.filter(d => d.optionCount > 0);
+            console.log(`🎯 Skipping ${topPriority.length - dropdownsToExplore.length} empty dropdowns, exploring ${dropdownsToExplore.length} with options`);
+            
+            for (const dropdown of dropdownsToExplore) {
                 try {
-                    console.log(`🔍 Exploring priority dropdown: ${dropdown.label} (${dropdown.priority})`);
+                    console.log(`🔍 Exploring priority dropdown: ${dropdown.label} (${dropdown.priority}) - ${dropdown.optionCount} options`);
                     const dropdownResult = await this.exploreDropdown(dropdown);
                     
                     // Update the existing result with detailed exploration
@@ -1371,15 +1588,15 @@ Return JSON array:
                 id: `expand-study-panel-${Date.now()}`
             }]);
             
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            await new Promise(resolve => setTimeout(resolve, 800)); // Reduced from 1000ms
             
-            // Click the study checkbox
+            // Click the study checkbox (check if already checked first to avoid unnecessary clicks)
             await this.mcpClient.callTools([{
                 name: 'playwright_evaluate',
                 parameters: {
                     script: `(() => {
                         const panel = document.querySelector('${panelSelector}');
-                        if (!panel) return { clicked: false };
+                        if (!panel) return { clicked: false, alreadyChecked: false };
                         
                         let expandedContent = null;
                         const parentContainer = panel.closest('div[id]')?.parentElement || panel.parentElement?.parentElement;
@@ -1400,7 +1617,7 @@ Return JSON array:
                                 }
                             }
                         }
-                        if (!expandedContent) return { clicked: false };
+                        if (!expandedContent) return { clicked: false, alreadyChecked: false };
                         
                         const targetLabel = ${escapedLabel};
                         const checkboxes = expandedContent.querySelectorAll('input[type="checkbox"]');
@@ -1411,17 +1628,21 @@ Return JSON array:
                             const labelEl = nameDiv ? nameDiv.querySelector('p') : null;
                             const labelText = labelEl ? labelEl.textContent?.trim() : '';
                             if (labelText === targetLabel) {
+                                // Check if already checked
+                                if (cb.checked) {
+                                    return { clicked: false, alreadyChecked: true, label: labelText };
+                                }
                                 cb.click();
-                                return { clicked: true, label: labelText };
+                                return { clicked: true, alreadyChecked: false, label: labelText };
                             }
                         }
-                        return { clicked: false };
+                        return { clicked: false, alreadyChecked: false };
                     })()`
                 },
                 id: `reapply-study-filter-${Date.now()}`
             }]);
             
-            await new Promise(resolve => setTimeout(resolve, 2000)); // Wait for filter to apply
+            await new Promise(resolve => setTimeout(resolve, 1500)); // Reduced from 2000ms, wait for filter to apply
             console.log(`✅ Study filter re-applied: ${this.studyFilterInfo.studyName}`);
         } catch (error: any) {
             console.warn(`⚠️ Failed to re-apply study filter: ${error.message}`);
@@ -1482,8 +1703,8 @@ Return JSON array:
     }
 
     private async waitForStability(): Promise<void> {
-        // Wait for UI to stabilize after interactions
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Wait for UI to stabilize after interactions (reduced from 2000ms to 1500ms for faster exploration)
+        await new Promise(resolve => setTimeout(resolve, 1500));
     }
 
     private extractElementLabel(element: any): string {

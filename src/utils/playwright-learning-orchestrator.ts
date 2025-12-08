@@ -9,6 +9,13 @@ import { ActiveUIExplorer } from './active-ui-explorer';
 
 const fs = require('fs');
 
+// TSV-Driven Focused Exploration: User context for filter panel
+export interface UIContext {
+    filterPanelLocation: 'side' | 'top' | 'bottom';
+    filterPanelSelector?: string; // Optional: user can provide selector
+    expectedFilters?: string[]; // Optional: TSV column names that should have UI filters
+}
+
 export class PlaywrightLearningOrchestrator {
     private bedrockClient: BedrockClient;
     private mcpClient: MCPPlaywrightClient;
@@ -16,9 +23,10 @@ export class PlaywrightLearningOrchestrator {
     private vectorRAG: VectorRAGClient; // NEW
     private currentWebsiteUrl: string = '';
     private executionTrace: any[] = []; // Add this line
-    private readonly timeout = 600000; // 600 seconds (10 minutes) for comprehensive LLM-guided exploration
+    private readonly timeout = 1200000; // 1200 seconds (20 minutes) for comprehensive LLM-guided exploration with study filter
     private currentTSVFiles: any[] = []; // Add this line
     private currentTSVData: any[] = []; // Parsed TSV data for dynamic test value extraction
+    private uiContext: UIContext | null = null; // TSV-Driven: User-provided UI context
 
     // Add global LLM tracking
     private llmCallTracker: any[] = [];
@@ -39,6 +47,93 @@ export class PlaywrightLearningOrchestrator {
     // Expose RAG client for test orchestrator
     getRagClient(): SimpleRAGClient {
         return this.ragClient;
+    }
+
+    // TSV-Driven: Set UI context (filter panel location, selector, expected filters)
+    setUIContext(context: UIContext): void {
+        this.uiContext = context;
+        console.log('✅ UI Context set:', context);
+    }
+
+    // TSV-Driven: Extract all TSV column names from indexed metadata
+    private extractTSVColumns(): string[] {
+        const allColumns = new Set<string>();
+        
+        // Get TSV metadata from vector RAG client
+        const tsvMetadata = (this.vectorRAG as any).tsvMetadata || {};
+        
+        for (const fileName in tsvMetadata) {
+            const metadata = tsvMetadata[fileName];
+            if (metadata.headers && Array.isArray(metadata.headers)) {
+                metadata.headers.forEach((header: string) => allColumns.add(header));
+            }
+        }
+        
+        const columns = Array.from(allColumns);
+        console.log(`📊 Extracted ${columns.length} TSV columns: ${columns.join(', ')}`);
+        return columns;
+    }
+
+    // TSV-Driven: Auto-detect filter panel selector based on location hint
+    private async detectFilterPanelSelector(): Promise<string> {
+        if (!this.uiContext) {
+            return '.filter-panel, [class*="filter"], [class*="Filter"]'; // Generic fallback
+        }
+
+        const location = this.uiContext.filterPanelLocation;
+        
+        try {
+            const result = await this.mcpClient.callTools([{
+                name: 'playwright_evaluate',
+                parameters: {
+                    script: `(() => {
+                        const location = ${JSON.stringify(location)};
+                        // Common filter panel patterns
+                        const selectors = [
+                            'aside[class*="filter"]',
+                            'div[class*="filter-panel"]',
+                            'div[class*="FilterPanel"]',
+                            'nav[class*="filter"]',
+                            '.sidebar[class*="filter"]',
+                            '[data-testid*="filter"]',
+                            '[role="complementary"]'
+                        ];
+                        
+                        for (const selector of selectors) {
+                            const element = document.querySelector(selector);
+                            if (element) {
+                                // Check if it's on the correct side
+                                const rect = element.getBoundingClientRect();
+                                const isLeft = rect.left < window.innerWidth / 2;
+                                const isRight = rect.right > window.innerWidth / 2 && rect.left > window.innerWidth / 2;
+                                
+                                if (location === 'side' && (isLeft || isRight)) {
+                                    return selector;
+                                }
+                                if (location === 'top' && rect.top < window.innerHeight / 3) {
+                                    return selector;
+                                }
+                                if (location === 'bottom' && rect.bottom > window.innerHeight * 2/3) {
+                                    return selector;
+                                }
+                            }
+                        }
+                        return selectors[0]; // Fallback to first selector
+                    })()`
+                },
+                id: `detect-filter-panel-${Date.now()}`
+            }]);
+
+            if (result[0]?.success && result[0].result?.[0]?.text) {
+                const detectedSelector = JSON.parse(result[0].result[0].text);
+                console.log(`✅ Detected filter panel selector: ${detectedSelector}`);
+                return detectedSelector || '.filter-panel';
+            }
+        } catch (error) {
+            console.warn('⚠️ Failed to auto-detect filter panel, using fallback selector');
+        }
+
+        return '.filter-panel, [class*="filter"]'; // Generic fallback
     }
 
     // Add this method to log each step
@@ -69,7 +164,7 @@ export class PlaywrightLearningOrchestrator {
         
         // Add timeout wrapper
         const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('Learning process timeout after 600 seconds')), this.timeout);
+            setTimeout(() => reject(new Error('Learning process timeout after 1200 seconds (20 minutes)')), this.timeout);
         });
         
         const learningPromise = this.performLearning(websiteUrl, tsvFiles);
@@ -1155,8 +1250,21 @@ Response (JSON array only):`;
             studyFilterInfo  // Pass study filter info for re-application after resets
         );
         
-        // Explore UI and store in RAG
-        const explorationResults = await explorer.exploreAllElements();
+        // TSV-Driven: Use focused filter panel exploration if context is provided
+        let explorationResults: any[];
+        if (this.uiContext) {
+            console.log('🎯 TSV-Driven Focused Exploration: Using filter panel context');
+            const tsvColumns = this.extractTSVColumns();
+            const panelSelector = this.uiContext.filterPanelSelector || await this.detectFilterPanelSelector();
+            explorationResults = await explorer.exploreFilterPanelByTSVColumns(
+                tsvColumns,
+                panelSelector
+            );
+        } else {
+            // Fallback to generic exploration
+            console.log('🔍 Generic Exploration: No UI context provided, using full page discovery');
+            explorationResults = await explorer.exploreAllElements();
+        }
         console.log(`✅ Explored ${explorationResults.length} UI elements`);
         
         console.log(`🔍 DEBUG: Exploration results breakdown:`, {
