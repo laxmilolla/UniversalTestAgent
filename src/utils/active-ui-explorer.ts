@@ -245,7 +245,7 @@ export class ActiveUIExplorer {
                     return {
                         type: filter.type,
                         label: filter.label,
-                        selector: filter.selector || this.generateSelector(filter.type, filter.label),
+                        selector: filter.selector || this.generateFilterSelector(filter.type, filter.label),
                         text: filter.text,
                         placeholder: filter.placeholder,
                         ariaLabel: filter.ariaLabel
@@ -260,8 +260,8 @@ export class ActiveUIExplorer {
         }
     }
 
-    // Helper: Generate selector if not provided
-    private generateSelector(type: string, label: string): string {
+    // Helper: Generate selector if not provided (TSV-driven specific)
+    private generateFilterSelector(type: string, label: string): string {
         const normalized = label.toLowerCase().replace(/[^a-z0-9]/g, '-');
         if (type === 'dropdown') {
             return `div[role="button"]:has-text("${label}")`;
