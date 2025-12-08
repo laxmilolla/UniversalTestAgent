@@ -625,6 +625,24 @@ export class ActiveUIExplorer {
         return results;
     }
 
+    /**
+     * Extract JSON from text that may contain explanatory text before/after JSON
+     */
+    private extractJSON(text: string): any {
+        // Try to find JSON array or object in the text
+        const jsonMatch = text.match(/\[[\s\S]*\]|{[\s\S]*}/);
+        if (jsonMatch) {
+            try {
+                return JSON.parse(jsonMatch[0]);
+            } catch (e) {
+                // If parsing fails, try the whole text
+                return JSON.parse(text);
+            }
+        }
+        // If no match, try parsing the whole text
+        return JSON.parse(text);
+    }
+
     async prioritizeWithLLM(dropdowns: DiscoveredWithOptions[]): Promise<PrioritizedDropdown[]> {
         console.log('🧠 LLM prioritization: Analyzing dropdowns against TSV fields...');
         
@@ -649,7 +667,9 @@ Prioritize dropdowns that:
 2. Filter critical data (diagnosis, breed vs cosmetic filters)
 3. Have reasonable option counts (5-50 options, not 1 or 500)
 
-Return JSON array:
+IMPORTANT: Return ONLY a valid JSON array, no explanatory text before or after.
+
+Example format:
 [
   {"label": "Breed", "priority": 1, "reason": "Maps to 'breed' TSV field, 20 options", "tsvField": "breed"},
   {"label": "Diagnosis", "priority": 2, "reason": "Maps to 'diagnosis', critical filter", "tsvField": "diagnosis"}
@@ -660,7 +680,13 @@ Return JSON array:
                 content: prompt
             }], []);
             
-            const prioritized = JSON.parse(response.content);
+            // Extract JSON from response (may contain explanatory text)
+            const prioritized = this.extractJSON(response.content);
+            
+            // Validate it's an array
+            if (!Array.isArray(prioritized)) {
+                throw new Error('LLM response is not a JSON array');
+            }
             
             // Sort by priority and return
             const sorted = prioritized.sort((a: any, b: any) => a.priority - b.priority);
@@ -674,6 +700,7 @@ Return JSON array:
             
         } catch (error: any) {
             console.error('❌ LLM prioritization failed:', error);
+            console.error('❌ Response content (first 200 chars):', error.message?.substring(0, 200));
             // Fallback: return dropdowns in original order with default priority
             return dropdowns.map((dropdown, index) => ({
                 ...dropdown,
