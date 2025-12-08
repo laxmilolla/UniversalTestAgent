@@ -1242,6 +1242,10 @@ Response (JSON array only):`;
         // Step 1: Navigate to the specific study data and get filter info
         const studyFilterInfo = await this.navigateToStudyData();
         
+        // Step 2: Extract TSV columns for automatic matching
+        const tsvColumns = this.extractTSVColumns();
+        console.log(`📊 TSV Columns extracted: ${tsvColumns.length} columns`);
+        
         const explorer = new ActiveUIExplorer(
             this.mcpClient,
             new UIStateCapturer(this.mcpClient),
@@ -1250,21 +1254,10 @@ Response (JSON array only):`;
             studyFilterInfo  // Pass study filter info for re-application after resets
         );
         
-        // TSV-Driven: Use focused filter panel exploration if context is provided
-        let explorationResults: any[];
-        if (this.uiContext) {
-            console.log('🎯 TSV-Driven Focused Exploration: Using filter panel context');
-            const tsvColumns = this.extractTSVColumns();
-            const panelSelector = this.uiContext.filterPanelSelector || await this.detectFilterPanelSelector();
-            explorationResults = await explorer.exploreFilterPanelByTSVColumns(
-                tsvColumns,
-                panelSelector
-            );
-        } else {
-            // Fallback to generic exploration
-            console.log('🔍 Generic Exploration: No UI context provided, using full page discovery');
-            explorationResults = await explorer.exploreAllElements();
-        }
+        // TSV-Driven: Automatically match discovered filters to TSV columns
+        // If TSV columns exist, only explore matching filters
+        // If no TSV columns, use generic exploration
+        const explorationResults = await explorer.exploreAllElements(tsvColumns);
         console.log(`✅ Explored ${explorationResults.length} UI elements`);
         
         console.log(`🔍 DEBUG: Exploration results breakdown:`, {

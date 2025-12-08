@@ -273,7 +273,100 @@ export class ActiveUIExplorer {
         return '';
     }
 
-    async exploreAllElements(): Promise<UIExplorationResult[]> {
+    // TSV-Driven: Match discovered filters to TSV columns using fuzzy label matching
+    private matchFiltersToTSVColumns(
+        dropdowns: DiscoveredWithOptions[],
+        searchBoxes: DiscoveredElement[],
+        checkboxes: DiscoveredCheckbox[],
+        radioGroups: DiscoveredRadioGroup[],
+        tsvColumns: string[]
+    ): {
+        dropdowns: DiscoveredWithOptions[];
+        searchBoxes: DiscoveredElement[];
+        checkboxes: DiscoveredCheckbox[];
+        radioGroups: DiscoveredRadioGroup[];
+    } {
+        console.log(`🎯 Matching filters to TSV columns: ${tsvColumns.join(', ')}`);
+        
+        // Normalize function for fuzzy matching
+        const normalize = (str: string): string => {
+            return str.toLowerCase().replace(/[^a-z0-9]/g, '');
+        };
+        
+        // Match function: checks if filter label matches TSV column
+        const matchesTSVColumn = (filterLabel: string, tsvColumn: string): boolean => {
+            const normalizedLabel = normalize(filterLabel);
+            const normalizedColumn = normalize(tsvColumn);
+            
+            // Check for exact match, contains, or partial match
+            return normalizedLabel === normalizedColumn ||
+                   normalizedLabel.includes(normalizedColumn) ||
+                   normalizedColumn.includes(normalizedLabel);
+        };
+        
+        // Match dropdowns
+        const matchedDropdowns = dropdowns.filter(dropdown => {
+            const matches = tsvColumns.some(col => matchesTSVColumn(dropdown.label, col));
+            if (matches) {
+                const matchedColumn = tsvColumns.find(col => matchesTSVColumn(dropdown.label, col));
+                console.log(`  ✓ Matched dropdown "${dropdown.label}" ↔ TSV column "${matchedColumn}"`);
+            } else {
+                console.log(`  ✗ Skipped dropdown "${dropdown.label}" (no TSV match)`);
+            }
+            return matches;
+        });
+        
+        // Match search boxes
+        const matchedSearchBoxes = searchBoxes.filter(searchBox => {
+            const matches = tsvColumns.some(col => matchesTSVColumn(searchBox.label || searchBox.placeholder || '', col));
+            if (matches) {
+                const matchedColumn = tsvColumns.find(col => matchesTSVColumn(searchBox.label || searchBox.placeholder || '', col));
+                console.log(`  ✓ Matched search box "${searchBox.label || searchBox.placeholder}" ↔ TSV column "${matchedColumn}"`);
+            } else {
+                console.log(`  ✗ Skipped search box "${searchBox.label || searchBox.placeholder}" (no TSV match)`);
+            }
+            return matches;
+        });
+        
+        // Match checkboxes
+        const matchedCheckboxes = checkboxes.filter(checkbox => {
+            const matches = tsvColumns.some(col => matchesTSVColumn(checkbox.label, col));
+            if (matches) {
+                const matchedColumn = tsvColumns.find(col => matchesTSVColumn(checkbox.label, col));
+                console.log(`  ✓ Matched checkbox "${checkbox.label}" ↔ TSV column "${matchedColumn}"`);
+            } else {
+                console.log(`  ✗ Skipped checkbox "${checkbox.label}" (no TSV match)`);
+            }
+            return matches;
+        });
+        
+        // Match radio groups (match by group name)
+        const matchedRadioGroups = radioGroups.filter(radioGroup => {
+            const matches = tsvColumns.some(col => matchesTSVColumn(radioGroup.groupName, col));
+            if (matches) {
+                const matchedColumn = tsvColumns.find(col => matchesTSVColumn(radioGroup.groupName, col));
+                console.log(`  ✓ Matched radio group "${radioGroup.groupName}" ↔ TSV column "${matchedColumn}"`);
+            } else {
+                console.log(`  ✗ Skipped radio group "${radioGroup.groupName}" (no TSV match)`);
+            }
+            return matches;
+        });
+        
+        console.log(`\n📊 Matching Summary:`);
+        console.log(`  Dropdowns: ${matchedDropdowns.length}/${dropdowns.length} matched`);
+        console.log(`  Search Boxes: ${matchedSearchBoxes.length}/${searchBoxes.length} matched`);
+        console.log(`  Checkboxes: ${matchedCheckboxes.length}/${checkboxes.length} matched`);
+        console.log(`  Radio Groups: ${matchedRadioGroups.length}/${radioGroups.length} matched`);
+        
+        return {
+            dropdowns: matchedDropdowns,
+            searchBoxes: matchedSearchBoxes,
+            checkboxes: matchedCheckboxes,
+            radioGroups: matchedRadioGroups
+        };
+    }
+
+    async exploreAllElements(tsvColumns: string[] = []): Promise<UIExplorationResult[]> {
         console.log('🔍 Starting LLM-Guided Intelligent Exploration... [VERSION 3.0 - Enhanced]');
         
         const results: UIExplorationResult[] = [];
@@ -293,16 +386,43 @@ export class ActiveUIExplorer {
             const radioGroups = await this.discoverRadioButtons();
             console.log(`📋 Phase 1: COMPLETE - Found ${radioGroups.length} radio button groups`);
             
-            // Phase 2: LLM prioritization - rank elements by TSV field relevance
+            // TSV-Driven: Match discovered filters to TSV columns
+            let matchedFilters: {
+                dropdowns: DiscoveredWithOptions[];
+                searchBoxes: DiscoveredElement[];
+                checkboxes: DiscoveredCheckbox[];
+                radioGroups: DiscoveredRadioGroup[];
+            } = {
+                dropdowns: discoveredDropdowns,
+                searchBoxes: searchBoxes,
+                checkboxes: checkboxes,
+                radioGroups: radioGroups
+            };
+            
+            if (tsvColumns.length > 0) {
+                console.log(`🎯 TSV-Driven: Matching ${tsvColumns.length} TSV columns to discovered filters...`);
+                matchedFilters = this.matchFiltersToTSVColumns(
+                    discoveredDropdowns,
+                    searchBoxes,
+                    checkboxes,
+                    radioGroups,
+                    tsvColumns
+                );
+                console.log(`✅ TSV-Driven: ${matchedFilters.dropdowns.length} dropdowns, ${matchedFilters.searchBoxes.length} search boxes, ${matchedFilters.checkboxes.length} checkboxes matched`);
+            } else {
+                console.log('🔍 No TSV columns provided, exploring all discovered filters');
+            }
+            
+            // Phase 2: LLM prioritization - rank elements by TSV field relevance (only for matched dropdowns)
             console.log('🧠 Phase 2: LLM Prioritization - START');
             let prioritized: PrioritizedDropdown[];
             try {
-                prioritized = await this.prioritizeWithLLM(discoveredDropdowns);
+                prioritized = await this.prioritizeWithLLM(matchedFilters.dropdowns);
                 console.log(`🧠 Phase 2: COMPLETE - Prioritized ${prioritized.length} dropdowns`);
             } catch (error: any) {
                 console.warn(`⚠️ LLM prioritization failed, using default priority: ${error.message}`);
                 // Fallback: use dropdowns in original order
-                prioritized = discoveredDropdowns.map((dropdown, index) => ({
+                prioritized = matchedFilters.dropdowns.map((dropdown, index) => ({
                     ...dropdown,
                     priority: index + 1,
                     reason: 'Default priority due to LLM failure',
@@ -311,9 +431,9 @@ export class ActiveUIExplorer {
                 console.log(`🧠 Phase 2: FALLBACK - Using ${prioritized.length} dropdowns with default priority`);
             }
             
-            // Convert discovered elements to results format immediately (so they're returned even if Phase 3 times out)
-            // This is NOT a fallback - it's returning what was actually discovered
-            for (const dropdown of discoveredDropdowns) {
+            // Convert matched elements to results format immediately (so they're returned even if Phase 3 times out)
+            // This is NOT a fallback - it's returning what was actually discovered and matched
+            for (const dropdown of matchedFilters.dropdowns) {
                 results.push({
                     elementType: 'dropdown',
                     label: dropdown.label,
@@ -322,7 +442,7 @@ export class ActiveUIExplorer {
                     sampledTests: [] // Will be populated in Phase 3 if time permits
                 });
             }
-            for (const searchBox of searchBoxes) {
+            for (const searchBox of matchedFilters.searchBoxes) {
                 results.push({
                     elementType: 'searchBox',
                     label: searchBox.label,
@@ -331,7 +451,7 @@ export class ActiveUIExplorer {
                     sampledTests: []
                 });
             }
-            for (const checkbox of checkboxes) {
+            for (const checkbox of matchedFilters.checkboxes) {
                 results.push({
                     elementType: 'checkbox',
                     label: checkbox.label,
@@ -341,7 +461,7 @@ export class ActiveUIExplorer {
                     states: []
                 });
             }
-            for (const radioGroup of radioGroups) {
+            for (const radioGroup of matchedFilters.radioGroups) {
                 results.push({
                     elementType: 'radio',
                     label: radioGroup.groupName,
@@ -351,7 +471,7 @@ export class ActiveUIExplorer {
                     states: []
                 });
             }
-            console.log(`✅ Converted ${results.length} discovered elements to results format`);
+            console.log(`✅ Converted ${results.length} matched elements to results format`);
             
             // Phase 3: Deep exploration of top priority only (enhances existing results)
             console.log('🎯 Phase 3: Targeted Exploration - START');
@@ -387,7 +507,7 @@ export class ActiveUIExplorer {
             }
             
             // Explore search boxes with dynamic TSV terms (updates existing results)
-            for (const searchBox of searchBoxes) {
+            for (const searchBox of matchedFilters.searchBoxes) {
                 try {
                     console.log(`🔍 Exploring search box: ${searchBox.label}`);
                     const searchResult = await Promise.race([
@@ -413,7 +533,7 @@ export class ActiveUIExplorer {
             }
             
             // Explore all checkboxes (fast - only 2 states each) (updates existing results)
-            for (const checkbox of checkboxes) {
+            for (const checkbox of matchedFilters.checkboxes) {
                 try {
                     console.log(`🔍 Exploring checkbox: ${checkbox.label}`);
                     const checkboxResult = await this.exploreCheckbox(checkbox);
@@ -434,7 +554,7 @@ export class ActiveUIExplorer {
             }
             
             // Explore all radio button groups (updates existing results)
-            for (const radioGroup of radioGroups) {
+            for (const radioGroup of matchedFilters.radioGroups) {
                 try {
                     console.log(`🔍 Exploring radio group: ${radioGroup.groupName}`);
                     const radioResult = await this.exploreRadioGroup(radioGroup);
