@@ -306,13 +306,16 @@ app.post('/api/learn/start', async (req, res) => {
             llmResponses: (global as any).llmResponses || [], // Add this line
             lastLLMResponse: (global as any).lastLLMResponse || null // Add this line
         });
-    } catch (error) {
+    } catch (error: any) {
         console.error('Learning process failed:', error);
-        res.status(500).json({ 
-            success: false, 
-            error: error.message,
-            executionTrace: [] // Add this line
-        });
+        // Ensure we always return JSON, never HTML
+        if (!res.headersSent) {
+            res.status(500).json({ 
+                success: false, 
+                error: error?.message || 'Unknown error occurred',
+                executionTrace: (global as any).executionTrace || []
+            });
+        }
     }
 });
 
