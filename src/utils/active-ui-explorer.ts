@@ -56,7 +56,8 @@ export class ActiveUIExplorer {
         private mcpClient: MCPPlaywrightClient,
         private stateCapturer: UIStateCapturer,
         private vectorRAG: VectorRAGClient,
-        private bedrockClient: BedrockClient
+        private bedrockClient: BedrockClient,
+        private studyFilterInfo: {studyName: string, panelSelector: string, checkboxLabel: string} | null = null
     ) {}
 
     async exploreAllElements(): Promise<UIExplorationResult[]> {
@@ -970,12 +971,23 @@ Return JSON array:
                             if (!expandedContent) return [];
                             
                             // Find all checkbox labels
+                            // Target the actual name div, not count paragraphs
                             const labels = Array.from(expandedContent.querySelectorAll('input[type="checkbox"]')).map(cb => {
                                 // Find the label text next to the checkbox
                                 const row = cb.closest('div[role="button"]');
                                 if (!row) return null;
-                                const labelEl = row.querySelector('p.filter_by_casesNameUnChecked, p[class*="filter_by_casesName"], p[class*="filter_by_cases"]');
-                                return labelEl ? labelEl.textContent?.trim() : null;
+                                
+                                // Target the name div specifically (not count divs)
+                                const nameDiv = row.querySelector('div.filter_by_casesNameUnChecked, div[class*="filter_by_casesName"]');
+                                const labelEl = nameDiv ? nameDiv.querySelector('p') : null;
+                                const labelText = labelEl ? labelEl.textContent?.trim() : null;
+                                
+                                // Filter out numeric-only labels (likely counts)
+                                if (labelText && /^\d+$/.test(labelText)) {
+                                    return null;
+                                }
+                                
+                                return labelText;
                             }).filter(l => l && l.length > 0);
                             
                             return labels;
@@ -1296,6 +1308,11 @@ Return JSON array:
                         id: `reset-filters-${Date.now()}`
                     }]);
                     console.log('🔄 Reset filters clicked');
+                    
+                    // After resetting, re-apply study filter if it was set
+                    if (this.studyFilterInfo) {
+                        await this.reapplyStudyFilter();
+                    }
                     return;
                 } catch (error) {
                     // Continue to next selector
@@ -1319,8 +1336,95 @@ Return JSON array:
                 }
             }
             
+            // After clearing search boxes, re-apply study filter if it was set
+            if (this.studyFilterInfo) {
+                await this.reapplyStudyFilter();
+            }
+            
         } catch (error) {
             console.error('Error resetting filters:', error);
+        }
+    }
+    
+    private async reapplyStudyFilter(): Promise<void> {
+        if (!this.studyFilterInfo) return;
+        
+        console.log(`🔄 Re-applying study filter: ${this.studyFilterInfo.studyName}`);
+        
+        try {
+            const { panelSelector, checkboxLabel } = this.studyFilterInfo;
+            const escapedLabel = JSON.stringify(checkboxLabel);
+            
+            // Expand panel if needed
+            await this.mcpClient.callTools([{
+                name: 'playwright_evaluate',
+                parameters: {
+                    script: `(() => {
+                        const panel = document.querySelector('${panelSelector}');
+                        if (panel && panel.getAttribute('aria-expanded') === 'false') {
+                            panel.click();
+                            return { expanded: true };
+                        }
+                        return { expanded: false };
+                    })()`
+                },
+                id: `expand-study-panel-${Date.now()}`
+            }]);
+            
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            // Click the study checkbox
+            await this.mcpClient.callTools([{
+                name: 'playwright_evaluate',
+                parameters: {
+                    script: `(() => {
+                        const panel = document.querySelector('${panelSelector}');
+                        if (!panel) return { clicked: false };
+                        
+                        let expandedContent = null;
+                        const parentContainer = panel.closest('div[id]')?.parentElement || panel.parentElement?.parentElement;
+                        if (parentContainer) {
+                            expandedContent = parentContainer.querySelector('div[role="region"]');
+                        }
+                        if (!expandedContent) {
+                            const allRegions = document.querySelectorAll('div[role="region"]');
+                            for (const region of allRegions) {
+                                const checkboxes = region.querySelectorAll('input[type="checkbox"]');
+                                if (checkboxes.length > 0) {
+                                    const panelParent = panel.closest('div[id]')?.parentElement;
+                                    const regionParent = region.closest('div[id]')?.parentElement;
+                                    if (panelParent === regionParent || region.contains(panel) || panel.contains(region)) {
+                                        expandedContent = region;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        if (!expandedContent) return { clicked: false };
+                        
+                        const targetLabel = ${escapedLabel};
+                        const checkboxes = expandedContent.querySelectorAll('input[type="checkbox"]');
+                        for (const cb of checkboxes) {
+                            const row = cb.closest('div[role="button"]');
+                            if (!row) continue;
+                            const nameDiv = row.querySelector('div.filter_by_casesNameUnChecked, div[class*="filter_by_casesName"]');
+                            const labelEl = nameDiv ? nameDiv.querySelector('p') : null;
+                            const labelText = labelEl ? labelEl.textContent?.trim() : '';
+                            if (labelText === targetLabel) {
+                                cb.click();
+                                return { clicked: true, label: labelText };
+                            }
+                        }
+                        return { clicked: false };
+                    })()`
+                },
+                id: `reapply-study-filter-${Date.now()}`
+            }]);
+            
+            await new Promise(resolve => setTimeout(resolve, 2000)); // Wait for filter to apply
+            console.log(`✅ Study filter re-applied: ${this.studyFilterInfo.studyName}`);
+        } catch (error: any) {
+            console.warn(`⚠️ Failed to re-apply study filter: ${error.message}`);
         }
     }
 

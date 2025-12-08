@@ -425,7 +425,7 @@ async analyzeRealUI(pageContent: string, pageText: string, screenshot: any, exis
 }
 
     // NEW METHOD: Navigate to specific study data before UI exploration
-    private async navigateToStudyData(): Promise<void> {
+    private async navigateToStudyData(): Promise<{studyName: string, panelSelector: string, checkboxLabel: string} | null> {
         console.log('🎯 Navigating to study data using dynamic filter panel discovery...');
         
         try {
@@ -435,7 +435,7 @@ async analyzeRealUI(pageContent: string, pageText: string, screenshot: any, exis
             
             if (!studyNames || studyNames.length === 0) {
                 console.warn('⚠️ No study name found in TSV files, proceeding with current data');
-                return;
+                return null;
             }
             
             // Step 1: Find the "Study" filter panel using the same discovery mechanism as dropdowns
@@ -484,7 +484,7 @@ async analyzeRealUI(pageContent: string, pageText: string, screenshot: any, exis
             
             if (!studyPanelInfo || !studyPanelInfo.found) {
                 console.warn('⚠️ Study filter panel not found, proceeding with current data');
-                return;
+                return null;
             }
             
             const studyPanelSelector = studyPanelInfo.selector || `#${studyPanelInfo.id}`;
@@ -516,10 +516,11 @@ async analyzeRealUI(pageContent: string, pageText: string, screenshot: any, exis
             
             // Step 3: Find checkboxes within the expanded Study panel and match to study names
             console.log('🔍 Step 3: Finding matching study checkbox...');
+            console.log(`🔍 Attempting to match ${studyNames.length} study name(s): ${studyNames.join(', ')}`);
             let studyCheckboxFound = false;
             
             for (const studyName of studyNames) {
-                console.log(`🔍 Looking for checkbox matching study: ${studyName}`);
+                console.log(`🔍 Looking for checkbox matching study: "${studyName}"`);
                 
                 // Escape study name for use in JavaScript string
                 const escapedStudyName = JSON.stringify(studyName);
@@ -578,7 +579,8 @@ async analyzeRealUI(pageContent: string, pageText: string, screenshot: any, exis
                                 const labelEl = nameDiv ? nameDiv.querySelector('p') : null;
                                 const labelText = labelEl ? labelEl.textContent?.trim() : '';
                                 
-                                if (!labelText) continue;
+                                // Filter out numeric-only labels (likely counts)
+                                if (!labelText || /^\d+$/.test(labelText)) continue;
                                 allLabels.push(labelText);
                                 
                                 // Flexible matching: "OSA04" matches "OSA04 (000018)"
@@ -590,17 +592,31 @@ async analyzeRealUI(pageContent: string, pageText: string, screenshot: any, exis
                                 const labelCode = labelLower.split(' ')[0].split('(')[0].trim();
                                 const studyCode = studyNameLower.split(' ')[0].split('(')[0].trim();
                                 
-                                // Multiple matching strategies:
-                                // 1. Exact match
-                                // 2. Study code matches label code
-                                // 3. Study name is substring of label
-                                // 4. Label code is substring of study name
-                                if (labelLower === studyNameLower || 
+                                // Normalize: remove special characters and extra spaces for fuzzy matching
+                                const normalize = (str) => str.replace(/[^a-z0-9]/gi, '').toLowerCase();
+                                const normalizedLabel = normalize(labelCode);
+                                const normalizedStudy = normalize(studyCode);
+                                
+                                // Multiple matching strategies (in order of preference):
+                                // 1. Exact match (case-insensitive)
+                                // 2. Study code matches label code exactly
+                                // 3. Normalized codes match (handles special chars)
+                                // 4. Study name is substring of label
+                                // 5. Label code is substring of study name
+                                // 6. Normalized codes are substrings of each other
+                                const matches = (
+                                    labelLower === studyNameLower || 
                                     labelCode === studyCode ||
+                                    normalizedLabel === normalizedStudy ||
                                     labelLower.includes(studyNameLower) || 
                                     studyNameLower.includes(labelCode) ||
                                     labelCode.includes(studyCode) ||
-                                    studyCode.includes(labelCode)) {
+                                    studyCode.includes(labelCode) ||
+                                    normalizedLabel.includes(normalizedStudy) ||
+                                    normalizedStudy.includes(normalizedLabel)
+                                );
+                                
+                                if (matches) {
                                     // Generate selector: prefer ID, fallback to label-based selector
                                     let selector = null;
                                     if (cb.id) {
@@ -614,7 +630,7 @@ async analyzeRealUI(pageContent: string, pageText: string, screenshot: any, exis
                                         selector: selector,
                                         checkboxId: cb.id,
                                         label: labelText,
-                                        debug: 'Match found',
+                                        debug: 'Match found: "' + labelText + '" matches "' + ${escapedStudyName} + '"',
                                         allLabels: allLabels
                                     };
                                 }
@@ -729,52 +745,66 @@ async analyzeRealUI(pageContent: string, pageText: string, screenshot: any, exis
                     if (clickSuccess) {
                         console.log(`✅ Clicked checkbox for study: ${studyName}`);
                         studyCheckboxFound = true;
+                        
+                        // Step 5: Wait for filter to apply
+                        console.log('⏳ Waiting for filter to apply...');
+                        await new Promise(resolve => setTimeout(resolve, 3000));
+                        
+                        // Verify filter applied by checking if result count changed or study name appears in results
+                        const verifyResult = await this.mcpClient.callTools([{
+                            name: 'playwright_evaluate',
+                            parameters: {
+                                script: `(() => {
+                                    const bodyText = document.body.textContent || '';
+                                    const studyName = '${studyName}';
+                                    // Check if study name appears in visible text (indicating filter applied)
+                                    return bodyText.includes(studyName) ? 'verified' : 'not-verified';
+                                })()`
+                            },
+                            id: `verify-study-filter-${Date.now()}`
+                        }]);
+                        
+                        const verification = verifyResult[0]?.result?.content?.[0]?.text;
+                        if (verification === 'verified') {
+                            console.log(`✅ Successfully filtered for study: ${studyName}`);
+                        } else {
+                            console.warn(`⚠️ Filter may not have applied correctly for ${studyName}`);
+                        }
+                        
+                        // Return study filter info for re-application after resets
+                        return {
+                            studyName: studyName,
+                            panelSelector: studyPanelSelector,
+                            checkboxLabel: checkboxInfo.label
+                        };
                     } else {
                         console.warn(`⚠️ Failed to click checkbox for study: ${studyName}`);
                     }
                     
-                    // Step 5: Wait for filter to apply
-                    console.log('⏳ Waiting for filter to apply...');
-                    await new Promise(resolve => setTimeout(resolve, 3000));
-                    
-                    // Verify filter applied by checking if result count changed or study name appears in results
-                    const verifyResult = await this.mcpClient.callTools([{
-                        name: 'playwright_evaluate',
-                        parameters: {
-                            script: `(() => {
-                                const bodyText = document.body.textContent || '';
-                                const studyName = '${studyName}';
-                                // Check if study name appears in visible text (indicating filter applied)
-                                return bodyText.includes(studyName) ? 'verified' : 'not-verified';
-                            })()`
-                        },
-                        id: `verify-study-filter-${Date.now()}`
-                    }]);
-                    
-                    const verification = verifyResult[0]?.result?.content?.[0]?.text;
-                    if (verification === 'verified') {
-                        console.log(`✅ Successfully filtered for study: ${studyName}`);
-                    } else {
-                        console.warn(`⚠️ Filter may not have applied correctly for ${studyName}`);
-                    }
-                    
                     break; // Found and clicked, no need to try other study names
                 } else {
+                    // No match found - log available options for debugging
                     if (checkboxInfo && checkboxInfo.allLabels && checkboxInfo.allLabels.length > 0) {
-                        console.log(`⚠️ No checkbox found matching study: ${studyName}. Available checkboxes: ${checkboxInfo.allLabels.slice(0, 10).join(', ')}`);
+                        console.warn(`⚠️ No checkbox found matching study: "${studyName}"`);
+                        console.warn(`   Available checkboxes (${checkboxInfo.allLabels.length} total): ${checkboxInfo.allLabels.slice(0, 10).join(', ')}${checkboxInfo.allLabels.length > 10 ? '...' : ''}`);
+                        console.warn(`   Attempted matching strategies: exact match, code match, normalized match, substring match`);
                     } else {
-                        console.log(`⚠️ No checkbox found matching study: ${studyName}. No checkboxes found in Study panel.`);
+                        console.warn(`⚠️ No checkbox found matching study: "${studyName}". No checkboxes found in Study panel.`);
                     }
                 }
             }
             
             if (!studyCheckboxFound) {
                 console.warn(`⚠️ Could not find checkbox for any detected study, proceeding with current data`);
+                return null;
             }
+            
+            return null; // No study filter was successfully applied
             
         } catch (error: any) {
             console.error(`❌ Failed to navigate to study data:`, error);
             console.warn('⚠️ Proceeding with current data');
+            return null;
         }
     }
     
@@ -1114,14 +1144,15 @@ Response (JSON array only):`;
     private async performActiveUIExploration(): Promise<any> {
         console.log('🔍 Starting Active UI Exploration...');
         
-        // Step 1: Navigate to the specific study data (OSA04)
-        await this.navigateToStudyData();
+        // Step 1: Navigate to the specific study data and get filter info
+        const studyFilterInfo = await this.navigateToStudyData();
         
         const explorer = new ActiveUIExplorer(
             this.mcpClient,
             new UIStateCapturer(this.mcpClient),
             this.vectorRAG,
-            this.bedrockClient
+            this.bedrockClient,
+            studyFilterInfo  // Pass study filter info for re-application after resets
         );
         
         // Explore UI and store in RAG

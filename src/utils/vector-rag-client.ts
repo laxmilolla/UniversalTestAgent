@@ -117,7 +117,7 @@ export class VectorRAGClient {
         }
         
         const k = topK || parseInt(process.env.RAG_TOP_K_RESULTS || '10');
-        const minSimilarity = parseFloat(process.env.RAG_MIN_SIMILARITY || '0.3');
+        const minSimilarity = parseFloat(process.env.RAG_MIN_SIMILARITY || '0.15');
         
         console.log(`\n🔍 RAG: SEMANTIC SEARCH (Pure AI Mode)`);
         console.log(`  ├─ Query: "${query}"`);
@@ -136,8 +136,10 @@ export class VectorRAGClient {
             }
         }
         
+        // Graceful degradation: return empty array instead of throwing
         if (results.length === 0) {
-            throw new Error(`No relevant data found for query "${query}". Minimum similarity threshold ${minSimilarity} not met. Cannot proceed without data.`);
+            console.log(`  ⚠️  No results found above threshold ${minSimilarity}. Returning empty array.`);
+            return [];
         }
         
         results.sort((a, b) => b.similarity - a.similarity);
@@ -147,15 +149,23 @@ export class VectorRAGClient {
         
         // Return chunks directly (they contain text, metadata, and embedding)
         // For TSV records, the metadata contains the record data
-        return topResults.map(r => ({
-            text: r.text,
-            metadata: r.metadata,
-            similarity: r.similarity,
-            id: r.id,
-            // For backward compatibility, include records if they exist in metadata
-            records: r.metadata?.records || (r.metadata?.type === 'tsv_record' ? [r.metadata] : []),
-            fileName: r.metadata?.fileName
-        }));
+        // Add null checks and filter out invalid results
+        return topResults
+            .map(r => {
+                // Validate chunk structure before accessing properties
+                if (!r || typeof r !== 'object') return null;
+                
+                return {
+                    text: r.text || '',
+                    metadata: r.metadata || {},
+                    similarity: r.similarity || 0,
+                    id: r.id || '',
+                    // For backward compatibility, include records if they exist in metadata
+                    records: r.metadata?.records || (r.metadata?.type === 'tsv_record' ? [r.metadata] : []) || [],
+                    fileName: r.metadata?.fileName || r.fileName || ''
+                };
+            })
+            .filter(r => r !== null && (r.text || Object.keys(r.metadata).length > 0 || r.records.length > 0));
     }
     
     private async createEmbedding(text: string): Promise<any> {
@@ -335,6 +345,9 @@ export class VectorRAGClient {
             // Filter for TSV-related results
             // Handle both new entries with metadata and old entries without metadata
             const tsvResults = results.filter(result => {
+                // Null/undefined check
+                if (!result || typeof result !== 'object') return false;
+                
                 // New entries with proper metadata
                 if (result.metadata?.type === 'tsv_field' || 
                     result.metadata?.type === 'relationship' ||
@@ -365,6 +378,18 @@ export class VectorRAGClient {
         console.log(`🔍 Querying RAG for UI knowledge: "${question}"`);
         
         try {
+            // Check if vector store has UI data before querying
+            const hasUIData = Array.from(this.vectorStore.values()).some(chunk => 
+                chunk.metadata?.type === 'ui_element' || 
+                chunk.metadata?.type === 'ui_behavior' ||
+                chunk.metadata?.type === 'cascading_effect'
+            );
+            
+            if (!hasUIData) {
+                console.warn(`⚠️  No UI data found in vector store. UI indexing may not have completed yet. Returning empty array.`);
+                return [];
+            }
+            
             const results = await this.searchRelevantData(question, 10);
             
             // DEBUG: Log what we found
@@ -381,18 +406,21 @@ export class VectorRAGClient {
             });
             
             // Filter for UI-related results
-            const uiResults = results.filter(result => 
-                result.metadata?.type === 'ui_element' || 
-                result.metadata?.type === 'ui_behavior' ||
-                result.metadata?.type === 'cascading_effect'
-            );
+            const uiResults = results.filter(result => {
+                // Null/undefined check
+                if (!result || typeof result !== 'object') return false;
+                
+                return result.metadata?.type === 'ui_element' || 
+                       result.metadata?.type === 'ui_behavior' ||
+                       result.metadata?.type === 'cascading_effect';
+            });
             
             console.log(`✅ Found ${uiResults.length} relevant UI knowledge items`);
             return uiResults;
             
         } catch (error: any) {
-            console.error(`❌ Failed to query UI knowledge:`, error);
-            throw new Error(`RAG UI query failed. NO FALLBACK AVAILABLE.`);
+            console.warn(`⚠️  Failed to query UI knowledge: ${error.message}. Returning empty array to allow mapping to proceed.`);
+            return []; // Return empty array instead of throwing - allows mapping to proceed with TSV data only
         }
     }
 
@@ -403,9 +431,12 @@ export class VectorRAGClient {
             const results = await this.searchRelevantData(question, 10);
             
             // Filter for mapping results
-            const mappingResults = results.filter(result => 
-                result.metadata?.type === 'ui_tsv_mapping'
-            );
+            const mappingResults = results.filter(result => {
+                // Null/undefined check
+                if (!result || typeof result !== 'object') return false;
+                
+                return result.metadata?.type === 'ui_tsv_mapping';
+            });
             
             console.log(`✅ Found ${mappingResults.length} relevant mappings`);
             return mappingResults;
