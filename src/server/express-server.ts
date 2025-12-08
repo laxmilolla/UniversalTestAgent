@@ -707,6 +707,30 @@ io.on('connection', (socket) => {
   });
 });
 
+// Global error handler - must be last middleware
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error('Global error handler:', err);
+  if (!res.headersSent) {
+    res.status(500).json({
+      success: false,
+      error: err?.message || 'Internal server error',
+      executionTrace: []
+    });
+  }
+});
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  // Don't exit the process, just log it
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error: Error) => {
+  console.error('Uncaught Exception:', error);
+  // Don't exit the process, just log it
+});
+
 // Start server
 server.listen(Number(PORT), () => {
   logger.info(`Server running on port ${PORT}`);
