@@ -1959,7 +1959,7 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
             
             // Generate test cases using ONLY LLM
             console.log('\n🔍 Step 2: LLM Test Case Generation...');
-            const testCases = await this.generateTestCasesWithLLM(uiAnalysis, llmMappings.mappings);
+            let testCases = await this.generateTestCasesWithLLM(uiAnalysis, llmMappings.mappings);
             
             console.log(`📋 Test Cases Result:`, {
                 hasTestCases: !!testCases,
