@@ -597,6 +597,14 @@ export class ActiveUIExplorer {
         
         for (const dropdown of dropdowns) {
             try {
+                // Ensure selector is a string
+                if (typeof dropdown.selector !== 'string') {
+                    console.error(`❌ Invalid selector for dropdown "${dropdown.label}":`, dropdown.selector);
+                    console.error(`   Selector type: ${typeof dropdown.selector}`);
+                    // Skip this dropdown
+                    continue;
+                }
+                
                 // Just get options, don't test yet - with timeout to prevent blocking
                 const options = await Promise.race([
                     this.getDropdownOptions(dropdown.selector),
@@ -962,9 +970,19 @@ Example format:
                         }
                         
                         // Use same selector generation as UI state capturer
-                        const elementSelector = element.id ? `#${element.id}` : 
-                                             element.className ? `.${element.className.split(' ')[0]}` : 
+                        // Ensure element.id and element.className are strings
+                        const elementId = typeof element.id === 'string' ? element.id : '';
+                        const elementClassName = typeof element.className === 'string' ? element.className : '';
+                        
+                        const elementSelector = elementId ? `#${elementId}` : 
+                                             elementClassName ? `.${elementClassName.split(' ')[0]}` : 
                                              `${selector}:nth-child(${elements.indexOf(element) + 1})`;
+                        
+                        // Ensure selector is a valid string
+                        if (typeof elementSelector !== 'string' || elementSelector.length === 0) {
+                            console.error(`❌ Invalid selector generated for "${label}":`, elementSelector);
+                            continue;
+                        }
                         
                         // Check if it's actually an interactive dropdown
                         if (!this.isInteractiveDropdown(element)) {
@@ -1159,6 +1177,12 @@ Example format:
 
     private async getDropdownOptions(selector: string): Promise<string[]> {
         try {
+            // Ensure selector is a string (safety check)
+            if (typeof selector !== 'string') {
+                console.error(`❌ Invalid selector type: ${typeof selector}, value:`, selector);
+                throw new Error(`Selector must be a string, got ${typeof selector}`);
+            }
+            
             // First try to get options from native select elements
             const nativeResult = await this.mcpClient.callTools([{
                 name: 'playwright_evaluate',
