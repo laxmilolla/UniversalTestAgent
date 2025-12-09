@@ -1372,12 +1372,13 @@ Response (JSON array only):`;
         // Index dropdowns
         if (uiAnalysis.dropdowns) {
             uiAnalysis.dropdowns.forEach((dropdown: any) => {
-                if (dropdown.selector && dropdown.label) {
-                    const normalizedLabel = normalize(dropdown.label);
+                const label = dropdown.text || dropdown.label;
+                if (dropdown.selector && label) {
+                    const normalizedLabel = normalize(label);
                     selectorMap.set(normalizedLabel, dropdown.selector);
                     selectorMap.set(dropdown.selector, dropdown.selector); // Index by selector itself
                     // Also index by text if different from label
-                    if (dropdown.text && dropdown.text !== dropdown.label) {
+                    if (dropdown.text && dropdown.label && dropdown.text !== dropdown.label) {
                         selectorMap.set(normalize(dropdown.text), dropdown.selector);
                     }
                 }
@@ -1388,8 +1389,9 @@ Response (JSON array only):`;
         if (uiAnalysis.searchBoxes) {
             uiAnalysis.searchBoxes.forEach((searchBox: any) => {
                 if (searchBox.selector) {
-                    if (searchBox.label) {
-                        selectorMap.set(normalize(searchBox.label), searchBox.selector);
+                    const label = searchBox.text || searchBox.label;
+                    if (label) {
+                        selectorMap.set(normalize(label), searchBox.selector);
                     }
                     if (searchBox.placeholder) {
                         selectorMap.set(normalize(searchBox.placeholder), searchBox.selector);
@@ -1402,8 +1404,9 @@ Response (JSON array only):`;
         // Index checkboxes
         if (uiAnalysis.checkboxes) {
             uiAnalysis.checkboxes.forEach((checkbox: any) => {
-                if (checkbox.selector && checkbox.label) {
-                    selectorMap.set(normalize(checkbox.label), checkbox.selector);
+                const label = checkbox.text || checkbox.label;
+                if (checkbox.selector && label) {
+                    selectorMap.set(normalize(label), checkbox.selector);
                     selectorMap.set(checkbox.selector, checkbox.selector);
                 }
             });
@@ -2213,18 +2216,18 @@ Return JSON:
             // Include full UI analysis so LLM can see all discovered elements
             const uiElementsSummary = {
                 dropdowns: uiAnalysis.dropdowns?.map((d: any) => ({
-                    label: d.label,
+                    label: d.text || d.label,
                     selector: d.selector,
                     optionCount: d.optionCount || d.allOptions?.length || 0,
                     sampleOptions: d.allOptions?.slice(0, 5) || []
                 })) || [],
                 searchBoxes: uiAnalysis.searchBoxes?.map((s: any) => ({
-                    label: s.label,
+                    label: s.text || s.label,
                     placeholder: s.placeholder,
                     selector: s.selector
                 })) || [],
                 checkboxes: uiAnalysis.checkboxes?.map((c: any) => ({
-                    label: c.label,
+                    label: c.text || c.label,
                     selector: c.selector
                 })) || []
             };

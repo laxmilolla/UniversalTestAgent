@@ -431,21 +431,9 @@ export class ActiveUIExplorer {
             
             // Phase 2: LLM prioritization - rank elements by TSV field relevance (only for matched dropdowns)
             console.log('🧠 Phase 2: LLM Prioritization - START');
-            let prioritized: PrioritizedDropdown[];
-            try {
-                prioritized = await this.prioritizeWithLLM(matchedFilters.dropdowns, dropdownToTSVMap);
-                console.log(`🧠 Phase 2: COMPLETE - Prioritized ${prioritized.length} dropdowns`);
-            } catch (error: any) {
-                console.warn(`⚠️ LLM prioritization failed, using default priority: ${error.message}`);
-                // Fallback: use dropdowns in original order
-                prioritized = matchedFilters.dropdowns.map((dropdown, index) => ({
-                    ...dropdown,
-                    priority: index + 1,
-                    reason: 'Default priority due to LLM failure',
-                    tsvField: 'unknown'
-                }));
-                console.log(`🧠 Phase 2: FALLBACK - Using ${prioritized.length} dropdowns with default priority`);
-            }
+            // NO FALLBACK - let error propagate if prioritization fails
+            const prioritized = await this.prioritizeWithLLM(matchedFilters.dropdowns, dropdownToTSVMap);
+            console.log(`🧠 Phase 2: COMPLETE - Prioritized ${prioritized.length} dropdowns`);
             
             // Convert matched elements to results format immediately (so they're returned even if Phase 3 times out)
             // This is NOT a fallback - it's returning what was actually discovered and matched
@@ -660,21 +648,40 @@ export class ActiveUIExplorer {
                 return JSON.parse(jsonMatch[0]);
             } catch (e) {
                 // If parsing fails, try the whole text
-                return JSON.parse(text);
+                try {
+                    return JSON.parse(text);
+                } catch (e2) {
+                    throw new Error(`Failed to parse JSON from LLM response. First 200 chars: ${text.substring(0, 200)}. NO FALLBACK AVAILABLE.`);
+                }
             }
         }
-        // If no match, try parsing the whole text
-        return JSON.parse(text);
+        // If no JSON found, throw error (no fallback)
+        throw new Error(`No JSON found in LLM response. Response: ${text.substring(0, 200)}. NO FALLBACK AVAILABLE.`);
     }
 
     async prioritizeWithLLM(dropdowns: DiscoveredWithOptions[], dropdownToTSVMap?: Map<string, string>): Promise<PrioritizedDropdown[]> {
         console.log('🧠 LLM prioritization: Analyzing dropdowns against TSV fields...');
         
         try {
-            // Query RAG for TSV fields
-            const tsvFields = await this.vectorRAG.queryTSVKnowledge(
-                "List all TSV field names and their data types"
+            // Use TSV metadata directly instead of RAG query (more reliable)
+            const tsvMetadata = this.vectorRAG.getTSVMetadata();
+            if (!tsvMetadata || Object.keys(tsvMetadata).length === 0) {
+                throw new Error('TSV metadata is empty. Cannot prioritize dropdowns. NO FALLBACK AVAILABLE.');
+            }
+            
+            // Extract all field names from TSV metadata
+            const tsvFields = Object.keys(tsvMetadata).flatMap(fileName => 
+                (tsvMetadata[fileName].headers || []).map((header: string) => ({
+                    text: header,
+                    fileName: fileName
+                }))
             );
+            
+            if (tsvFields.length === 0) {
+                throw new Error('RAG query returned 0 TSV fields. Cannot prioritize dropdowns. NO FALLBACK AVAILABLE.');
+            }
+            
+            console.log(`📊 Using ${tsvFields.length} TSV fields from metadata for prioritization`);
             
             // Ask LLM to prioritize
             const prompt = `You are analyzing a data exploration website.
@@ -748,13 +755,8 @@ Example format:
         } catch (error: any) {
             console.error('❌ LLM prioritization failed:', error);
             console.error('❌ Response content (first 200 chars):', error.message?.substring(0, 200));
-            // Fallback: return dropdowns in original order with default priority
-            return dropdowns.map((dropdown, index) => ({
-                ...dropdown,
-                priority: index + 1,
-                reason: 'Default priority due to LLM failure',
-                tsvField: 'unknown'
-            }));
+            // NO FALLBACK - fail loudly as requested
+            throw new Error(`LLM prioritization failed: ${error.message}. NO FALLBACK AVAILABLE.`);
         }
     }
 

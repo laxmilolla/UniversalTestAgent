@@ -16,32 +16,74 @@ export class TestGenerationOrchestrator {
     private playwrightLearningOrchestrator: any  // Get RAG client dynamically from this
   ) {}
 
-  // Main test generation method - now uses RAG queries
+  // Main test generation method - uses mappings from learningResults first, RAG as fallback
   async generateTestCases(learningResults: LearningResults, testOptions?: any): Promise<{success: boolean, testCases?: TestCase[], statistics?: any, error?: string}> {
     try {
-      console.log('🔍 RAG-Centric Test Generation...');
+      console.log('🔍 Test Generation: Using mappings from learning results...');
       
-      // Get RAG client from playwright orchestrator
+      // First, try to use mappings and test cases from learningResults
+      const mappingAnalysis = (learningResults as any).analysis?.mappingAnalysis;
+      const mappings = mappingAnalysis?.mappings || [];
+      const existingTestCases = mappingAnalysis?.testCases || [];
+      
+      console.log(`📊 Found ${mappings.length} mappings in learningResults`);
+      console.log(`📋 Found ${existingTestCases.length} test cases in learningResults`);
+      
+      // If we have test cases from learning phase, return them
+      if (existingTestCases.length > 0) {
+        console.log(`✅ Using ${existingTestCases.length} test cases from learning phase`);
+        return {
+          success: true,
+          testCases: existingTestCases,
+          statistics: {
+            totalTestCases: existingTestCases.length,
+            mappingsUsed: mappings.length,
+            source: 'learning-phase'
+          }
+        };
+      }
+      
+      // If we have mappings but no test cases, we can still proceed
+      if (mappings.length > 0) {
+        console.log(`✅ Using ${mappings.length} mappings from learning phase`);
+        // Return empty test cases array - they should have been generated during learning
+        return {
+          success: true,
+          testCases: [],
+          statistics: {
+            totalTestCases: 0,
+            mappingsUsed: mappings.length,
+            source: 'learning-phase',
+            message: 'Test cases should have been generated during learning phase. Check learningResults.analysis.mappingAnalysis.testCases'
+          }
+        };
+      }
+      
+      // Fallback: Try RAG query if no mappings in learningResults
+      console.log('⚠️ No mappings in learningResults, trying RAG query as fallback...');
       const vectorRAG = (this.playwrightLearningOrchestrator as any).vectorRAG;
       if (!vectorRAG) {
-        throw new Error('VectorRAG client not available. Cannot perform RAG-centric test generation.');
+        return {
+          success: false,
+          error: 'No mappings found in learning results and VectorRAG client not available'
+        };
       }
       
       // Query RAG for all mappings
-      const mappings = await vectorRAG.queryMappings("Get all UI to TSV mappings");
-      console.log(`📊 Found ${mappings.length} mappings in RAG`);
+      const ragMappings = await vectorRAG.queryMappings("Get all UI to TSV mappings");
+      console.log(`📊 Found ${ragMappings.length} mappings in RAG`);
+      
+      if (ragMappings.length === 0) {
+        console.warn('No mappings found in RAG');
+        return {
+          success: false,
+          error: 'No mappings found in learning results or RAG vector store'
+        };
+      }
       
       // Query RAG for test cases
       const suggestedTests = await vectorRAG.queryUIKnowledge("What test cases should be generated?");
       console.log(`📋 Found ${suggestedTests.length} suggested tests in RAG`);
-      
-      if (mappings.length === 0) {
-        console.warn('No mappings found in RAG');
-        return {
-          success: false,
-          error: 'No mappings found in RAG vector store'
-        };
-      }
       
       // Generate tests based on RAG knowledge
       const testCases = suggestedTests.map(test => ({
@@ -60,16 +102,16 @@ export class TestGenerationOrchestrator {
         testCases: testCases,
         statistics: {
           totalTestCases: testCases.length,
-          mappingsUsed: mappings.length,
-          ragQueries: 2
+          mappingsUsed: ragMappings.length,
+          source: 'rag-fallback'
         }
       };
       
     } catch (error: any) {
-      console.error('❌ RAG-centric test generation failed:', error);
+      console.error('❌ Test generation failed:', error);
       return {
         success: false,
-        error: `RAG-centric test generation failed: ${error.message}`
+        error: `Test generation failed: ${error.message}`
       };
     }
   }
