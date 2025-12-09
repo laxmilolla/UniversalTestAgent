@@ -566,19 +566,29 @@ class LearningPhaseUI {
                 </div>
                 
                 <div class="analysis-panel" id="ui-panel">
-                    <h4>🖱️ Interactive Elements (${(uiAnalysis.interactiveElements || []).length})</h4>
+                    <h4>🖱️ Interactive Elements (${(uiAnalysis.interactiveElements?.length || uiAnalysis.filters?.length || 0) + (uiAnalysis.dropdowns?.length || 0) + (uiAnalysis.searchBoxes?.length || 0) + (uiAnalysis.checkboxes?.length || 0) + (uiAnalysis.radioGroups?.length || 0) + (uiAnalysis.buttons?.length || 0)})</h4>
                     <div class="element-list">
                         ${(uiAnalysis.interactiveElements || []).map(element => `<span class="element-tag">${this.getElementDisplayText(element)}</span>`).join('')}
+                        ${(uiAnalysis.filters || []).map(filter => `<span class="element-tag">${this.getElementDisplayText(filter)}</span>`).join('')}
+                        ${(uiAnalysis.dropdowns || []).map(dropdown => `<span class="element-tag">${this.getElementDisplayText(dropdown)}</span>`).join('')}
+                        ${(uiAnalysis.searchBoxes || []).map(searchBox => `<span class="element-tag">${this.getElementDisplayText(searchBox)}</span>`).join('')}
+                        ${(uiAnalysis.checkboxes || []).map(checkbox => `<span class="element-tag">${this.getElementDisplayText(checkbox)}</span>`).join('')}
+                        ${(uiAnalysis.radioGroups || []).map(radioGroup => `<span class="element-tag">${this.getElementDisplayText(radioGroup)}</span>`).join('')}
+                        ${(uiAnalysis.buttons || []).map(button => `<span class="element-tag">${this.getElementDisplayText(button)}</span>`).join('')}
                     </div>
                     
-                    <h4>📊 Data Components (${(uiAnalysis.dataComponents || []).length})</h4>
+                    <h4>📊 Data Components (${(uiAnalysis.dataComponents?.length || uiAnalysis.tables?.length || 0) + (uiAnalysis.forms?.length || 0)})</h4>
                     <div class="element-list">
                         ${(uiAnalysis.dataComponents || []).map(component => `<span class="element-tag">${this.getElementDisplayText(component)}</span>`).join('')}
+                        ${(uiAnalysis.tables || []).map(table => `<span class="element-tag">${this.getElementDisplayText(table)}</span>`).join('')}
+                        ${(uiAnalysis.forms || []).map(form => `<span class="element-tag">${this.getElementDisplayText(form)}</span>`).join('')}
                     </div>
                     
-                    <h4>🧭 Navigation Elements (${(uiAnalysis.navigationElements || []).length})</h4>
+                    <h4>🧭 Navigation Elements (${(uiAnalysis.navigationElements?.length || uiAnalysis.navigation?.length || uiAnalysis.links?.length || 0)})</h4>
                     <div class="element-list">
                         ${(uiAnalysis.navigationElements || []).map(nav => `<span class="element-tag">${this.getElementDisplayText(nav)}</span>`).join('')}
+                        ${(uiAnalysis.navigation || []).map(nav => `<span class="element-tag">${this.getElementDisplayText(nav)}</span>`).join('')}
+                        ${(uiAnalysis.links || []).map(link => `<span class="element-tag">${this.getElementDisplayText(link)}</span>`).join('')}
                     </div>
                 </div>
                 
