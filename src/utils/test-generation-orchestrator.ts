@@ -2,6 +2,7 @@
 // Main orchestrator for Phase 2 - LLM-First Test Generation
 
 import * as fs from 'fs';
+import * as path from 'path';
 import { BedrockClient } from '../chatbot/bedrock-client';
 import { MCPPlaywrightClient } from '../chatbot/mcp-client';
 import { TestStorage } from './storage';
@@ -315,7 +316,7 @@ export class TestGenerationOrchestrator {
           // Validate results
           const validation = await this.validateTestResults(testCase, learningResults);
           
-          // Capture screenshot
+          // Capture screenshot and convert to base64 data URL
           let screenshot: string | null = null;
           try {
             const screenshotResult = await this.mcpClient.callTools([{
@@ -323,9 +324,62 @@ export class TestGenerationOrchestrator {
               name: 'playwright_screenshot',
               parameters: {}
             }]);
+            
             if (screenshotResult[0]?.result && Array.isArray(screenshotResult[0].result)) {
+              // Extract file path from screenshot result
               const screenshotData = screenshotResult[0].result.find((r: any) => r.type === 'text');
-              screenshot = screenshotData?.text || null;
+              const screenshotText = screenshotData?.text || '';
+              
+              // Extract file path from text like "Screenshot saved to: ../Downloads/screenshot-..."
+              const filePathMatch = screenshotText.match(/Screenshot saved to:\s*(.+)/);
+              if (filePathMatch) {
+                const filePath = filePathMatch[1].trim();
+                try {
+                  // Try multiple path resolution strategies
+                  let absolutePath: string | null = null;
+                  
+                  // Strategy 1: If absolute, use as-is
+                  if (path.isAbsolute(filePath)) {
+                    absolutePath = filePath;
+                  } else {
+                    // Strategy 2: Try resolving from current working directory
+                    absolutePath = path.resolve(process.cwd(), filePath);
+                    if (!fs.existsSync(absolutePath)) {
+                      // Strategy 3: Try resolving from home directory (common for Downloads)
+                      const homePath = path.resolve(process.env.HOME || process.env.USERPROFILE || '', filePath.replace(/^\.\.\//, ''));
+                      if (fs.existsSync(homePath)) {
+                        absolutePath = homePath;
+                      } else {
+                        // Strategy 4: Try resolving from project root
+                        const projectPath = path.resolve(__dirname, '../../', filePath);
+                        if (fs.existsSync(projectPath)) {
+                          absolutePath = projectPath;
+                        }
+                      }
+                    }
+                  }
+                  
+                  // Check if file exists and read it
+                  if (absolutePath && fs.existsSync(absolutePath)) {
+                    // Read file and convert to base64
+                    const imageBuffer = fs.readFileSync(absolutePath);
+                    const base64Image = imageBuffer.toString('base64');
+                    const mimeType = 'image/png'; // Screenshots are typically PNG
+                    screenshot = `data:${mimeType};base64,${base64Image}`;
+                    console.log(`  📸 Screenshot converted to base64: ${absolutePath}`);
+                  } else {
+                    console.warn(`  ⚠️ Screenshot file not found. Tried: ${filePath}, resolved: ${absolutePath || 'N/A'}`);
+                    // Store the file path as-is for debugging
+                    screenshot = filePath;
+                  }
+                } catch (fileError: any) {
+                  console.warn(`  ⚠️ Failed to read screenshot file: ${fileError.message}`);
+                  // Store the file path as-is for debugging
+                  screenshot = filePath;
+                }
+              } else {
+                console.warn(`  ⚠️ Could not extract file path from screenshot result: ${screenshotText.substring(0, 100)}`);
+              }
             }
           } catch (error: any) {
             console.warn(`    ⚠️ Screenshot capture failed: ${error.message}`);
@@ -501,8 +555,8 @@ export class TestGenerationOrchestrator {
         // Try to count table rows
         const tableRowResult = await this.mcpClient.callTools([{
           id: `count-rows-${Date.now()}`,
-          name: 'playwright_evaluate',
-          parameters: {
+            name: 'playwright_evaluate',
+            parameters: {
             script: `(() => {
               const tables = document.querySelectorAll('table');
               if (tables.length > 0) {
@@ -511,8 +565,8 @@ export class TestGenerationOrchestrator {
               }
               return 0;
             })()`
-          }
-        }]);
+        }
+      }]);
         
         if (tableRowResult[0]?.result && Array.isArray(tableRowResult[0].result)) {
           const evalData = tableRowResult[0].result.find((r: any) => r.type === 'text');

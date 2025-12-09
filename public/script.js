@@ -1430,7 +1430,15 @@ class TestGenerationUI {
             const result = await response.json();
 
             if (result.success) {
-                this.displayTestResults(result.results, result.statistics);
+                console.log('📊 Test execution results:', {
+                    resultsCount: result.results?.length || 0,
+                    statistics: result.statistics,
+                    firstResult: result.results?.[0]
+                });
+                
+                // Ensure results is an array
+                const results = Array.isArray(result.results) ? result.results : [];
+                this.displayTestResults(results, result.statistics || {});
                 this.showTestResultsSection();
                 console.log('✅ Test execution completed');
             } else {
@@ -1560,9 +1568,19 @@ class TestGenerationUI {
                         ${result.screenshots && result.screenshots.length > 0 ? `
                             <div class="result-screenshots">
                                 <h5>Screenshots:</h5>
-                                ${result.screenshots.map(screenshot => 
-                                    `<img src="${screenshot}" alt="Test screenshot" class="result-screenshot">`
-                                ).join('')}
+                                ${result.screenshots.map((screenshot, idx) => {
+                                    // Check if screenshot is base64 data URL or file path
+                                    const isDataUrl = screenshot && screenshot.startsWith('data:image/');
+                                    if (isDataUrl) {
+                                        return `<img src="${screenshot}" alt="Test screenshot ${idx + 1}" class="result-screenshot">`;
+                                    } else {
+                                        // If it's a file path, show it as text (for debugging)
+                                        return `<div class="screenshot-placeholder">
+                                            <p>Screenshot path: ${screenshot}</p>
+                                            <p class="screenshot-note">Note: Screenshot file not accessible. Check server logs for file location.</p>
+                                        </div>`;
+                                    }
+                                }).join('')}
                             </div>
                         ` : ''}
                     </div>
