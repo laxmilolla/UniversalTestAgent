@@ -2140,9 +2140,9 @@ Return JSON:
                 "What are all the TSV fields, their types, and sample values?"
             );
             
-            // Step 2: Query RAG for UI knowledge
+            // Step 2: Query RAG for UI knowledge - explicitly request selectors
             const uiKnowledge = await this.vectorRAG.queryUIKnowledge(
-                "What are all the UI interactive elements, their labels, and behaviors?"
+                "What are all the UI interactive elements, their labels, CSS selectors, and behaviors? Include the exact CSS selector for each element."
             );
             
             console.log(`📊 RAG Context: ${tsvKnowledge.length} TSV items, ${uiKnowledge.length} UI items`);
@@ -2162,6 +2162,9 @@ TASK: Create semantic mappings between UI elements and TSV fields.
 - Identify data mismatches
 - Generate test cases
 
+CRITICAL: You MUST use the exact CSS selectors from the UI knowledge provided. Do NOT invent new selectors.
+Each UI element in the knowledge has a "selector" field - use that exact value for "uiSelector".
+
 IMPORTANT: Return ONLY a valid JSON object. No explanatory text before or after the JSON.
 
 If you cannot find matches, return an empty mappings array: {"mappings": [], "testCases": []}
@@ -2171,7 +2174,7 @@ Example JSON format:
   "mappings": [
     {
       "uiLabel": "Breed",
-      "uiSelector": "#breed-dropdown",
+      "uiSelector": "USE_THE_EXACT_SELECTOR_FROM_UI_KNOWLEDGE",
       "tsvField": "breed",
       "tsvFile": "sample.tsv",
       "confidence": 0.95,
@@ -2217,11 +2220,43 @@ Example JSON format:
             }
             
             // Validate and fill null values in mappings
+            // Also try to find selectors from UI analysis if missing
             result.mappings = result.mappings.map((mapping: any) => {
+                // Try to find selector from UI analysis if not provided
+                let foundSelector = mapping.uiSelector || mapping.selector;
+                if (!foundSelector || foundSelector === 'unknown') {
+                    // Search UI analysis for matching element
+                    const uiLabel = mapping.uiLabel || mapping.uiElement || '';
+                    if (uiLabel) {
+                        // Check dropdowns
+                        const dropdownMatch = uiAnalysis.dropdowns?.find((d: any) => 
+                            d.label?.toLowerCase().includes(uiLabel.toLowerCase()) || 
+                            uiLabel.toLowerCase().includes(d.label?.toLowerCase() || '')
+                        );
+                        if (dropdownMatch?.selector) {
+                            foundSelector = dropdownMatch.selector;
+                            console.log(`  ✓ Found selector from UI analysis: ${foundSelector} for ${uiLabel}`);
+                        }
+                        
+                        // Check search boxes
+                        if (!foundSelector) {
+                            const searchMatch = uiAnalysis.searchBoxes?.find((s: any) => 
+                                s.label?.toLowerCase().includes(uiLabel.toLowerCase()) || 
+                                s.placeholder?.toLowerCase().includes(uiLabel.toLowerCase()) ||
+                                uiLabel.toLowerCase().includes(s.label?.toLowerCase() || '')
+                            );
+                            if (searchMatch?.selector) {
+                                foundSelector = searchMatch.selector;
+                                console.log(`  ✓ Found selector from UI analysis: ${foundSelector} for ${uiLabel}`);
+                            }
+                        }
+                    }
+                }
+                
                 // Ensure required fields are not null
                 const validatedMapping = {
                     uiLabel: mapping.uiLabel || mapping.uiElement || 'Unknown',
-                    uiSelector: mapping.uiSelector || mapping.selector || 'unknown',
+                    uiSelector: foundSelector || 'unknown',
                     tsvField: mapping.tsvField || mapping.dbField || 'unknown',
                     tsvFile: mapping.tsvFile || mapping.fileName || 'unknown',
                     confidence: mapping.confidence || 0.5,
@@ -2233,6 +2268,9 @@ Example JSON format:
                 // Log if we had to fill in values
                 if (!mapping.tsvField || !mapping.uiLabel) {
                     console.warn(`⚠️ Filled in null values for mapping: ${validatedMapping.uiLabel} → ${validatedMapping.tsvField}`);
+                }
+                if (validatedMapping.uiSelector === 'unknown') {
+                    console.warn(`⚠️ No selector found for mapping: ${validatedMapping.uiLabel} → ${validatedMapping.tsvField}`);
                 }
                 
                 return validatedMapping;
@@ -2297,6 +2335,9 @@ Example JSON format:
 MAPPINGS WITH ACTUAL DATA:
 ${JSON.stringify(testData, null, 2)}
 
+IMPORTANT: Each mapping contains a "uiSelector" field with the ACTUAL CSS selector discovered from the UI.
+You MUST use these exact selectors in your test cases. Do NOT invent new selectors.
+
 Generate test cases using ACTUAL VALUES from the data. Include:
 1. Filter tests with real categorical values
 2. Search tests with real searchable terms  
@@ -2311,10 +2352,12 @@ Return JSON array of test cases:
   "dataField": "tsv_field_name",
   "testValues": ["actual", "data", "values"],
   "steps": ["step1", "step2"],
-  "selectors": {"field": "css_selector"},
+  "selectors": {"field": "USE_THE_EXACT_uiSelector_FROM_THE_MAPPING"},
   "expectedBehavior": "what_should_happen",
   "validationCriteria": "how_to_validate"
-}]`;
+}]
+
+CRITICAL: For each test case, use the "uiSelector" from the corresponding mapping. Do not use placeholder selectors like "#search-input" or "#element".`;
         
         console.log(`📤 Sending to LLM...`);
         
