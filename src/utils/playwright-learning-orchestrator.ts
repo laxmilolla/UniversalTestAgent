@@ -1364,6 +1364,65 @@ Response (JSON array only):`;
         return result;
     }
 
+    // Build a normalized selector lookup map from UI exploration results
+    private buildSelectorMap(uiAnalysis: any): Map<string, string> {
+        const selectorMap = new Map<string, string>();
+        const normalize = (str: string) => str.toLowerCase().replace(/[^a-z0-9]/g, '');
+        
+        // Index dropdowns
+        if (uiAnalysis.dropdowns) {
+            uiAnalysis.dropdowns.forEach((dropdown: any) => {
+                if (dropdown.selector && dropdown.label) {
+                    const normalizedLabel = normalize(dropdown.label);
+                    selectorMap.set(normalizedLabel, dropdown.selector);
+                    selectorMap.set(dropdown.selector, dropdown.selector); // Index by selector itself
+                    // Also index by text if different from label
+                    if (dropdown.text && dropdown.text !== dropdown.label) {
+                        selectorMap.set(normalize(dropdown.text), dropdown.selector);
+                    }
+                }
+            });
+        }
+        
+        // Index search boxes
+        if (uiAnalysis.searchBoxes) {
+            uiAnalysis.searchBoxes.forEach((searchBox: any) => {
+                if (searchBox.selector) {
+                    if (searchBox.label) {
+                        selectorMap.set(normalize(searchBox.label), searchBox.selector);
+                    }
+                    if (searchBox.placeholder) {
+                        selectorMap.set(normalize(searchBox.placeholder), searchBox.selector);
+                    }
+                    selectorMap.set(searchBox.selector, searchBox.selector);
+                }
+            });
+        }
+        
+        // Index checkboxes
+        if (uiAnalysis.checkboxes) {
+            uiAnalysis.checkboxes.forEach((checkbox: any) => {
+                if (checkbox.selector && checkbox.label) {
+                    selectorMap.set(normalize(checkbox.label), checkbox.selector);
+                    selectorMap.set(checkbox.selector, checkbox.selector);
+                }
+            });
+        }
+        
+        // Index filters (may overlap with dropdowns but ensure coverage)
+        if (uiAnalysis.filters) {
+            uiAnalysis.filters.forEach((filter: any) => {
+                if (filter.selector && filter.text) {
+                    selectorMap.set(normalize(filter.text), filter.selector);
+                    selectorMap.set(filter.selector, filter.selector);
+                }
+            });
+        }
+        
+        console.log(`📋 Built selector map with ${selectorMap.size} entries`);
+        return selectorMap;
+    }
+
 // Fallback DOM analysis using native Playwright MCP tools
 private async performFallbackDOMAnalysis(): Promise<any> {
     console.log('🔍 Starting fallback DOM analysis with native Playwright tools...');
@@ -1938,9 +1997,12 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
         }
         
         try {
+            // Build selector map from UI analysis (early capture)
+            const selectorMap = this.buildSelectorMap(uiAnalysis);
+            
             // Use ONLY LLM + RAG for mapping
             console.log('\n🔍 Step 1: LLM Semantic Mapping...');
-            const llmMappings = await this.analyzeTSVtoUIMappingWithRAG(uiAnalysis, pageContent || '');
+            const llmMappings = await this.analyzeTSVtoUIMappingWithRAG(uiAnalysis, pageContent || '', selectorMap);
             
             console.log(`📋 LLM Mappings Result:`, {
                 hasMappings: !!llmMappings,
@@ -1962,7 +2024,7 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
             
             // Generate test cases using ONLY LLM
             console.log('\n🔍 Step 2: LLM Test Case Generation...');
-            let testCases = await this.generateTestCasesWithLLM(uiAnalysis, llmMappings.mappings);
+            let testCases = await this.generateTestCasesWithLLM(uiAnalysis, llmMappings.mappings, selectorMap);
             
             console.log(`📋 Test Cases Result:`, {
                 hasTestCases: !!testCases,
@@ -2131,7 +2193,7 @@ Return JSON:
     }
 
     // NEW METHOD: RAG-Powered Semantic Mapping
-    private async analyzeTSVtoUIMappingWithRAG(uiAnalysis: any, pageText: string): Promise<any> {
+    private async analyzeTSVtoUIMappingWithRAG(uiAnalysis: any, pageText: string, selectorMap?: Map<string, string>): Promise<any> {
         console.log('\n🧠 LLM: RAG-POWERED SEMANTIC MAPPING');
         
         try {
@@ -2224,6 +2286,31 @@ Example JSON format:
             result.mappings = result.mappings.map((mapping: any) => {
                 // Try to find selector from UI analysis if not provided
                 let foundSelector = mapping.uiSelector || mapping.selector;
+                
+                // Use selector map if available (preferred method - fast lookup)
+                if (selectorMap && (!foundSelector || foundSelector === 'unknown')) {
+                    const normalize = (str: string) => str.toLowerCase().replace(/[^a-z0-9]/g, '');
+                    const uiLabel = mapping.uiLabel || mapping.uiElement || '';
+                    const tsvField = mapping.tsvField || mapping.dbField || '';
+                    
+                    // Try multiple lookup strategies
+                    if (uiLabel) {
+                        foundSelector = selectorMap.get(normalize(uiLabel)) || foundSelector;
+                    }
+                    if (!foundSelector && tsvField) {
+                        // Try field name directly
+                        foundSelector = selectorMap.get(normalize(tsvField)) || foundSelector;
+                        // Try field name without prefix (e.g., "case.case_id" -> "caseid")
+                        const fieldWithoutPrefix = tsvField.split('.').pop() || tsvField;
+                        foundSelector = selectorMap.get(normalize(fieldWithoutPrefix)) || foundSelector;
+                    }
+                    
+                    if (foundSelector && foundSelector !== 'unknown') {
+                        console.log(`  ✓ Found selector from map: ${foundSelector} for ${uiLabel || tsvField}`);
+                    }
+                }
+                
+                // Fallback to existing UI analysis lookup (slower but more comprehensive)
                 if (!foundSelector || foundSelector === 'unknown') {
                     // Search UI analysis for matching element
                     const uiLabel = mapping.uiLabel || mapping.uiElement || '';
@@ -2344,7 +2431,7 @@ Example JSON format:
     }
 
     // NEW METHOD: Pure LLM test generation
-    private async generateTestCasesWithLLM(uiAnalysis: any, mappings: any[]): Promise<any[]> {
+    private async generateTestCasesWithLLM(uiAnalysis: any, mappings: any[], selectorMap?: Map<string, string>): Promise<any[]> {
         console.log('\n🧠 LLM: PURE TEST CASE GENERATION (No Templates)');
         
         // Get actual test data from RAG
@@ -2423,6 +2510,22 @@ CRITICAL: For each test case, use the "uiSelector" from the corresponding mappin
                             ...correctedSelectors
                         };
                         console.log(`  ✓ Corrected selector for ${testCase.dataField}: ${matchingMapping.uiSelector}`);
+                    } else if (selectorMap) {
+                        // Fallback: Use selector map directly
+                        const normalize = (str: string) => str.toLowerCase().replace(/[^a-z0-9]/g, '');
+                        const fieldSelector = selectorMap.get(normalize(testCase.dataField));
+                        const fieldWithoutPrefix = testCase.dataField.split('.').pop() || testCase.dataField;
+                        const fieldSelector2 = selectorMap.get(normalize(fieldWithoutPrefix));
+                        
+                        if (fieldSelector || fieldSelector2) {
+                            correctedSelectors = {
+                                field: fieldSelector || fieldSelector2,
+                                ...correctedSelectors
+                            };
+                            console.log(`  ✓ Found selector from map for ${testCase.dataField}: ${correctedSelectors.field}`);
+                        } else {
+                            console.warn(`  ⚠️ No selector found for dataField: ${testCase.dataField} (test case may not be executable)`);
+                        }
                     } else {
                         console.warn(`  ⚠️ No mapping found for dataField: ${testCase.dataField}`);
                     }
@@ -2460,10 +2563,24 @@ CRITICAL: For each test case, use the "uiSelector" from the corresponding mappin
             })
         );
         
-        console.log(`📥 LLM generated ${testCases.length} test cases with data-driven expected results`);
-        this.storeLLMResponse('Pure AI Test Generation', prompt, testCases, testCases);
+        // Filter out test cases without valid selectors
+        const validTestCases = testCases.filter((testCase: any) => {
+            const selector = testCase.selectors?.field || testCase.selectors?.[testCase.dataField];
+            if (!selector || selector === 'unknown') {
+                console.warn(`  ⚠️ Skipping test case "${testCase.name}" - no valid selector found for field "${testCase.dataField}"`);
+                return false;
+            }
+            return true;
+        });
         
-        return testCases;
+        if (validTestCases.length < testCases.length) {
+            console.log(`  📊 Filtered out ${testCases.length - validTestCases.length} test cases without valid selectors`);
+        }
+        
+        console.log(`📥 LLM generated ${validTestCases.length} test cases with data-driven expected results`);
+        this.storeLLMResponse('Pure AI Test Generation', prompt, validTestCases, validTestCases);
+        
+        return validTestCases;
     }
 
     // Helper method to parse JSON responses from LLM
