@@ -2347,16 +2347,33 @@ Return JSON array of test cases:
                 try {
                     return JSON.parse(jsonObjectMatch[0]);
                 } catch (e) {
-                    // If object parsing fails, try array
-                    if (jsonArrayMatch) {
-                        return JSON.parse(jsonArrayMatch[0]);
+                    // If object parsing fails, try to fix truncated strings and retry
+                    try {
+                        const fixed = this.fixTruncatedJSON(jsonObjectMatch[0]);
+                        return JSON.parse(fixed);
+                    } catch (e2) {
+                        // If object parsing fails, try array
+                        if (jsonArrayMatch) {
+                            try {
+                                return JSON.parse(jsonArrayMatch[0]);
+                            } catch (e3) {
+                                const fixedArray = this.fixTruncatedJSON(jsonArrayMatch[0]);
+                                return JSON.parse(fixedArray);
+                            }
+                        }
+                        throw e;
                     }
-                    throw e;
                 }
             }
             
             if (jsonArrayMatch) {
-                return JSON.parse(jsonArrayMatch[0]);
+                try {
+                    return JSON.parse(jsonArrayMatch[0]);
+                } catch (e) {
+                    // Try to fix truncated strings
+                    const fixed = this.fixTruncatedJSON(jsonArrayMatch[0]);
+                    return JSON.parse(fixed);
+                }
             }
             
             // If no match found, try parsing the whole content
@@ -2366,6 +2383,65 @@ Return JSON array of test cases:
             console.error('Response content (first 500 chars):', content.substring(0, 500));
             throw new Error('LLM returned invalid JSON format. NO FALLBACK AVAILABLE.');
         }
+    }
+
+    private fixTruncatedJSON(jsonString: string): string {
+        // Fix incomplete string values (e.g., "expectedBehavior": "Only cases with)
+        // Find unclosed string values and close them
+        let fixed = jsonString;
+        
+        // Pattern: find strings that are not properly closed before the end
+        // Look for: "key": "value that is not closed
+        const unclosedStringPattern = /("(?:[^"\\]|\\.)*")\s*:\s*"([^"]*?)(?:"|$)/g;
+        let match;
+        const replacements: { start: number; end: number; replacement: string }[] = [];
+        
+        // Find all potential unclosed strings
+        while ((match = unclosedStringPattern.exec(jsonString)) !== null) {
+            const fullMatch = match[0];
+            const key = match[1];
+            const value = match[2];
+            
+            // If the match doesn't end with a quote, it's likely truncated
+            if (!fullMatch.endsWith('"')) {
+                const startIndex = match.index + key.length + 2; // After ": "
+                const endIndex = match.index + fullMatch.length;
+                // Close the string and add a placeholder if needed
+                replacements.push({
+                    start: startIndex,
+                    end: endIndex,
+                    replacement: `"${value} (truncated)"`
+                });
+            }
+        }
+        
+        // Apply replacements in reverse order to maintain indices
+        for (let i = replacements.length - 1; i >= 0; i--) {
+            const rep = replacements[i];
+            fixed = fixed.substring(0, rep.start) + rep.replacement + fixed.substring(rep.end);
+        }
+        
+        // Fix incomplete arrays/objects at the end
+        // Count braces and brackets to see if they're balanced
+        let openBraces = (fixed.match(/\{/g) || []).length;
+        let closeBraces = (fixed.match(/\}/g) || []).length;
+        let openBrackets = (fixed.match(/\[/g) || []).length;
+        let closeBrackets = (fixed.match(/\]/g) || []).length;
+        
+        // Close any unclosed structures
+        while (openBraces > closeBraces) {
+            fixed += '}';
+            closeBraces++;
+        }
+        while (openBrackets > closeBrackets) {
+            fixed += ']';
+            closeBrackets++;
+        }
+        
+        // Fix trailing commas
+        fixed = fixed.replace(/,\s*([}\]])/g, '$1');
+        
+        return fixed;
     }
 
     // Helper method to extract validation rules from LLM mappings
