@@ -2434,9 +2434,26 @@ Example JSON format:
     private async generateTestCasesWithLLM(uiAnalysis: any, mappings: any[], selectorMap?: Map<string, string>): Promise<any[]> {
         console.log('\n🧠 LLM: PURE TEST CASE GENERATION (No Templates)');
         
-        // Get actual test data from RAG
+        // Filter mappings to only include those with valid selectors (testable UI elements)
+        const testableMappings = mappings.filter((m: any) => {
+            const selector = m.uiSelector || m.selector || '';
+            if (!selector || selector === 'unknown' || selector === '') {
+                console.log(`  ⚠️ Skipping mapping "${m.uiLabel || m.tsvField}" - no valid selector (not a filterable UI element)`);
+                return false;
+            }
+            return true;
+        });
+        
+        if (testableMappings.length === 0) {
+            console.warn('⚠️ No testable mappings found (all mappings have unknown selectors). Cannot generate test cases.');
+            return [];
+        }
+        
+        console.log(`📊 Filtered ${mappings.length} mappings → ${testableMappings.length} testable mappings with valid selectors`);
+        
+        // Get actual test data from RAG (only for testable mappings)
         const testData = await Promise.all(
-            mappings.map(async (m: any) => {
+            testableMappings.map(async (m: any) => {
                 try {
                     const fieldData = await this.vectorRAG.getFieldData(m.tsvField);
                     return { ...m, ...fieldData };
@@ -2448,11 +2465,14 @@ Example JSON format:
         
         const prompt = `Generate comprehensive test cases based on REAL data mappings.
 
-MAPPINGS WITH ACTUAL DATA:
+MAPPINGS WITH ACTUAL DATA (ALL HAVE VALID SELECTORS):
 ${JSON.stringify(testData, null, 2)}
 
-IMPORTANT: Each mapping contains a "uiSelector" field with the ACTUAL CSS selector discovered from the UI.
-You MUST use these exact selectors in your test cases. Do NOT invent new selectors.
+IMPORTANT: 
+- Each mapping contains a "uiSelector" field with the ACTUAL CSS selector discovered from the UI.
+- ALL mappings provided have valid selectors (non-filterable elements have been filtered out).
+- You MUST use these exact selectors in your test cases. Do NOT invent new selectors.
+- Generate test cases ONLY for the mappings provided (they are all testable).
 
 Generate test cases using ACTUAL VALUES from the data. Include:
 1. Filter tests with real categorical values
@@ -2473,7 +2493,10 @@ Return JSON array of test cases:
   "validationCriteria": "how_to_validate"
 }]
 
-CRITICAL: For each test case, use the "uiSelector" from the corresponding mapping. Do not use placeholder selectors like "#search-input" or "#element".`;
+CRITICAL: 
+- For each test case, use the "uiSelector" from the corresponding mapping.
+- Do not use placeholder selectors like "#search-input" or "#element".
+- Generate at least one test case per mapping provided.`;
         
         console.log(`📤 Sending to LLM...`);
         
