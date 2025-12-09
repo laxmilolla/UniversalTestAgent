@@ -328,7 +328,7 @@ class LearningPhaseUI {
         this.uiElementsCount = document.getElementById('ui-elements-count');
         this.dbFieldsCount = document.getElementById('db-fields-count');
         this.testCasesCount = document.getElementById('test-cases-count');
-        this.relationshipsCount = document.getElementById('relationships-count');
+        this.mappingsCount = document.getElementById('mappings-count');
         
         // Check if all required elements exist
         if (!this.tsvInput || !this.screenshotInput || !this.schemaInput) {
@@ -497,7 +497,7 @@ class LearningPhaseUI {
         this.uiElementsCount.textContent = uiElements;
         this.dbFieldsCount.textContent = dbFields;
         this.testCasesCount.textContent = testCases;
-        this.relationshipsCount.textContent = relationships;
+        this.mappingsCount.textContent = mappings;
 
         // Store learning results globally for Phase 2
         window.learningResults = {
