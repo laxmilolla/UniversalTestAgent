@@ -636,16 +636,27 @@ class LearningPhaseUI {
                     
                     <h4>📋 Validation Rules (${(mappingAnalysis.validationRules || []).length})</h4>
                     <div class="validation-rules">
-                        ${(mappingAnalysis.validationRules || []).map(rule => `
-                            <div class="validation-rule">${rule}</div>
-                        `).join('')}
+                        ${(mappingAnalysis.validationRules || []).map(rule => {
+                            // Handle both string and object validation rules
+                            if (typeof rule === 'object' && rule !== null) {
+                                const ruleText = rule.validation || rule.rule || 'Standard validation';
+                                const field = rule.field ? ` (${rule.field})` : '';
+                                const type = rule.type ? ` [${rule.type}]` : '';
+                                return `<div class="validation-rule">${ruleText}${field}${type}</div>`;
+                            }
+                            return `<div class="validation-rule">${rule}</div>`;
+                        }).join('')}
                     </div>
                     
                     <h4>🔗 Data Relationships (${(mappingAnalysis.dataRelationships || []).length})</h4>
                     <div class="relationships">
-                        ${(mappingAnalysis.dataRelationships || []).map(rel => `
-                            <div class="relationship">${rel}</div>
-                        `).join('')}
+                        ${(mappingAnalysis.dataRelationships || []).map(rel => {
+                            // Handle both string and object relationships
+                            if (typeof rel === 'object' && rel !== null) {
+                                return `<div class="relationship">${JSON.stringify(rel, null, 2)}</div>`;
+                            }
+                            return `<div class="relationship">${rel}</div>`;
+                        }).join('')}
                     </div>
                 </div>
             </div>
