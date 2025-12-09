@@ -2323,13 +2323,45 @@ Return JSON array of test cases:
             content: prompt 
         }], []);
         
-        const testCases = this.parseJSONResponse(response.content);
+        let testCases = this.parseJSONResponse(response.content);
         
         if (!Array.isArray(testCases)) {
             throw new Error('LLM returned invalid test cases format. Expected array.');
         }
         
-        console.log(`📥 LLM generated ${testCases.length} test cases`);
+        // Enhance test cases with data-driven expected results
+        console.log(`📊 Enhancing ${testCases.length} test cases with TSV record counts...`);
+        testCases = await Promise.all(
+            testCases.map(async (testCase: any) => {
+                if (!testCase.dataField || !Array.isArray(testCase.testValues) || testCase.testValues.length === 0) {
+                    return testCase;
+                }
+                
+                // Generate expected results for each test value
+                const expectedResults: string[] = [];
+                for (const value of testCase.testValues) {
+                    try {
+                        const count = await this.vectorRAG.getValueCount(testCase.dataField, value);
+                        const expectedResult = `${count} cases should be displayed, all with ${testCase.dataField}='${value}'`;
+                        expectedResults.push(expectedResult);
+                        console.log(`  ✓ Generated expected result: ${expectedResult}`);
+                    } catch (error: any) {
+                        console.warn(`  ⚠️ Failed to get count for ${testCase.dataField}='${value}': ${error.message}`);
+                        // Fallback: still include the value but without count
+                        expectedResults.push(`Cases should be displayed with ${testCase.dataField}='${value}'`);
+                    }
+                }
+                
+                // Update test case with expected results
+                return {
+                    ...testCase,
+                    expectedResults: expectedResults.length > 0 ? expectedResults : (testCase.expectedResults || ['Test passes']),
+                    expectedBehavior: expectedResults.length > 0 ? expectedResults.join('; ') : (testCase.expectedBehavior || 'Test passes')
+                };
+            })
+        );
+        
+        console.log(`📥 LLM generated ${testCases.length} test cases with data-driven expected results`);
         this.storeLLMResponse('Pure AI Test Generation', prompt, testCases, testCases);
         
         return testCases;

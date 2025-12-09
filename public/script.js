@@ -1208,7 +1208,7 @@ class TestGenerationUI {
             steps: typeof testCase.steps === 'string' 
                 ? testCase.steps.split(' ').filter(step => step.length > 0)
                 : testCase.steps || [],
-            selectors: Array.isArray(testCase.selectors) ? testCase.selectors : [testCase.selectors || '#element'],
+            selectors: Array.isArray(testCase.selectors) ? testCase.selectors : (typeof testCase.selectors === 'object' && testCase.selectors !== null ? testCase.selectors : [testCase.selectors || '#element']),
             category: testCase.category?.toLowerCase().replace(/\s+/g, '_') || 'general',
             priority: testCase.priority?.toLowerCase() || 'medium',
             type: testCase.type || 'functional',
@@ -1217,7 +1217,10 @@ class TestGenerationUI {
             dataField: testCase.dataField,
             testValues: testCase.testValues,
             websiteUrl: testCase.websiteUrl,
-            expectedResults: testCase.expectedResults || ['Test passes']
+            // PRESERVE EXPECTED RESULTS (array format preferred)
+            expectedResults: Array.isArray(testCase.expectedResults) ? testCase.expectedResults : 
+                           (testCase.expectedResults ? [testCase.expectedResults] : 
+                           (testCase.expectedBehavior ? [testCase.expectedBehavior] : ['Test passes']))
         }));
     }
 
@@ -1268,23 +1271,29 @@ class TestGenerationUI {
                             <div class="field-row">
                                 <strong>Website URL:</strong> ${testCase.websiteUrl || 'Not specified'}
                             </div>
-                            ${testCase.expectedResults ? `
-                            <div class="field-row">
-                                <strong>Expected Results:</strong>
-                                <ul>
-                                    ${Array.isArray(testCase.expectedResults) ? 
-                                        testCase.expectedResults.map(result => `<li>${result}</li>`).join('') : 
-                                        `<li>${testCase.expectedResults}</li>`
-                                    }
-                                </ul>
-                            </div>
-                            ` : ''}
                         </div>
                     </div>
+                    ${testCase.expectedResults || testCase.expectedBehavior ? `
+                    <div class="test-expected-results">
+                        <h5>Expected Results:</h5>
+                        <ul>
+                            ${Array.isArray(testCase.expectedResults) ? 
+                                testCase.expectedResults.map(result => `<li>${result}</li>`).join('') : 
+                                (testCase.expectedResults ? `<li>${testCase.expectedResults}</li>` : 
+                                 (testCase.expectedBehavior ? `<li>${testCase.expectedBehavior}</li>` : '<li>Test passes</li>'))
+                            }
+                        </ul>
+                    </div>
+                    ` : ''}
                     <div class="test-selectors">
                         <h5>Selectors:</h5>
                         <div class="selector-list">
-                            ${(testCase.selectors || []).map(selector => `<code>${selector}</code>`).join('')}
+                            ${typeof testCase.selectors === 'object' && testCase.selectors !== null && !Array.isArray(testCase.selectors) ?
+                                Object.entries(testCase.selectors).map(([key, value]) => `<code>${key}: ${value}</code>`).join('') :
+                                Array.isArray(testCase.selectors) ?
+                                    testCase.selectors.map(selector => `<code>${selector}</code>`).join('') :
+                                    testCase.selectors ? `<code>${testCase.selectors}</code>` : '<span>No selectors specified</span>'
+                            }
                         </div>
                     </div>
                 </div>

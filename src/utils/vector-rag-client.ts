@@ -51,9 +51,22 @@ export class VectorRAGClient {
             // Store metadata
             const headers = Object.keys(records[0] || {});
             const uniqueValuesMap: any = {};
+            const valueCountsMap: any = {};
+            
             headers.forEach(header => {
                 const values = [...new Set(records.map(r => r[header]).filter(v => v))];
                 uniqueValuesMap[header] = values.slice(0, 100);
+                
+                // Build value counts map: {value: count}
+                const counts: any = {};
+                records.forEach(record => {
+                    const value = record[header];
+                    if (value !== null && value !== undefined && value !== '') {
+                        const valueStr = String(value);
+                        counts[valueStr] = (counts[valueStr] || 0) + 1;
+                    }
+                });
+                valueCountsMap[header] = counts;
             });
             
             this.tsvMetadata[file.name] = {
@@ -61,6 +74,7 @@ export class VectorRAGClient {
                 recordCount: records.length,
                 fieldTypes: this.detectFieldTypes(records),
                 uniqueValues: uniqueValuesMap,
+                valueCounts: valueCountsMap,
                 sampleRecords: records.slice(0, 10)
             };
             
@@ -257,6 +271,23 @@ export class VectorRAGClient {
             }
         }
         throw new Error(`Field "${fieldName}" not found in any TSV file. Cannot generate test data.`);
+    }
+
+    async getValueCount(fieldName: string, value: string): Promise<number> {
+        // Search all TSV files for the field
+        for (const [fileName, metadata] of Object.entries(this.tsvMetadata)) {
+            const meta = metadata as any;
+            if (meta.headers.includes(fieldName) && meta.valueCounts && meta.valueCounts[fieldName]) {
+                const counts = meta.valueCounts[fieldName];
+                const valueStr = String(value);
+                if (counts[valueStr] !== undefined) {
+                    console.log(`📊 Found count for ${fieldName}='${value}': ${counts[valueStr]} records in ${fileName}`);
+                    return counts[valueStr];
+                }
+            }
+        }
+        console.warn(`⚠️ No count found for ${fieldName}='${value}'. Returning 0.`);
+        return 0;
     }
 
     // NEW METHODS FOR UI DATA INDEXING
