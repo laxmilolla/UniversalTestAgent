@@ -2210,22 +2210,48 @@ Return JSON:
             console.log(`📊 RAG Context: ${tsvKnowledge.length} TSV items, ${uiKnowledge.length} UI items`);
             
             // Step 3: Send compact context to LLM
+            // Include full UI analysis so LLM can see all discovered elements
+            const uiElementsSummary = {
+                dropdowns: uiAnalysis.dropdowns?.map((d: any) => ({
+                    label: d.label,
+                    selector: d.selector,
+                    optionCount: d.optionCount || d.allOptions?.length || 0,
+                    sampleOptions: d.allOptions?.slice(0, 5) || []
+                })) || [],
+                searchBoxes: uiAnalysis.searchBoxes?.map((s: any) => ({
+                    label: s.label,
+                    placeholder: s.placeholder,
+                    selector: s.selector
+                })) || [],
+                checkboxes: uiAnalysis.checkboxes?.map((c: any) => ({
+                    label: c.label,
+                    selector: c.selector
+                })) || []
+            };
+
             const prompt = `You are analyzing a data exploration website.
 
 TSV DATABASE KNOWLEDGE (from RAG):
-${JSON.stringify(tsvKnowledge.slice(0, 5), null, 2)}
+${JSON.stringify(tsvKnowledge.slice(0, 10), null, 2)}
 
-UI EXPLORATION KNOWLEDGE (from RAG):
+UI ELEMENTS DISCOVERED (from active exploration):
+${JSON.stringify(uiElementsSummary, null, 2)}
+
+UI EXPLORATION KNOWLEDGE (from RAG - additional context):
 ${JSON.stringify(uiKnowledge.slice(0, 5), null, 2)}
 
 TASK: Create semantic mappings between UI elements and TSV fields.
-- Match UI labels to TSV field names
+- Match UI labels from "UI ELEMENTS DISCOVERED" to TSV field names
+- Use the EXACT "selector" from the UI elements discovered section
 - Compare UI result counts with TSV record counts
 - Identify data mismatches
 - Generate test cases
 
-CRITICAL: You MUST use the exact CSS selectors from the UI knowledge provided. Do NOT invent new selectors.
-Each UI element in the knowledge has a "selector" field - use that exact value for "uiSelector".
+CRITICAL: 
+- You MUST use the exact CSS selectors from "UI ELEMENTS DISCOVERED" section above.
+- Each dropdown/searchBox/checkbox has a "selector" field - use that EXACT value for "uiSelector".
+- Do NOT use "unknown" or invent new selectors.
+- Only create mappings for elements that exist in "UI ELEMENTS DISCOVERED".
 
 IMPORTANT: Return ONLY a valid JSON object. No explanatory text before or after the JSON.
 
