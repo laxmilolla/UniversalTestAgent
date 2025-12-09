@@ -459,18 +459,42 @@ export class VectorRAGClient {
         console.log(`🔍 Querying RAG for mappings: "${question}"`);
         
         try {
-            const results = await this.searchRelevantData(question, 10);
+            // Directly iterate through vector store to find all mappings
+            // This is more reliable than semantic search which might miss mappings
+            // if they're not in the top K results
+            const mappingResults: any[] = [];
             
-            // Filter for mapping results
-            const mappingResults = results.filter(result => {
-                // Null/undefined check
+            for (const [id, chunk] of this.vectorStore.entries()) {
+                // Check if this chunk is a mapping
+                if (chunk && typeof chunk === 'object' && chunk.metadata?.type === 'ui_tsv_mapping') {
+                    mappingResults.push({
+                        id: id,
+                        text: chunk.text || '',
+                        metadata: chunk.metadata || {},
+                        similarity: 1.0, // Direct match, so perfect similarity
+                        fileName: chunk.metadata?.tsvFile || ''
+                    });
+                }
+            }
+            
+            console.log(`✅ Found ${mappingResults.length} mappings in vector store (direct filter)`);
+            
+            // If we found mappings, return them
+            if (mappingResults.length > 0) {
+                return mappingResults;
+            }
+            
+            // Fallback: Try semantic search as backup (in case mappings are stored differently)
+            console.log(`⚠️ No mappings found via direct filter, trying semantic search as fallback...`);
+            const semanticResults = await this.searchRelevantData(question, 50); // Increase topK for fallback
+            
+            const filteredResults = semanticResults.filter(result => {
                 if (!result || typeof result !== 'object') return false;
-                
                 return result.metadata?.type === 'ui_tsv_mapping';
             });
             
-            console.log(`✅ Found ${mappingResults.length} relevant mappings`);
-            return mappingResults;
+            console.log(`✅ Found ${filteredResults.length} mappings via semantic search fallback`);
+            return filteredResults;
             
         } catch (error: any) {
             console.error(`❌ Failed to query mappings:`, error);
