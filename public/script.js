@@ -597,9 +597,9 @@ class LearningPhaseUI {
                     <div class="mapping-list">
                         ${(mappingAnalysis.mappings || []).map(mapping => `
                             <div class="mapping-item">
-                                <span class="db-field">${mapping.dbField || 'Unknown'}</span>
+                                <span class="db-field">${mapping.tsvField || mapping.dbField || 'Unknown'}</span>
                                 <span class="arrow">→</span>
-                                <span class="ui-element">${mapping.uiElement || 'Unknown'}</span>
+                                <span class="ui-element">${mapping.uiLabel || mapping.uiElement || 'Unknown'}</span>
                                 <span class="mapping-type">${mapping.type || 'Unknown'}</span>
                                 <span class="confidence">(${mapping.confidence || 'N/A'})</span>
                             </div>
@@ -625,7 +625,11 @@ class LearningPhaseUI {
                                             ? testCase.steps.map(step => `<li>${step}</li>`).join('')
                                             : `<li>${testCase.steps || 'No steps provided'}</li>`)}
                                 </ol>
-                                <p><strong>Selectors:</strong> ${testCase.selectors || 'None'}</p>
+                                <p><strong>Selectors:</strong> ${testCase.selectors 
+                                    ? (typeof testCase.selectors === 'object' 
+                                        ? JSON.stringify(testCase.selectors, null, 2)
+                                        : testCase.selectors)
+                                    : 'None'}</p>
                             </div>
                         `).join('')}
                     </div>
@@ -861,10 +865,32 @@ class TestGenerationUI {
             document.addEventListener('DOMContentLoaded', () => {
                 this.initializeElements();
                 this.setupEventListeners();
+                // Auto-load test cases from Phase 1 if they exist
+                this.autoLoadTestCases();
             });
         } else {
             this.initializeElements();
             this.setupEventListeners();
+            // Auto-load test cases from Phase 1 if they exist
+            this.autoLoadTestCases();
+        }
+    }
+
+    autoLoadTestCases() {
+        // Check if test cases exist from Phase 1 and auto-load them
+        const learningResults = this.getLearningResults();
+        if (learningResults && learningResults.analysis?.mapping?.testCases?.length > 0) {
+            console.log(`🔄 Auto-loading ${learningResults.analysis.mapping.testCases.length} test cases from Phase 1`);
+            const existingTestCases = learningResults.analysis.mapping.testCases;
+            const convertedTestCases = this.convertPhase1TestCases(existingTestCases);
+            this.generatedTests = convertedTestCases;
+            window.testCases = convertedTestCases;
+            this.displayTestCases();
+            this.updateTestStatistics();
+            // Update button text
+            if (this.generateBtn) {
+                this.generateBtn.innerHTML = '<span class="btn-icon">✅</span><span class="btn-text">Test Cases Loaded</span>';
+            }
         }
     }
 
