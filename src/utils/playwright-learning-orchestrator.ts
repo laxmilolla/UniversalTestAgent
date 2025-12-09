@@ -2213,9 +2213,46 @@ Example JSON format:
                 result.mappings = [];
             }
             
+            // Validate and fill null values in mappings
+            result.mappings = result.mappings.map((mapping: any) => {
+                // Ensure required fields are not null
+                const validatedMapping = {
+                    uiLabel: mapping.uiLabel || mapping.uiElement || 'Unknown',
+                    uiSelector: mapping.uiSelector || mapping.selector || 'unknown',
+                    tsvField: mapping.tsvField || mapping.dbField || 'unknown',
+                    tsvFile: mapping.tsvFile || mapping.fileName || 'unknown',
+                    confidence: mapping.confidence || 0.5,
+                    reasoning: mapping.reasoning || mapping.reason || '',
+                    dataMismatch: mapping.dataMismatch || '',
+                    type: mapping.type || 'display'
+                };
+                
+                // Log if we had to fill in values
+                if (!mapping.tsvField || !mapping.uiLabel) {
+                    console.warn(`⚠️ Filled in null values for mapping: ${validatedMapping.uiLabel} → ${validatedMapping.tsvField}`);
+                }
+                
+                return validatedMapping;
+            });
+            
             if (!Array.isArray(result.testCases)) {
                 result.testCases = [];
             }
+            
+            // Validate test cases
+            result.testCases = result.testCases.map((testCase: any) => {
+                return {
+                    name: testCase.name || 'Unnamed Test',
+                    description: testCase.description || '',
+                    type: testCase.type || 'validation',
+                    dataField: testCase.dataField || testCase.tsvField || 'unknown',
+                    testValues: Array.isArray(testCase.testValues) ? testCase.testValues : [],
+                    steps: Array.isArray(testCase.steps) ? testCase.steps : [],
+                    selectors: testCase.selectors || {},
+                    expectedBehavior: testCase.expectedBehavior || '',
+                    validationCriteria: testCase.validationCriteria || ''
+                };
+            });
             
             // Step 4: Store mappings back in RAG
             if (result.mappings) {

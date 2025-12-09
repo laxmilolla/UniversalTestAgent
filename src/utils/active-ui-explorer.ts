@@ -399,6 +399,9 @@ export class ActiveUIExplorer {
                 radioGroups: radioGroups
             };
             
+            // Create a map of dropdown labels to TSV columns for filling in null values
+            const dropdownToTSVMap = new Map<string, string>();
+            
             if (tsvColumns.length > 0) {
                 console.log(`🎯 TSV-Driven: Matching ${tsvColumns.length} TSV columns to discovered filters...`);
                 matchedFilters = this.matchFiltersToTSVColumns(
@@ -409,6 +412,19 @@ export class ActiveUIExplorer {
                     tsvColumns
                 );
                 console.log(`✅ TSV-Driven: ${matchedFilters.dropdowns.length} dropdowns, ${matchedFilters.searchBoxes.length} search boxes, ${matchedFilters.checkboxes.length} checkboxes matched`);
+                
+                // Build mapping of dropdown labels to TSV columns
+                const normalize = (str: string) => str.toLowerCase().replace(/[^a-z0-9]/g, '');
+                matchedFilters.dropdowns.forEach(dropdown => {
+                    const matchedCol = tsvColumns.find(col => {
+                        const normalizedLabel = normalize(dropdown.label);
+                        const normalizedCol = normalize(col);
+                        return normalizedLabel.includes(normalizedCol) || normalizedCol.includes(normalizedLabel);
+                    });
+                    if (matchedCol) {
+                        dropdownToTSVMap.set(dropdown.label, matchedCol);
+                    }
+                });
             } else {
                 console.log('🔍 No TSV columns provided, exploring all discovered filters');
             }
@@ -417,7 +433,7 @@ export class ActiveUIExplorer {
             console.log('🧠 Phase 2: LLM Prioritization - START');
             let prioritized: PrioritizedDropdown[];
             try {
-                prioritized = await this.prioritizeWithLLM(matchedFilters.dropdowns);
+                prioritized = await this.prioritizeWithLLM(matchedFilters.dropdowns, dropdownToTSVMap);
                 console.log(`🧠 Phase 2: COMPLETE - Prioritized ${prioritized.length} dropdowns`);
             } catch (error: any) {
                 console.warn(`⚠️ LLM prioritization failed, using default priority: ${error.message}`);
@@ -651,7 +667,7 @@ export class ActiveUIExplorer {
         return JSON.parse(text);
     }
 
-    async prioritizeWithLLM(dropdowns: DiscoveredWithOptions[]): Promise<PrioritizedDropdown[]> {
+    async prioritizeWithLLM(dropdowns: DiscoveredWithOptions[], dropdownToTSVMap?: Map<string, string>): Promise<PrioritizedDropdown[]> {
         console.log('🧠 LLM prioritization: Analyzing dropdowns against TSV fields...');
         
         try {
@@ -676,6 +692,7 @@ Prioritize dropdowns that:
 3. Have reasonable option counts (5-50 options, not 1 or 500)
 
 IMPORTANT: Return ONLY a valid JSON array, no explanatory text before or after.
+For each dropdown, include the tsvField that it maps to (use null if no match).
 
 Example format:
 [
@@ -696,12 +713,34 @@ Example format:
                 throw new Error('LLM response is not a JSON array');
             }
             
+            // Fill in null tsvField values using the TSV column mapping
+            if (dropdownToTSVMap) {
+                for (const item of prioritized) {
+                    if (!item.tsvField || item.tsvField === null || item.tsvField === 'null') {
+                        const mappedTSV = dropdownToTSVMap.get(item.label);
+                        if (mappedTSV) {
+                            item.tsvField = mappedTSV;
+                            console.log(`  ✓ Filled in tsvField for "${item.label}": ${mappedTSV}`);
+                        } else {
+                            item.tsvField = 'unknown';
+                        }
+                    }
+                }
+            } else {
+                // If no mapping provided, set unknown for null values
+                for (const item of prioritized) {
+                    if (!item.tsvField || item.tsvField === null || item.tsvField === 'null') {
+                        item.tsvField = 'unknown';
+                    }
+                }
+            }
+            
             // Sort by priority and return
             const sorted = prioritized.sort((a: any, b: any) => a.priority - b.priority);
             
             console.log(`✅ LLM prioritization complete: ${sorted.length} dropdowns ranked`);
             sorted.forEach((d: any, i: number) => {
-                console.log(`  ${i + 1}. ${d.label} (${d.priority}): ${d.reason}`);
+                console.log(`  ${i + 1}. ${d.label} (${d.priority}): ${d.reason} [tsvField: ${d.tsvField}]`);
             });
             
             return sorted;
