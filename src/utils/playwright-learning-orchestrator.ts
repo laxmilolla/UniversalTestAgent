@@ -463,6 +463,7 @@ export class PlaywrightLearningOrchestrator {
                     
                     // These should work correctly
                     dbFields: dbAnalysis.totalFields || 0,
+                    mappings: mappingAnalysis.mappings?.length || 0,
                     testCases: mappingAnalysis.testCases?.length || 0,
                     relationships: mappingAnalysis.dataRelationships?.length || 0
                 },

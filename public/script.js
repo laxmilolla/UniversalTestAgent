@@ -477,12 +477,27 @@ class LearningPhaseUI {
     showLearningResults(results, analysis = null) {
         // Use real results from backend
         console.log('🔍 DEBUG - showLearningResults called with:', { results, analysis });
-        console.log('🔍 DEBUG - Test cases count:', results.testCases);
+        console.log('🔍 DEBUG - Results breakdown:', {
+            uiElements: results.uiElements,
+            dbFields: results.dbFields,
+            mappings: results.mappings,
+            testCases: results.testCases,
+            relationships: results.relationships
+        });
         
-        this.uiElementsCount.textContent = results.uiElements || 0;
-        this.dbFieldsCount.textContent = results.dbFields || 0;
-        this.testCasesCount.textContent = results.testCases || 0;
-        this.relationshipsCount.textContent = results.relationships || 0;
+        // Ensure we have valid numbers
+        const uiElements = results.uiElements || 0;
+        const dbFields = results.dbFields || 0;
+        const mappings = results.mappings || (analysis?.mapping?.mappings?.length || 0);
+        const testCases = results.testCases || 0;
+        const relationships = results.relationships || 0;
+        
+        console.log('🔍 DEBUG - Setting UI values:', { uiElements, dbFields, mappings, testCases, relationships });
+        
+        this.uiElementsCount.textContent = uiElements;
+        this.dbFieldsCount.textContent = dbFields;
+        this.testCasesCount.textContent = testCases;
+        this.relationshipsCount.textContent = relationships;
 
         // Store learning results globally for Phase 2
         window.learningResults = {
