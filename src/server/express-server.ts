@@ -440,18 +440,26 @@ app.delete('/api/test/cases/:id', async (req, res) => {
 
 app.post('/api/test/execute', async (req, res) => {
     try {
-        const { testCaseIds, options } = req.body;
+        const { testCaseIds, testCases, options } = req.body;
         
-        if (!testCaseIds || !Array.isArray(testCaseIds)) {
+        // Accept either test case IDs or test cases directly
+        if (!testCaseIds && !testCases) {
             return res.status(400).json({
                 success: false,
-                error: 'Test case IDs are required'
+                error: 'Test case IDs or test cases are required'
             });
         }
         
-        console.log('Starting test execution for test cases:', testCaseIds);
+        console.log('Starting test execution:', { 
+            testCaseIds: testCaseIds?.length || 0, 
+            testCases: testCases?.length || 0 
+        });
         
-        const execution = await testGenerationOrchestrator.executeTestCases(testCaseIds, options);
+        const execution = await testGenerationOrchestrator.executeTestCases(
+            testCaseIds || [], 
+            options,
+            testCases // Pass test cases directly if provided
+        );
         
         if (execution.success) {
             res.json({

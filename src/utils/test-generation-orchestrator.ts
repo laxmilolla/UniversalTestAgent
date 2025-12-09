@@ -95,32 +95,438 @@ export class TestGenerationOrchestrator {
   }
 
   // Execute test cases method (required by express-server)
-  async executeTestCases(testCaseIds: string[], options?: any): Promise<{success: boolean, results?: any, statistics?: any, error?: string}> {
+  async executeTestCases(testCaseIds: string[], options?: any, providedTestCases?: any[]): Promise<{success: boolean, results?: any, statistics?: any, error?: string}> {
     try {
       console.log('🚀 Executing test cases:', testCaseIds);
       
-      // For now, return a placeholder implementation
+      // Get test cases - prioritize provided test cases, then learning results, then storage
+      const testCases: any[] = [];
+      let learningResults: any = null;
+      
+      // If test cases are provided directly, use them
+      if (providedTestCases && Array.isArray(providedTestCases) && providedTestCases.length > 0) {
+        console.log(`📋 Using ${providedTestCases.length} provided test cases`);
+        // Match provided test cases with IDs
+        for (const id of testCaseIds) {
+          const testCase = providedTestCases.find(tc => tc.id === id);
+          if (testCase) {
+            testCases.push(testCase);
+          } else {
+            // Try to match by index
+            const index = parseInt(id.replace('test-', '')) - 1;
+            if (index >= 0 && index < providedTestCases.length) {
+              testCases.push({
+                ...providedTestCases[index],
+                id: id
+              });
+            }
+          }
+        }
+      }
+      
+      // If no test cases found yet, try to get from learning results
+      if (testCases.length === 0) {
+        try {
+          // Try multiple ways to access learning results
+          learningResults = (this.playwrightLearningOrchestrator as any).lastLearningResults || 
+                           (this.playwrightLearningOrchestrator as any).getLearningResults?.() ||
+                           (this.playwrightLearningOrchestrator as any).learningResults ||
+                           null;
+          
+          // Also try to get from vectorRAG if available
+          const vectorRAG = (this.playwrightLearningOrchestrator as any).vectorRAG;
+          if (!learningResults && vectorRAG) {
+            // Try to reconstruct from RAG metadata
+            const tsvMetadata = vectorRAG.getTSVMetadata?.();
+            if (tsvMetadata) {
+              console.log('📊 Found TSV metadata, but no learning results');
+            }
+          }
+        } catch (e) {
+          console.warn('Could not access learning results:', e);
+        }
+        
+        if (learningResults?.analysis?.mapping?.testCases) {
+          const phase1TestCases = learningResults.analysis.mapping.testCases;
+          for (const id of testCaseIds) {
+            // Match by index or find by name/description
+            const index = parseInt(id.replace('test-', '')) - 1;
+            if (index >= 0 && index < phase1TestCases.length) {
+              const testCase = phase1TestCases[index];
+              // Ensure test case has required fields
+              testCases.push({
+                ...testCase,
+                id: id,
+                websiteUrl: testCase.websiteUrl || (this.playwrightLearningOrchestrator as any).currentWebsiteUrl || 'https://caninecommons.cancer.gov/#/explore'
+              });
+            }
+          }
+        }
+      }
+      
+      // Fallback to storage if not found in learning results
+      if (testCases.length === 0) {
+        for (const id of testCaseIds) {
+          const testCase = await this.storage.getTestCase(id);
+          if (testCase) {
+            testCases.push(testCase);
+          }
+        }
+      }
+      
+      if (testCases.length === 0) {
+        throw new Error('No test cases found for the provided IDs');
+      }
+      
+      console.log(`📋 Found ${testCases.length} test cases to execute`);
+      
+      // Execute each test case
+      const testResults: any[] = [];
+      const startTime = Date.now();
+      
+      for (let i = 0; i < testCases.length; i++) {
+        const testCase = testCases[i];
+        const testCaseId = testCaseIds[i] || `test-${i + 1}`;
+        const testStartTime = Date.now();
+        
+        try {
+          console.log(`\n🧪 Executing test case ${i + 1}/${testCases.length}: ${testCase.name || testCaseId}`);
+          
+          // Get website URL from test case, orchestrator, or learning results
+          const websiteUrl = testCase.websiteUrl || 
+                            (this.playwrightLearningOrchestrator as any).currentWebsiteUrl ||
+                            (learningResults as any)?.websiteUrl || 
+                            'https://caninecommons.cancer.gov/#/explore';
+          
+          // Navigate to website
+          console.log(`  📍 Navigating to: ${websiteUrl}`);
+          await this.mcpClient.callTools([{
+            id: `navigate-${testCaseId}`,
+            name: 'playwright_navigate',
+            parameters: { url: websiteUrl }
+          }]);
+          
+          // Wait for page to load
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+          // Execute test steps
+          const steps = Array.isArray(testCase.steps) ? testCase.steps : [];
+          const selectors = testCase.selectors || {};
+          const testValues = Array.isArray(testCase.testValues) ? testCase.testValues : [];
+          
+          console.log(`  📝 Executing ${steps.length} steps`);
+          
+          // Execute each step
+          for (let stepIndex = 0; stepIndex < steps.length; stepIndex++) {
+            const step = steps[stepIndex];
+            console.log(`    Step ${stepIndex + 1}: ${step}`);
+            
+            // Parse step to determine action
+            if (step.toLowerCase().includes('navigate') || step.toLowerCase().includes('go to')) {
+              // Already navigated, skip
+              continue;
+            } else if (step.toLowerCase().includes('click') || step.toLowerCase().includes('select')) {
+              // Find selector for this action
+              const selector = this.findSelectorForStep(selectors, step, testCase.dataField);
+              if (selector) {
+                try {
+                  await this.mcpClient.callTools([{
+                    id: `click-${testCaseId}-${stepIndex}`,
+                    name: 'playwright_click',
+                    parameters: { selector: selector }
+                  }]);
+                  await new Promise(resolve => setTimeout(resolve, 1000));
+                } catch (error: any) {
+                  console.warn(`    ⚠️ Click failed: ${error.message}`);
+                }
+              }
+            } else if (step.toLowerCase().includes('fill') || step.toLowerCase().includes('enter') || step.toLowerCase().includes('input')) {
+              // Find selector and value for fill action
+              const selector = this.findSelectorForStep(selectors, step, testCase.dataField);
+              const value = testValues[0] || '';
+              if (selector && value) {
+                try {
+                  await this.mcpClient.callTools([{
+                    id: `fill-${testCaseId}-${stepIndex}`,
+                    name: 'playwright_fill',
+                    parameters: { selector: selector, value: String(value) }
+                  }]);
+                  await new Promise(resolve => setTimeout(resolve, 1000));
+                } catch (error: any) {
+                  console.warn(`    ⚠️ Fill failed: ${error.message}`);
+                }
+              }
+            } else if (step.toLowerCase().includes('filter') && testValues.length > 0) {
+              // Filter action - try to find dropdown or filter element
+              const selector = this.findSelectorForStep(selectors, step, testCase.dataField);
+              if (selector) {
+                // Try to select value from dropdown
+                for (const value of testValues) {
+                  try {
+                    await this.mcpClient.callTools([{
+                      id: `select-${testCaseId}-${stepIndex}`,
+                      name: 'playwright_select',
+                      parameters: { selector: selector, value: String(value) }
+                    }]);
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    break; // Use first value
+                  } catch (error: any) {
+                    // Try click and evaluate as fallback
+                    try {
+                      await this.mcpClient.callTools([{
+                        id: `click-filter-${testCaseId}-${stepIndex}`,
+                        name: 'playwright_click',
+                        parameters: { selector: selector }
+                      }]);
+                      await new Promise(resolve => setTimeout(resolve, 500));
+                      // Try to find and click the value option
+                      await this.mcpClient.callTools([{
+                        id: `select-value-${testCaseId}-${stepIndex}`,
+                        name: 'playwright_evaluate',
+                        parameters: {
+                          script: `(() => {
+                            const text = document.body.textContent || '';
+                            const value = ${JSON.stringify(value)};
+                            // Try to find element containing the value
+                            const elements = Array.from(document.querySelectorAll('*'));
+                            for (const el of elements) {
+                              if (el.textContent && el.textContent.includes(value) && el.click) {
+                                el.click();
+                                return { clicked: true, value: value };
+                              }
+                            }
+                            return { clicked: false, value: value };
+                          })()`
+                        }
+                      }]);
+                      await new Promise(resolve => setTimeout(resolve, 1000));
+                    } catch (e: any) {
+                      console.warn(`    ⚠️ Filter selection failed: ${e.message}`);
+                    }
+                  }
+                }
+              }
+            }
+          }
+          
+          // Wait for results to load
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+          // Validate results
+          const validation = await this.validateTestResults(testCase, learningResults);
+          
+          // Capture screenshot
+          let screenshot: string | null = null;
+          try {
+            const screenshotResult = await this.mcpClient.callTools([{
+              id: `screenshot-${testCaseId}`,
+              name: 'playwright_screenshot',
+              parameters: {}
+            }]);
+            if (screenshotResult[0]?.result && Array.isArray(screenshotResult[0].result)) {
+              const screenshotData = screenshotResult[0].result.find((r: any) => r.type === 'text');
+              screenshot = screenshotData?.text || null;
+            }
+          } catch (error: any) {
+            console.warn(`    ⚠️ Screenshot capture failed: ${error.message}`);
+          }
+          
+          const duration = Date.now() - testStartTime;
+          const status = validation.passed ? 'passed' : 'failed';
+          
+          testResults.push({
+            testCaseId: testCaseId,
+            testCaseName: testCase.name || 'Unnamed Test',
+            status: status,
+            duration: duration,
+            startTime: new Date(testStartTime).toISOString(),
+            validation: validation,
+            screenshots: screenshot ? [screenshot] : [],
+            error: validation.passed ? undefined : validation.message
+          });
+          
+          console.log(`  ✅ Test ${i + 1} ${status}: ${duration}ms`);
+          
+        } catch (error: any) {
+          const duration = Date.now() - testStartTime;
+          console.error(`  ❌ Test ${i + 1} failed:`, error.message);
+          
+          testResults.push({
+            testCaseId: testCaseId,
+            testCaseName: testCase.name || 'Unnamed Test',
+            status: 'error',
+            duration: duration,
+            startTime: new Date(testStartTime).toISOString(),
+            error: error.message,
+            screenshots: []
+          });
+        }
+      }
+      
+      const totalDuration = Date.now() - startTime;
+      const passed = testResults.filter(r => r.status === 'passed').length;
+      const failed = testResults.filter(r => r.status === 'failed' || r.status === 'error').length;
+      
+      console.log(`\n📊 Test execution complete: ${passed} passed, ${failed} failed in ${totalDuration}ms`);
+      
       return {
         success: true,
-        results: {
-          executed: testCaseIds.length,
-          passed: testCaseIds.length,
-          failed: 0,
-          duration: 1000
-        },
+        results: testResults, // Return as array
         statistics: {
-          total: testCaseIds.length,
-          passed: testCaseIds.length,
-          failed: 0,
-          duration: 1000
+          total: testResults.length,
+          passed: passed,
+          failed: failed,
+          duration: totalDuration,
+          runId: `run-${Date.now()}`
         }
       };
+      
     } catch (error: any) {
       console.error('❌ Test execution failed:', error);
       return {
         success: false,
         error: `Test execution failed: ${error.message}`
       };
+    }
+  }
+
+  private findSelectorForStep(selectors: any, step: string, dataField?: string): string | null {
+    // If selectors is an object, try to find by field name
+    if (typeof selectors === 'object' && selectors !== null && !Array.isArray(selectors)) {
+      if (dataField && selectors[dataField]) {
+        return selectors[dataField];
+      }
+      // Try to find by key matching step
+      for (const [key, value] of Object.entries(selectors)) {
+        if (step.toLowerCase().includes(key.toLowerCase())) {
+          return value as string;
+        }
+      }
+      // Return first value
+      const firstKey = Object.keys(selectors)[0];
+      return firstKey ? selectors[firstKey] as string : null;
+    }
+    
+    // If selectors is an array, return first one
+    if (Array.isArray(selectors) && selectors.length > 0) {
+      return selectors[0];
+    }
+    
+    return null;
+  }
+
+  private async validateTestResults(testCase: any, learningResults: any): Promise<any> {
+    try {
+      // Extract expected count from expectedResults
+      const expectedResults = Array.isArray(testCase.expectedResults) ? testCase.expectedResults : [];
+      let expectedCount = 0;
+      
+      // Parse expected results to find count
+      for (const result of expectedResults) {
+        const match = result.match(/(\d+)\s+cases\s+should\s+be\s+displayed/);
+        if (match) {
+          expectedCount = parseInt(match[1]);
+          break;
+        }
+      }
+      
+      if (expectedCount === 0) {
+        return {
+          passed: true,
+          expectedCount: 0,
+          actualCount: 0,
+          message: 'No expected count specified, validation skipped'
+        };
+      }
+      
+      // Get actual count from UI
+      const actualCount = await this.getActualResultCount();
+      
+      const passed = actualCount === expectedCount;
+      
+      return {
+        passed: passed,
+        expectedCount: expectedCount,
+        actualCount: actualCount,
+        message: passed 
+          ? `✅ Count matches: ${actualCount} cases displayed`
+          : `❌ Count mismatch: Expected ${expectedCount}, got ${actualCount}`,
+        validationChecks: {
+          countMatch: {
+            passed: passed,
+            message: passed ? 'Count matches expected' : 'Count does not match expected'
+          }
+        }
+      };
+      
+    } catch (error: any) {
+      return {
+        passed: false,
+        expectedCount: 0,
+        actualCount: 0,
+        message: `Validation error: ${error.message}`
+      };
+    }
+  }
+
+  private async getActualResultCount(): Promise<number> {
+    try {
+      // Try to extract count from visible text
+      const textResult = await this.mcpClient.callTools([{
+        id: `get-text-${Date.now()}`,
+        name: 'playwright_get_visible_text',
+        parameters: {}
+      }]);
+      
+      if (textResult[0]?.result && Array.isArray(textResult[0].result)) {
+        const textData = textResult[0].result.find((r: any) => r.type === 'text');
+        const text = textData?.text || '';
+        
+        // Try to find count patterns in text
+        const countPatterns = [
+          /(\d+)\s+results?/i,
+          /showing\s+(\d+)/i,
+          /(\d+)\s+items?/i,
+          /(\d+)\s+cases?/i,
+          /total[:\s]+(\d+)/i
+        ];
+        
+        for (const pattern of countPatterns) {
+          const match = text.match(pattern);
+          if (match) {
+            return parseInt(match[1]);
+          }
+        }
+        
+        // Try to count table rows
+        const tableRowResult = await this.mcpClient.callTools([{
+          id: `count-rows-${Date.now()}`,
+          name: 'playwright_evaluate',
+          parameters: {
+            script: `(() => {
+              const tables = document.querySelectorAll('table');
+              if (tables.length > 0) {
+                const rows = tables[0].querySelectorAll('tbody tr, tbody > tr');
+                return rows.length;
+              }
+              return 0;
+            })()`
+          }
+        }]);
+        
+        if (tableRowResult[0]?.result && Array.isArray(tableRowResult[0].result)) {
+          const evalData = tableRowResult[0].result.find((r: any) => r.type === 'text');
+          const count = parseInt(evalData?.text || '0');
+          if (count > 0) {
+            return count;
+          }
+        }
+      }
+      
+      return 0;
+    } catch (error: any) {
+      console.warn('Failed to get actual result count:', error.message);
+      return 0;
     }
   }
 }

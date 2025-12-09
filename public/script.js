@@ -1409,6 +1409,9 @@ class TestGenerationUI {
 
             const testCaseIds = Array.from(this.selectedTests);
             
+            // Get the actual test cases for the selected IDs
+            const selectedTestCases = this.generatedTests.filter(tc => testCaseIds.includes(tc.id));
+            
             const response = await fetch(`${getApiBasePath()}/api/test/execute`, {
                 method: 'POST',
                 headers: {
@@ -1416,6 +1419,7 @@ class TestGenerationUI {
                 },
                 body: JSON.stringify({ 
                     testCaseIds,
+                    testCases: selectedTestCases, // Send test cases directly
                     options: { 
                         parallel: false,
                         timeout: 30000 
@@ -1446,6 +1450,24 @@ class TestGenerationUI {
     displayTestResults(results, statistics) {
         if (!this.resultsSummary || !this.detailedResults) return;
 
+        // Safety check: Ensure results is an array
+        if (!Array.isArray(results)) {
+            console.warn('⚠️ Results is not an array, converting:', results);
+            // If results is an object with summary properties, create a placeholder
+            if (results && typeof results === 'object') {
+                results = [{
+                    testCaseId: 'unknown',
+                    testCaseName: 'Test Execution',
+                    status: 'error',
+                    duration: results.duration || 0,
+                    startTime: new Date().toISOString(),
+                    error: 'Invalid results format received from backend'
+                }];
+            } else {
+                results = [];
+            }
+        }
+
         // Update summary with run information
         this.resultsSummary.innerHTML = `
             <div class="summary-card">
@@ -1462,7 +1484,7 @@ class TestGenerationUI {
             </div>
             <div class="summary-card">
                 <h4>Duration</h4>
-                <div class="summary-value">${statistics.duration || '0s'}</div>
+                <div class="summary-value">${statistics.duration ? `${(statistics.duration / 1000).toFixed(1)}s` : '0s'}</div>
             </div>
             ${statistics.runId ? `
                 <div class="summary-card">
@@ -1481,6 +1503,11 @@ class TestGenerationUI {
         `;
 
         // Display detailed results
+        if (results.length === 0) {
+            this.detailedResults.innerHTML = '<p>No test results to display.</p>';
+            return;
+        }
+
         this.detailedResults.innerHTML = results.map(result => {
             let validationHTML = '';
             if (result.validation) {
