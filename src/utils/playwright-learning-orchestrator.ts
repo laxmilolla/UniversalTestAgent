@@ -2227,27 +2227,56 @@ Example JSON format:
                 if (!foundSelector || foundSelector === 'unknown') {
                     // Search UI analysis for matching element
                     const uiLabel = mapping.uiLabel || mapping.uiElement || '';
-                    if (uiLabel) {
-                        // Check dropdowns
-                        const dropdownMatch = uiAnalysis.dropdowns?.find((d: any) => 
-                            d.label?.toLowerCase().includes(uiLabel.toLowerCase()) || 
-                            uiLabel.toLowerCase().includes(d.label?.toLowerCase() || '')
-                        );
+                    const tsvField = mapping.tsvField || mapping.dbField || '';
+                    
+                    if (uiLabel || tsvField) {
+                        // Normalize strings for comparison (remove special chars, lowercase)
+                        const normalize = (str: string) => str.toLowerCase().replace(/[^a-z0-9]/g, '');
+                        const normalizedUILabel = normalize(uiLabel);
+                        const normalizedTSVField = normalize(tsvField);
+                        
+                        // Check dropdowns - prioritize exact matches
+                        let dropdownMatch = null;
+                        if (uiAnalysis.dropdowns) {
+                            // First try exact match
+                            dropdownMatch = uiAnalysis.dropdowns.find((d: any) => {
+                                const normalizedLabel = normalize(d.label || '');
+                                return normalizedLabel === normalizedUILabel || normalizedLabel === normalizedTSVField;
+                            });
+                            
+                            // Then try partial match (but more strict)
+                            if (!dropdownMatch) {
+                                dropdownMatch = uiAnalysis.dropdowns.find((d: any) => {
+                                    const normalizedLabel = normalize(d.label || '');
+                                    // Only match if one contains the other and they're similar length (avoid false matches)
+                                    const labelMatch = normalizedUILabel && normalizedLabel && 
+                                        (normalizedLabel.includes(normalizedUILabel) || normalizedUILabel.includes(normalizedLabel));
+                                    const fieldMatch = normalizedTSVField && normalizedLabel && 
+                                        (normalizedLabel.includes(normalizedTSVField) || normalizedTSVField.includes(normalizedLabel));
+                                    return (labelMatch || fieldMatch) && Math.abs(normalizedLabel.length - (normalizedUILabel.length || normalizedTSVField.length)) <= 3;
+                                });
+                            }
+                        }
+                        
                         if (dropdownMatch?.selector) {
                             foundSelector = dropdownMatch.selector;
-                            console.log(`  ✓ Found selector from UI analysis: ${foundSelector} for ${uiLabel}`);
+                            console.log(`  ✓ Found selector from UI analysis: ${foundSelector} for ${uiLabel} (matched to "${dropdownMatch.label}")`);
                         }
                         
                         // Check search boxes
-                        if (!foundSelector) {
-                            const searchMatch = uiAnalysis.searchBoxes?.find((s: any) => 
-                                s.label?.toLowerCase().includes(uiLabel.toLowerCase()) || 
-                                s.placeholder?.toLowerCase().includes(uiLabel.toLowerCase()) ||
-                                uiLabel.toLowerCase().includes(s.label?.toLowerCase() || '')
-                            );
+                        if (!foundSelector && uiAnalysis.searchBoxes) {
+                            const searchMatch = uiAnalysis.searchBoxes.find((s: any) => {
+                                const normalizedLabel = normalize(s.label || '');
+                                const normalizedPlaceholder = normalize(s.placeholder || '');
+                                return normalizedLabel === normalizedUILabel || 
+                                       normalizedPlaceholder === normalizedUILabel ||
+                                       normalizedLabel === normalizedTSVField ||
+                                       normalizedPlaceholder === normalizedTSVField;
+                            });
+                            
                             if (searchMatch?.selector) {
                                 foundSelector = searchMatch.selector;
-                                console.log(`  ✓ Found selector from UI analysis: ${foundSelector} for ${uiLabel}`);
+                                console.log(`  ✓ Found selector from UI analysis: ${foundSelector} for ${uiLabel} (matched to search box "${searchMatch.label || searchMatch.placeholder}")`);
                             }
                         }
                     }
@@ -2372,12 +2401,38 @@ CRITICAL: For each test case, use the "uiSelector" from the corresponding mappin
             throw new Error('LLM returned invalid test cases format. Expected array.');
         }
         
-        // Enhance test cases with data-driven expected results
-        console.log(`📊 Enhancing ${testCases.length} test cases with TSV record counts...`);
+        // Enhance test cases with data-driven expected results and correct selectors
+        console.log(`📊 Enhancing ${testCases.length} test cases with TSV record counts and selectors...`);
         testCases = await Promise.all(
             testCases.map(async (testCase: any) => {
+                // First, ensure selector is correct from mappings
+                let correctedSelectors = testCase.selectors || {};
+                if (testCase.dataField && mappings && mappings.length > 0) {
+                    // Find the mapping that matches this test case's dataField
+                    const matchingMapping = mappings.find((m: any) => 
+                        m.tsvField === testCase.dataField || 
+                        m.dbField === testCase.dataField ||
+                        testCase.dataField.includes(m.tsvField) ||
+                        m.tsvField.includes(testCase.dataField)
+                    );
+                    
+                    if (matchingMapping?.uiSelector && matchingMapping.uiSelector !== 'unknown') {
+                        // Use the selector from the mapping
+                        correctedSelectors = {
+                            field: matchingMapping.uiSelector,
+                            ...correctedSelectors
+                        };
+                        console.log(`  ✓ Corrected selector for ${testCase.dataField}: ${matchingMapping.uiSelector}`);
+                    } else {
+                        console.warn(`  ⚠️ No mapping found for dataField: ${testCase.dataField}`);
+                    }
+                }
+                
                 if (!testCase.dataField || !Array.isArray(testCase.testValues) || testCase.testValues.length === 0) {
-                    return testCase;
+                    return {
+                        ...testCase,
+                        selectors: correctedSelectors
+                    };
                 }
                 
                 // Generate expected results for each test value
@@ -2395,9 +2450,10 @@ CRITICAL: For each test case, use the "uiSelector" from the corresponding mappin
                     }
                 }
                 
-                // Update test case with expected results
+                // Update test case with expected results and corrected selectors
                 return {
                     ...testCase,
+                    selectors: correctedSelectors,
                     expectedResults: expectedResults.length > 0 ? expectedResults : (testCase.expectedResults || ['Test passes']),
                     expectedBehavior: expectedResults.length > 0 ? expectedResults.join('; ') : (testCase.expectedBehavior || 'Test passes')
                 };
