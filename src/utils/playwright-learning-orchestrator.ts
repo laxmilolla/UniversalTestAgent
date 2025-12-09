@@ -1907,9 +1907,11 @@ private convertHTMLPatternsToResult(htmlPatterns: any): any {
             console.log('🎯 Discovered Data Patterns:', dataPatterns);
             
             // Convert to the expected format for compatibility
+            // simpleDataAnalysis returns fieldNames as a direct array of strings
+            const fieldNames = dataPatterns.fieldNames || [];
             const result = {
-                totalFields: Object.values(dataPatterns).flat().length,
-                fieldNames: Object.values(dataPatterns).flat().map((f: any) => f.name),
+                totalFields: fieldNames.length,
+                fieldNames: fieldNames, // Use fieldNames directly from dataPatterns
                 fieldTypes: this.extractFieldTypes(dataPatterns),
                 relationships: this.extractRelationships(dataPatterns),
                 businessRules: this.extractBusinessRules(dataPatterns),
