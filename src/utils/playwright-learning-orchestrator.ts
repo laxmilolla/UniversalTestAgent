@@ -2512,10 +2512,16 @@ CRITICAL: For each test case, use the "uiSelector" from the corresponding mappin
                         console.log(`  ✓ Corrected selector for ${testCase.dataField}: ${matchingMapping.uiSelector}`);
                     } else if (selectorMap) {
                         // Fallback: Use selector map directly
-                        const normalize = (str: string) => str.toLowerCase().replace(/[^a-z0-9]/g, '');
-                        const fieldSelector = selectorMap.get(normalize(testCase.dataField));
-                        const fieldWithoutPrefix = testCase.dataField.split('.').pop() || testCase.dataField;
-                        const fieldSelector2 = selectorMap.get(normalize(fieldWithoutPrefix));
+                        const normalize = (str: string) => {
+                            if (!str || typeof str !== 'string') return '';
+                            return str.toLowerCase().replace(/[^a-z0-9]/g, '');
+                        };
+                        const normalizedField = testCase.dataField ? normalize(testCase.dataField) : '';
+                        const fieldSelector = normalizedField ? selectorMap.get(normalizedField) : null;
+                        const fieldWithoutPrefix = testCase.dataField && typeof testCase.dataField === 'string' 
+                            ? testCase.dataField.split('.').pop() || testCase.dataField 
+                            : '';
+                        const fieldSelector2 = fieldWithoutPrefix ? selectorMap.get(normalize(fieldWithoutPrefix)) : null;
                         
                         if (fieldSelector || fieldSelector2) {
                             correctedSelectors = {
