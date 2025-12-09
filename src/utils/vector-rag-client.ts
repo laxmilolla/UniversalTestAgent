@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import { BedrockClient } from '../chatbot/bedrock-client';
 
 export class VectorRAGClient {
@@ -18,11 +18,13 @@ export class VectorRAGClient {
         });
         this.bedrockClient = bedrockClient;
         
-        // Clear existing vector store to force re-indexing with new metadata structure
-        this.vectorStore.clear();
-        this.tsvMetadata = {};
+        // Don't clear vector store - it should persist across requests
+        // Only clear if explicitly needed (e.g., new learning session)
+        // this.vectorStore.clear();
+        // this.tsvMetadata = {};
         
         console.log('✅ VectorRAGClient initialized with S3 and Bedrock');
+        console.log(`📊 Vector store size: ${this.vectorStore.size} (preserved from previous session)`);
     }
     
     async indexTSVData(tsvFiles: any[]): Promise<void> {
@@ -457,26 +459,38 @@ export class VectorRAGClient {
 
     async queryMappings(question: string): Promise<any[]> {
         console.log(`🔍 Querying RAG for mappings: "${question}"`);
+        console.log(`📊 Vector store size: ${this.vectorStore.size}`);
         
         try {
             // Directly iterate through vector store to find all mappings
             // This is more reliable than semantic search which might miss mappings
             // if they're not in the top K results
             const mappingResults: any[] = [];
+            let totalChunks = 0;
+            let chunksWithMetadata = 0;
+            let chunksWithMappingType = 0;
             
             for (const [id, chunk] of this.vectorStore.entries()) {
+                totalChunks++;
                 // Check if this chunk is a mapping
-                if (chunk && typeof chunk === 'object' && chunk.metadata?.type === 'ui_tsv_mapping') {
-                    mappingResults.push({
-                        id: id,
-                        text: chunk.text || '',
-                        metadata: chunk.metadata || {},
-                        similarity: 1.0, // Direct match, so perfect similarity
-                        fileName: chunk.metadata?.tsvFile || ''
-                    });
+                if (chunk && typeof chunk === 'object') {
+                    if (chunk.metadata) {
+                        chunksWithMetadata++;
+                        if (chunk.metadata.type === 'ui_tsv_mapping') {
+                            chunksWithMappingType++;
+                            mappingResults.push({
+                                id: id,
+                                text: chunk.text || '',
+                                metadata: chunk.metadata || {},
+                                similarity: 1.0, // Direct match, so perfect similarity
+                                fileName: chunk.metadata?.tsvFile || ''
+                            });
+                        }
+                    }
                 }
             }
             
+            console.log(`📊 Vector store analysis: ${totalChunks} total chunks, ${chunksWithMetadata} with metadata, ${chunksWithMappingType} with type 'ui_tsv_mapping'`);
             console.log(`✅ Found ${mappingResults.length} mappings in vector store (direct filter)`);
             
             // If we found mappings, return them
