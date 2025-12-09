@@ -1030,49 +1030,19 @@ class TestGenerationUI {
                 // Store test cases globally for debugging
                 window.testCases = convertedTestCases;
                 
-                // Call backend API to save test cases to storage
-                try {
-                    const response = await fetch(`${getApiBasePath()}/api/test/generate`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            learningResults: {
-                                analysis: {
-                                    mapping: {
-                                        testCases: learningResults.analysis?.mapping?.testCases || []
-                                    }
-                                }
-                            },
-                            testOptions: this.getTestOptions()
-                        })
-                    });
-
-                    const result = await response.json();
-
-                    if (result.success) {
-                        this.generatedTests = result.testCases;
-                        this.displayTestCases();
-                        this.showTestCasesSection();
-                        this.updateTestStatistics();
-                        
-                        console.log(`✅ Loaded and saved ${this.generatedTests.length} test cases from Phase 1`);
-                        
-                        // Update button text to reflect that test cases are now loaded
-                        this.generateBtn.innerHTML = '<span class="btn-icon">✅</span><span class="btn-text">Test Cases Loaded</span>';
-                        this.generationStatus.textContent = `Successfully loaded ${this.generatedTests.length} test cases from Phase 1`;
-                    } else {
-                        throw new Error(result.error || 'Failed to load test cases from Phase 1');
-                    }
-                } catch (error) {
-                    console.error('❌ Failed to load test cases from Phase 1:', error);
-                    this.showError(error.message);
-                } finally {
-                    this.generateBtn.disabled = false;
-                    this.generateBtn.innerHTML = '<span class="btn-icon">✅</span><span class="btn-text">Test Cases Loaded</span>';
-                    this.generationStatus.style.display = 'none';
-                }
+                // Use the converted test cases directly (don't call backend API which generates new ones)
+                this.generatedTests = convertedTestCases;
+                this.displayTestCases();
+                this.showTestCasesSection();
+                this.updateTestStatistics();
+                
+                console.log(`✅ Loaded ${this.generatedTests.length} test cases from Phase 1`);
+                
+                // Update button text to reflect that test cases are now loaded
+                this.generateBtn.disabled = false;
+                this.generateBtn.innerHTML = '<span class="btn-icon">✅</span><span class="btn-text">Test Cases Loaded</span>';
+                this.generationStatus.textContent = `Successfully loaded ${this.generatedTests.length} test cases from Phase 1`;
+                this.generationStatus.style.display = 'none';
                 
                 return;
             }
