@@ -297,10 +297,69 @@ class LearningPhaseUI {
             document.addEventListener('DOMContentLoaded', () => {
                 this.initializeElements();
                 this.setupEventListeners();
+                this.restoreLearningResults();
             });
         } else {
             this.initializeElements();
             this.setupEventListeners();
+            this.restoreLearningResults();
+        }
+    }
+
+    restoreLearningResults() {
+        try {
+            const savedResults = localStorage.getItem('learningResults');
+            if (savedResults) {
+                const parsed = JSON.parse(savedResults);
+                // Check if results are recent (less than 24 hours old)
+                const timestamp = parsed.timestamp ? new Date(parsed.timestamp) : null;
+                const isRecent = timestamp && (Date.now() - timestamp.getTime()) < 24 * 60 * 60 * 1000;
+                
+                if (isRecent || !timestamp) {
+                    window.learningResults = parsed;
+                    console.log('Restored learning results from localStorage:', window.learningResults);
+                    
+                    // Restore UI state if we're on the learning phase
+                    if (this.learningResults && window.learningResults.success) {
+                        const results = window.learningResults.results || {};
+                        const analysis = window.learningResults.analysis || {};
+                        
+                        // Update result cards
+                        if (this.uiElementsCount) this.uiElementsCount.textContent = results.uiElements || 0;
+                        if (this.dbFieldsCount) this.dbFieldsCount.textContent = results.dbFields || 0;
+                        if (this.testCasesCount) this.testCasesCount.textContent = results.testCases || 0;
+                        if (this.mappingsCount) this.mappingsCount.textContent = results.mappings || 0;
+                        
+                        // Show results section
+                        if (this.learningResults) {
+                            this.learningResults.style.display = 'block';
+                        }
+                        
+                        // Show detailed analysis
+                        if (analysis) {
+                            this.showDetailedAnalysis(analysis);
+                        }
+                        
+                        // Enable learn button
+                        if (this.learnBtn) {
+                            this.learnBtn.disabled = false;
+                        }
+                        
+                        console.log('✅ Learning results UI restored from localStorage');
+                    }
+                } else {
+                    console.log('Learning results are too old, clearing localStorage');
+                    localStorage.removeItem('learningResults');
+                }
+            }
+        } catch (e) {
+            console.warn('Failed to restore learning results from localStorage:', e);
+            // Clear corrupted data
+            try {
+                localStorage.removeItem('learningResults');
+            } catch (clearError) {
+                console.error('Failed to clear corrupted localStorage:', clearError);
+            }
         }
     }
 
@@ -363,6 +422,8 @@ class LearningPhaseUI {
     }
 
     switchPhase(phase) {
+        console.log('Switching to phase:', phase);
+        
         // Update tab buttons
         this.tabButtons.forEach(btn => {
             btn.classList.toggle('active', btn.dataset.phase === phase);
@@ -370,8 +431,27 @@ class LearningPhaseUI {
 
         // Update phase content
         this.phaseContents.forEach(content => {
-            content.classList.toggle('active', content.id === `${phase}-phase`);
+            const isActive = content.id === `${phase}-phase`;
+            content.classList.toggle('active', isActive);
+            
+            // Scroll to top when switching phases
+            if (isActive) {
+                content.scrollTop = 0;
+            }
         });
+        
+        // Restore learning results if switching to test generation phase
+        if (phase === 'test-generation') {
+            console.log('Switched to test generation phase');
+            // Update test generation button state if TestGenerationUI is available
+            if (window.testGenerationUI && typeof window.testGenerationUI.updateGenerateButton === 'function') {
+                window.testGenerationUI.updateGenerateButton();
+                // Also try to auto-load test cases
+                if (typeof window.testGenerationUI.autoLoadTestCases === 'function') {
+                    window.testGenerationUI.autoLoadTestCases();
+                }
+            }
+        }
     }
 
     async handleFileUpload(event, fileType) {
@@ -503,8 +583,17 @@ class LearningPhaseUI {
         window.learningResults = {
             success: true,
             results: results,
-            analysis: analysis
+            analysis: analysis,
+            timestamp: new Date().toISOString()
         };
+        
+        // Save to localStorage for persistence
+        try {
+            localStorage.setItem('learningResults', JSON.stringify(window.learningResults));
+            console.log('Learning results saved to localStorage');
+        } catch (e) {
+            console.warn('Failed to save learning results to localStorage:', e);
+        }
         
         console.log('Learning results stored globally:', window.learningResults);
 

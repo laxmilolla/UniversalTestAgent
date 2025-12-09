@@ -364,7 +364,10 @@ body {
 .phase-content {
     display: none;
     margin-top: 60px; /* Account for fixed tabs */
-    min-height: calc(100vh - 60px);
+    height: calc(100vh - 60px);
+    overflow-y: auto;
+    overflow-x: hidden;
+    position: relative;
 }
 
 .phase-content.active {
