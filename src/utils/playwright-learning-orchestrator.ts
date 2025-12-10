@@ -27,6 +27,7 @@ export class PlaywrightLearningOrchestrator {
     private currentTSVFiles: any[] = []; // Add this line
     private currentTSVData: any[] = []; // Parsed TSV data for dynamic test value extraction
     private uiContext: UIContext | null = null; // TSV-Driven: User-provided UI context
+    private studyFilterInfo: {studyName: string, panelSelector: string, checkboxLabel: string} | null = null; // Study filter info for test execution
 
     // Add global LLM tracking
     private llmCallTracker: any[] = [];
@@ -472,6 +473,7 @@ export class PlaywrightLearningOrchestrator {
                     ui: uiAnalysis,
                     mapping: mappingAnalysis
                 },
+                studyFilterInfo: this.studyFilterInfo, // Include study filter info for test execution
                 executionTrace: this.executionTrace,
                 llmResponses: this.llmCallTracker,
                 lastLLMResponse: this.llmCallTracker.length > 0 ? this.llmCallTracker[this.llmCallTracker.length - 1] : null
@@ -1242,6 +1244,7 @@ Response (JSON array only):`;
         
         // Step 1: Navigate to the specific study data and get filter info
         const studyFilterInfo = await this.navigateToStudyData();
+        this.studyFilterInfo = studyFilterInfo; // Store for later use in test execution
         
         // Step 2: Extract TSV columns for automatic matching
         const tsvColumns = this.extractTSVColumns();

@@ -255,6 +255,16 @@ export class TestGenerationOrchestrator {
           // Dismiss any modals/popups that might block test execution
           await this.dismissModals();
           
+          // Apply study filter if available
+          const studyFilterInfo = learningResults?.studyFilterInfo || 
+                                  (learningResults as any)?.analysis?.studyFilterInfo ||
+                                  null;
+          if (studyFilterInfo) {
+            console.log(`  🎯 Applying study filter: ${studyFilterInfo.studyName}`);
+            await this.applyStudyFilter(studyFilterInfo);
+            await new Promise(resolve => setTimeout(resolve, 2000)); // Wait for filter to apply
+          }
+          
           // Execute test steps
           const steps = Array.isArray(testCase.steps) ? testCase.steps : [];
           const selectors = testCase.selectors || {};
@@ -695,6 +705,10 @@ export class TestGenerationOrchestrator {
           // Capture screenshot and convert to base64 data URL
           let screenshot: string | null = null;
           try {
+            // Maximize screen before taking screenshot
+            await this.maximizeScreen();
+            await new Promise(resolve => setTimeout(resolve, 500)); // Wait for resize to complete
+            
             const screenshotResult = await this.mcpClient.callTools([{
               id: `screenshot-${testCaseId}`,
               name: 'playwright_screenshot',
@@ -896,6 +910,149 @@ export class TestGenerationOrchestrator {
         actualCount: 0,
         message: `Validation error: ${error.message}`
       };
+    }
+  }
+
+  /**
+   * Maximize screen before taking screenshots
+   */
+  private async maximizeScreen(): Promise<void> {
+    try {
+      await this.mcpClient.callTools([{
+        id: `maximize-screen-${Date.now()}`,
+        name: 'playwright_evaluate',
+        parameters: {
+          script: `(() => {
+            // Maximize viewport to full screen dimensions
+            window.resizeTo(screen.width, screen.height);
+            // Also try to maximize the browser window if possible
+            if (window.screen && window.screen.availWidth && window.screen.availHeight) {
+              window.resizeTo(window.screen.availWidth, window.screen.availHeight);
+            }
+            return { maximized: true, width: window.innerWidth, height: window.innerHeight };
+          })()`
+        }
+      }]);
+      console.log('  📐 Screen maximized for screenshot');
+    } catch (error: any) {
+      console.warn(`  ⚠️ Failed to maximize screen: ${error.message}`);
+    }
+  }
+
+  /**
+   * Apply study filter before test execution
+   * Similar to reapplyStudyFilter in ActiveUIExplorer
+   */
+  private async applyStudyFilter(studyFilterInfo: {studyName: string, panelSelector: string, checkboxLabel: string}): Promise<void> {
+    if (!studyFilterInfo) return;
+    
+    console.log(`  🎯 Applying study filter: ${studyFilterInfo.studyName}`);
+    
+    try {
+      const { panelSelector, checkboxLabel } = studyFilterInfo;
+      const escapedLabel = JSON.stringify(checkboxLabel);
+      
+      // Expand panel if needed
+      await this.mcpClient.callTools([{
+        name: 'playwright_evaluate',
+        parameters: {
+          script: `(() => {
+            const panel = document.querySelector('${panelSelector}');
+            if (panel && panel.getAttribute('aria-expanded') === 'false') {
+              panel.click();
+              return { expanded: true };
+            }
+            return { expanded: false };
+          })()`
+        },
+        id: `expand-study-panel-${Date.now()}`
+      }]);
+      
+      await new Promise(resolve => setTimeout(resolve, 800));
+      
+      // Click the study checkbox (check if already checked first to avoid unnecessary clicks)
+      const clickResult = await this.mcpClient.callTools([{
+        name: 'playwright_evaluate',
+        parameters: {
+          script: `(() => {
+            const panel = document.querySelector('${panelSelector}');
+            if (!panel) return { clicked: false, alreadyChecked: false };
+            
+            let expandedContent = null;
+            const parentContainer = panel.closest('div[id]')?.parentElement || panel.parentElement?.parentElement;
+            if (parentContainer) {
+              expandedContent = parentContainer.querySelector('div[role="region"]');
+            }
+            if (!expandedContent) {
+              const allRegions = document.querySelectorAll('div[role="region"]');
+              for (const region of allRegions) {
+                const checkboxes = region.querySelectorAll('input[type="checkbox"]');
+                if (checkboxes.length > 0) {
+                  const panelParent = panel.closest('div[id]')?.parentElement;
+                  const regionParent = region.closest('div[id]')?.parentElement;
+                  if (panelParent === regionParent || region.contains(panel) || panel.contains(region)) {
+                    expandedContent = region;
+                    break;
+                  }
+                }
+              }
+            }
+            if (!expandedContent) return { clicked: false, alreadyChecked: false };
+            
+            const targetLabel = ${escapedLabel};
+            const checkboxes = expandedContent.querySelectorAll('input[type="checkbox"]');
+            for (const cb of checkboxes) {
+              const row = cb.closest('div[role="button"]');
+              if (!row) continue;
+              const nameDiv = row.querySelector('div.filter_by_casesNameUnChecked, div[class*="filter_by_casesName"]');
+              const labelEl = nameDiv ? nameDiv.querySelector('p') : null;
+              const labelText = labelEl ? labelEl.textContent?.trim() : '';
+              if (labelText === targetLabel) {
+                // Check if already checked
+                if (cb.checked) {
+                  return { clicked: false, alreadyChecked: true, label: labelText };
+                }
+                cb.click();
+                return { clicked: true, alreadyChecked: false, label: labelText };
+              }
+            }
+            return { clicked: false, alreadyChecked: false };
+          })()`
+        },
+        id: `apply-study-filter-${Date.now()}`
+      }]);
+      
+      // Parse result to check if checkbox was clicked
+      let clickSuccess = false;
+      if (clickResult[0]?.result && Array.isArray(clickResult[0].result)) {
+        let foundResult = false;
+        for (const item of clickResult[0].result) {
+          if (item.type === 'text' && item.text) {
+            if (item.text === 'Result:') {
+              foundResult = true;
+              continue;
+            }
+            if (foundResult || item.text.startsWith('{') || item.text.startsWith('[')) {
+              try {
+                const parsed = JSON.parse(item.text);
+                if (parsed.clicked || parsed.alreadyChecked) {
+                  clickSuccess = true;
+                  break;
+                }
+              } catch (e) {}
+            }
+          }
+        }
+      }
+      
+      if (clickSuccess) {
+        await new Promise(resolve => setTimeout(resolve, 1500)); // Wait for filter to apply
+        console.log(`  ✅ Study filter applied: ${studyFilterInfo.studyName}`);
+      } else {
+        console.warn(`  ⚠️ Failed to click study filter checkbox: ${studyFilterInfo.studyName}`);
+      }
+    } catch (error: any) {
+      console.warn(`  ⚠️ Failed to apply study filter: ${error.message}`);
     }
   }
 
