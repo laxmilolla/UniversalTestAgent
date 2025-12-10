@@ -407,121 +407,187 @@ export class TestGenerationOrchestrator {
                     
                     if (hasValueInStep && valueToSelect) {
                         console.log(`    🔍 Looking for checkbox with value: ${valueToSelect}`);
-                        // Find and click the checkbox with matching label
-                        const checkboxResult = await this.mcpClient.callTools([{
-                          id: `find-checkbox-click-${testCaseId}-${stepIndex}`,
-                          name: 'playwright_evaluate',
-                          parameters: {
-                            script: `(() => {
-                              const panel = document.querySelector('${selector}');
-                              if (!panel) return { found: false, error: 'Panel not found' };
-                              
-                              // Find expanded content area - try multiple strategies
-                              let expandedContent = panel.closest('[id]')?.parentElement?.querySelector('[role="region"]');
-                              if (!expandedContent) {
-                                expandedContent = panel.parentElement?.querySelector('[role="region"]');
-                              }
-                              if (!expandedContent) {
-                                // Try finding by MUI expansion panel structure
-                                expandedContent = panel.parentElement?.querySelector('.MuiCollapse-root, [class*="Collapse"]');
-                              }
-                              if (!expandedContent) {
-                                // Last resort: look for any expanded content after the panel
-                                const nextSibling = panel.nextElementSibling;
-                                if (nextSibling && (nextSibling.getAttribute('role') === 'region' || nextSibling.className.includes('Collapse'))) {
-                                  expandedContent = nextSibling;
-                                }
-                              }
-                              if (!expandedContent) return { found: false, error: 'Expanded content not found', panelId: panel.id, panelClass: panel.className };
-                              
-                              // Find checkbox with matching label text
-                              const checkboxes = expandedContent.querySelectorAll('input[type="checkbox"]');
-                              const searchValue = ${JSON.stringify(valueToSelect)};
-                              const foundLabels = [];
-                              
-                              for (const cb of checkboxes) {
-                                const row = cb.closest('div[role="button"]');
-                                if (!row) continue;
-                                
-                                // Look for label in p.filter_by_casesNameUnChecked or similar
-                                const labelEl = row.querySelector('p.filter_by_casesNameUnChecked, p[class*="filter_by_casesName"], p[class*="filter_by"], p');
-                                const labelText = labelEl ? labelEl.textContent?.trim() : '';
-                                if (labelText) foundLabels.push(labelText);
-                                
-                                // Match exact or partial (for values like "Osteosarcoma" matching "Osteosarcoma (123)")
-                                if (labelText && (
-                                  labelText === searchValue || 
-                                  labelText.includes(searchValue) ||
-                                  searchValue.includes(labelText.split('(')[0].trim())
-                                )) {
-                                  cb.click();
-                                  return { found: true, clicked: true, label: labelText };
-                                }
-                              }
-                              
-                              return { found: false, clicked: false, checkboxCount: checkboxes.length, foundLabels: foundLabels.slice(0, 5), searchValue: searchValue };
-                            })()`
-                          }
-                        }]);
                         
-                        if (checkboxResult[0]?.result && Array.isArray(checkboxResult[0].result)) {
-                          // MCP result format: find JSON after "Result:"
-                          let foundResult = false;
-                          let parsedResult = null;
-                          for (const item of checkboxResult[0].result) {
-                            if (item.type === 'text' && item.text) {
-                              if (item.text === 'Result:') {
-                                foundResult = true;
-                                continue; // Next item should be the actual data
-                              }
-                              if (foundResult || item.text.startsWith('{') || item.text.startsWith('[')) {
-                                try {
-                                  parsedResult = JSON.parse(item.text);
-                                  break; // Found and parsed, exit loop
-                                } catch (e) {
-                                  // Not valid JSON, continue to next item
-                                  console.warn(`    ⚠️ Failed to parse checkbox result JSON: ${item.text.substring(0, 100)}`);
-                                }
-                              }
-                            }
-                          }
-                          
-                          if (parsedResult) {
-                            if (parsedResult.found && parsedResult.clicked) {
-                              console.log(`    ✅ Selected checkbox: ${parsedResult.label || valueToSelect}`);
-                              await new Promise(resolve => setTimeout(resolve, 1000));
-                              
-                              // Use MCP playwright_hover to scroll panel into view before screenshot
-                              // This ensures the checkbox is visible in the screenshot
-                              try {
-                                await this.mcpClient.callTools([{
-                                  id: `hover-panel-${testCaseId}-${stepIndex}`,
-                                  name: 'playwright_hover',
-                                  parameters: { 
-                                    selector: selector  // e.g., "#Diagnosis" - this will scroll it into view
-                                  }
+                        // HYBRID APPROACH: Try stored selector first, then fall back to label matching
+                        const optionSelectors = testCase.optionSelectors || {};
+                        const storedSelector = optionSelectors[valueToSelect];
+                        
+                        let checkboxClicked = false;
+                        
+                        // Strategy 1: Use stored selector if available
+                        if (storedSelector) {
+                            console.log(`    🎯 Using stored selector for "${valueToSelect}": ${storedSelector}`);
+                            try {
+                                // Check if checkbox is already checked
+                                const checkState = await this.mcpClient.callTools([{
+                                    name: 'playwright_evaluate',
+                                    parameters: {
+                                        script: `(() => {
+                                            const cb = document.querySelector('${storedSelector}');
+                                            if (!cb) return { exists: false, checked: false };
+                                            return { exists: true, checked: cb.checked || cb.getAttribute('aria-checked') === 'true' };
+                                        })()`
+                                    },
+                                    id: `check-checkbox-state-${testCaseId}-${stepIndex}`
                                 }]);
-                                // Wait for hover/scroll to complete
-                                await new Promise(resolve => setTimeout(resolve, 500));
-                              } catch (error: any) {
-                                console.warn(`    ⚠️ Failed to hover panel for screenshot: ${error.message}`);
-                              }
-                              
-                              // Capture screenshot after checkbox click
-                              const checkboxScreenshot = await this.captureStepScreenshot(stepIndex, `Selected checkbox: ${parsedResult.label || valueToSelect}`);
-                              if (checkboxScreenshot) {
-                                stepScreenshots.push({ step: stepIndex + 1, description: step, screenshot: checkboxScreenshot });
-                              }
-                              
-                              continue; // Success, move to next step
-                            } else {
-                              console.warn(`    ⚠️ Checkbox not found for value: ${valueToSelect}. Result: ${JSON.stringify(parsedResult)}`);
+                                
+                                let isChecked = false;
+                                let exists = false;
+                                if (checkState[0]?.result && Array.isArray(checkState[0].result)) {
+                                    for (const item of checkState[0].result) {
+                                        if (item.type === 'text' && item.text && item.text.startsWith('{')) {
+                                            try {
+                                                const parsed = JSON.parse(item.text);
+                                                exists = parsed.exists === true;
+                                                isChecked = parsed.checked === true;
+                                                break;
+                                            } catch (e) {}
+                                        }
+                                    }
+                                }
+                                
+                                if (!exists) {
+                                    console.warn(`    ⚠️ Stored selector not found, falling back to label matching`);
+                                } else if (isChecked) {
+                                    console.log(`    ℹ️ Checkbox "${valueToSelect}" is already checked, skipping click`);
+                                    checkboxClicked = true; // Consider it successful
+                                } else {
+                                    // Click using MCP playwright_click
+                                    await this.mcpClient.callTools([{
+                                        id: `click-checkbox-stored-${testCaseId}-${stepIndex}`,
+                                        name: 'playwright_click',
+                                        parameters: { selector: storedSelector }
+                                    }]);
+                                    console.log(`    ✅ Clicked checkbox using stored selector: ${valueToSelect}`);
+                                    checkboxClicked = true;
+                                }
+                            } catch (error: any) {
+                                console.warn(`    ⚠️ Failed to use stored selector, falling back to label matching: ${error.message}`);
                             }
-                          } else {
-                            console.warn(`    ⚠️ No checkbox result parsed. CheckboxResult structure: ${JSON.stringify(checkboxResult[0]?.result?.slice(0, 3))}`);
-                          }
-                        } else {
-                          console.warn(`    ⚠️ Checkbox result structure invalid: ${JSON.stringify(checkboxResult[0])}`);
+                        }
+                        
+                        // Strategy 2: Fallback to label matching if stored selector failed or not available
+                        if (!checkboxClicked) {
+                            console.log(`    🔍 Falling back to label matching for "${valueToSelect}"`);
+                            const checkboxResult = await this.mcpClient.callTools([{
+                                id: `find-checkbox-click-${testCaseId}-${stepIndex}`,
+                                name: 'playwright_evaluate',
+                                parameters: {
+                                    script: `(() => {
+                                      const panel = document.querySelector('${selector}');
+                                      if (!panel) return { found: false, error: 'Panel not found' };
+                                      
+                                      // Find expanded content area - try multiple strategies
+                                      let expandedContent = panel.closest('[id]')?.parentElement?.querySelector('[role="region"]');
+                                      if (!expandedContent) {
+                                        expandedContent = panel.parentElement?.querySelector('[role="region"]');
+                                      }
+                                      if (!expandedContent) {
+                                        expandedContent = panel.parentElement?.querySelector('.MuiCollapse-root, [class*="Collapse"]');
+                                      }
+                                      if (!expandedContent) {
+                                        const nextSibling = panel.nextElementSibling;
+                                        if (nextSibling && (nextSibling.getAttribute('role') === 'region' || nextSibling.className.includes('Collapse'))) {
+                                          expandedContent = nextSibling;
+                                        }
+                                      }
+                                      if (!expandedContent) return { found: false, error: 'Expanded content not found' };
+                                      
+                                      // Find checkbox with matching label text
+                                      const checkboxes = expandedContent.querySelectorAll('input[type="checkbox"]');
+                                      const searchValue = ${JSON.stringify(valueToSelect)};
+                                      
+                                      for (const cb of checkboxes) {
+                                        const row = cb.closest('div[role="button"]');
+                                        if (!row) continue;
+                                        
+                                        // Check if already checked
+                                        if (cb.checked || cb.getAttribute('aria-checked') === 'true') {
+                                          // Still check label to confirm it's the right one
+                                          const labelEl = row.querySelector('p.filter_by_casesNameUnChecked, p[class*="filter_by_casesName"], p[class*="filter_by"], p');
+                                          const labelText = labelEl ? labelEl.textContent?.trim() : '';
+                                          if (labelText && (
+                                            labelText === searchValue || 
+                                            labelText.includes(searchValue) ||
+                                            searchValue.includes(labelText.split('(')[0].trim())
+                                          )) {
+                                            return { found: true, clicked: false, alreadyChecked: true, label: labelText };
+                                          }
+                                        }
+                                        
+                                        // Look for label
+                                        const labelEl = row.querySelector('p.filter_by_casesNameUnChecked, p[class*="filter_by_casesName"], p[class*="filter_by"], p');
+                                        const labelText = labelEl ? labelEl.textContent?.trim() : '';
+                                        
+                                        // Match exact or partial
+                                        if (labelText && (
+                                          labelText === searchValue || 
+                                          labelText.includes(searchValue) ||
+                                          searchValue.includes(labelText.split('(')[0].trim())
+                                        )) {
+                                          cb.click();
+                                          return { found: true, clicked: true, label: labelText };
+                                        }
+                                      }
+                                      
+                                      return { found: false, clicked: false };
+                                    })()`
+                                }
+                            }]);
+                            
+                            if (checkboxResult[0]?.result && Array.isArray(checkboxResult[0].result)) {
+                                let foundResult = false;
+                                let parsedResult = null;
+                                for (const item of checkboxResult[0].result) {
+                                    if (item.type === 'text' && item.text) {
+                                        if (item.text === 'Result:') {
+                                            foundResult = true;
+                                            continue;
+                                        }
+                                        if (foundResult || item.text.startsWith('{') || item.text.startsWith('[')) {
+                                            try {
+                                                parsedResult = JSON.parse(item.text);
+                                                break;
+                                            } catch (e) {
+                                                console.warn(`    ⚠️ Failed to parse checkbox result JSON: ${item.text.substring(0, 100)}`);
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                if (parsedResult) {
+                                    if (parsedResult.found && (parsedResult.clicked || parsedResult.alreadyChecked)) {
+                                        console.log(`    ✅ ${parsedResult.alreadyChecked ? 'Checkbox already checked' : 'Selected checkbox'}: ${parsedResult.label || valueToSelect}`);
+                                        checkboxClicked = true;
+                                    } else {
+                                        console.warn(`    ⚠️ Checkbox not found for value: ${valueToSelect}`);
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if (checkboxClicked) {
+                            await new Promise(resolve => setTimeout(resolve, 1000));
+                            
+                            // Hover panel to scroll into view for screenshot
+                            try {
+                                await this.mcpClient.callTools([{
+                                    id: `hover-panel-${testCaseId}-${stepIndex}`,
+                                    name: 'playwright_hover',
+                                    parameters: { selector: selector }
+                                }]);
+                                await new Promise(resolve => setTimeout(resolve, 500));
+                            } catch (error: any) {
+                                console.warn(`    ⚠️ Failed to hover panel: ${error.message}`);
+                            }
+                            
+                            // Capture screenshot
+                            const checkboxScreenshot = await this.captureStepScreenshot(stepIndex, `Selected checkbox: ${valueToSelect}`);
+                            if (checkboxScreenshot) {
+                                stepScreenshots.push({ step: stepIndex + 1, description: step, screenshot: checkboxScreenshot });
+                            }
+                            
+                            continue; // Success, move to next step
                         }
                       }
                     

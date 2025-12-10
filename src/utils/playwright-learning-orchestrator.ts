@@ -2218,12 +2218,27 @@ Return JSON:
             // Step 3: Send compact context to LLM
             // Include full UI analysis so LLM can see all discovered elements
             const uiElementsSummary = {
-                dropdowns: uiAnalysis.dropdowns?.map((d: any) => ({
-                    label: d.text || d.label,
-                    selector: d.selector,
-                    optionCount: d.optionCount || d.allOptions?.length || 0,
-                    sampleOptions: d.allOptions?.slice(0, 5) || []
-                })) || [],
+                dropdowns: uiAnalysis.dropdowns?.map((d: any) => {
+                    // Normalize options to extract labels
+                    const allOptions = d.allOptions || [];
+                    const optionLabels = allOptions.map((opt: any) => 
+                        typeof opt === 'string' ? opt : opt.label
+                    );
+                    // Build option selector map
+                    const optionSelectors: {[label: string]: string} = {};
+                    allOptions.forEach((opt: any) => {
+                        if (typeof opt === 'object' && opt.label && opt.selector) {
+                            optionSelectors[opt.label] = opt.selector;
+                        }
+                    });
+                    return {
+                        label: d.text || d.label,
+                        selector: d.selector,
+                        optionCount: d.optionCount || allOptions.length || 0,
+                        sampleOptions: optionLabels.slice(0, 5),
+                        optionSelectors: Object.keys(optionSelectors).length > 0 ? optionSelectors : undefined
+                    };
+                }) || [],
                 searchBoxes: uiAnalysis.searchBoxes?.map((s: any) => ({
                     label: s.text || s.label,
                     placeholder: s.placeholder,
@@ -2599,8 +2614,17 @@ CRITICAL:
                     };
                 }
                 
-                // Generate expected results for each test value
+                // Generate expected results for each test value and find option selectors
                 const expectedResults: string[] = [];
+                const optionSelectors: {[value: string]: string} = {};
+                
+                // Find the dropdown/panel that matches this test case's selector
+                const panelSelector = correctedSelectors.field || correctedSelectors[testCase.dataField];
+                let dropdownInfo = null;
+                if (panelSelector && uiAnalysis.dropdowns) {
+                    dropdownInfo = uiAnalysis.dropdowns.find((d: any) => d.selector === panelSelector);
+                }
+                
                 for (const value of testCase.testValues) {
                     try {
                         const count = await this.vectorRAG.getValueCount(testCase.dataField, value);
@@ -2612,12 +2636,40 @@ CRITICAL:
                         // Fallback: still include the value but without count
                         expectedResults.push(`Cases should be displayed with ${testCase.dataField}='${value}'`);
                     }
+                    
+                    // Find option selector for this value
+                    if (dropdownInfo && dropdownInfo.optionSelectors) {
+                        // Check if optionSelectors is a Map or object
+                        if (dropdownInfo.optionSelectors instanceof Map) {
+                            const selector = dropdownInfo.optionSelectors.get(value);
+                            if (selector) {
+                                optionSelectors[value] = selector;
+                                console.log(`  ✓ Found option selector for "${value}": ${selector}`);
+                            }
+                        } else if (typeof dropdownInfo.optionSelectors === 'object') {
+                            const selector = dropdownInfo.optionSelectors[value];
+                            if (selector) {
+                                optionSelectors[value] = selector;
+                                console.log(`  ✓ Found option selector for "${value}": ${selector}`);
+                            }
+                        }
+                    } else if (dropdownInfo && dropdownInfo.allOptions) {
+                        // Fallback: search in allOptions for matching label
+                        for (const opt of dropdownInfo.allOptions) {
+                            if (typeof opt === 'object' && opt.label === value && opt.selector) {
+                                optionSelectors[value] = opt.selector;
+                                console.log(`  ✓ Found option selector for "${value}": ${opt.selector}`);
+                                break;
+                            }
+                        }
+                    }
                 }
                 
-                // Update test case with expected results and corrected selectors
+                // Update test case with expected results, corrected selectors, and option selectors
                 return {
                     ...testCase,
                     selectors: correctedSelectors,
+                    optionSelectors: Object.keys(optionSelectors).length > 0 ? optionSelectors : undefined,
                     expectedResults: expectedResults.length > 0 ? expectedResults : (testCase.expectedResults || ['Test passes']),
                     expectedBehavior: expectedResults.length > 0 ? expectedResults.join('; ') : (testCase.expectedBehavior || 'Test passes')
                 };

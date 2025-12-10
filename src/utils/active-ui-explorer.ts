@@ -3,11 +3,22 @@ import { UIStateCapturer, UIState, StateChanges } from './ui-state-capturer';
 import { VectorRAGClient } from './vector-rag-client';
 import { BedrockClient } from '../chatbot/bedrock-client';
 
+// Option with selector for expandable panel checkboxes
+export interface OptionWithSelector {
+    label: string;
+    selector: string;
+    index: number;
+}
+
+// Type for options: can be strings (legacy) or objects with selectors (new)
+export type DropdownOption = string | OptionWithSelector;
+
 export interface UIExplorationResult {
     elementType: string;
     label: string;
     selector: string;
-    allOptions: string[];
+    allOptions: DropdownOption[];
+    optionSelectors?: Map<string, string>; // Map of label -> selector for quick lookup
     sampledTests: Array<{
         option: string;
         changes: StateChanges;
@@ -38,14 +49,43 @@ export interface DiscoveredRadioGroup {
 }
 
 export interface DiscoveredWithOptions extends DiscoveredElement {
-    allOptions: string[];
+    allOptions: DropdownOption[];
     optionCount: number;
+    optionSelectors?: Map<string, string>; // Map of label -> selector
 }
 
 export interface PrioritizedDropdown extends DiscoveredWithOptions {
     priority: number;
     reason: string;
     tsvField: string;
+}
+
+// Helper functions to work with DropdownOption
+export function getOptionLabel(option: DropdownOption): string {
+    return typeof option === 'string' ? option : option.label;
+}
+
+export function getOptionSelector(option: DropdownOption, panelSelector?: string): string | null {
+    if (typeof option === 'string') {
+        return null; // No selector for legacy string format
+    }
+    return option.selector;
+}
+
+export function normalizeOptions(options: DropdownOption[]): string[] {
+    return options.map(getOptionLabel);
+}
+
+export function buildOptionSelectorMap(options: DropdownOption[], panelSelector?: string): Map<string, string> {
+    const map = new Map<string, string>();
+    for (const option of options) {
+        const label = getOptionLabel(option);
+        const selector = getOptionSelector(option, panelSelector);
+        if (selector) {
+            map.set(label, selector);
+        }
+    }
+    return map;
 }
 
 export class ActiveUIExplorer {
@@ -612,16 +652,22 @@ export class ActiveUIExplorer {
                 // Just get options, don't test yet - with timeout to prevent blocking
                 const options = await Promise.race([
                     this.getDropdownOptions(dropdown.selector),
-                    new Promise<string[]>((_, reject) => 
+                    new Promise<DropdownOption[]>((_, reject) => 
                         setTimeout(() => reject(new Error('timeout')), 10000) // 10 second timeout per dropdown
                     )
                 ]);
+                
+                // Normalize options to handle both string[] and OptionWithSelector[]
+                const normalizedOptions: DropdownOption[] = Array.isArray(options) ? options : [];
+                const optionSelectors = buildOptionSelectorMap(normalizedOptions, dropdown.selector);
+                
                 results.push({
                     ...dropdown,
-                    allOptions: options,
-                    optionCount: options.length
+                    allOptions: normalizedOptions,
+                    optionCount: normalizedOptions.length,
+                    optionSelectors: optionSelectors.size > 0 ? optionSelectors : undefined
                 });
-                console.log(`📋 ${dropdown.label}: ${options.length} options`);
+                console.log(`📋 ${dropdown.label}: ${normalizedOptions.length} options`);
             } catch (error) {
                 console.warn(`⚠️ Could not get options for ${dropdown.label}: ${error.message}`);
                 // Still add it with empty options
@@ -687,7 +733,10 @@ export class ActiveUIExplorer {
             const prompt = `You are analyzing a data exploration website.
 
 UI DROPDOWNS FOUND:
-${dropdowns.map(d => `- ${d.label}: ${d.optionCount} options (${d.allOptions.slice(0, 3).join(', ')}...)`).join('\n')}
+${dropdowns.map(d => {
+    const optionLabels = normalizeOptions(d.allOptions);
+    return `- ${d.label}: ${d.optionCount} options (${optionLabels.slice(0, 3).join(', ')}...)`;
+}).join('\n')}
 
 TSV DATABASE FIELDS:
 ${tsvFields.map(f => `- ${f.text}`).join('\n')}
@@ -770,18 +819,23 @@ Example format:
             // 2. Get all available options (getDropdownOptions handles expansion for expandable panels)
             // Skip the playwright_click step - getDropdownOptions will handle it
             const options = await this.getDropdownOptions(dropdown.selector);
-            console.log(`📋 Found ${options.length} options: ${options.slice(0, 5).join(', ')}${options.length > 5 ? '...' : ''}`);
+            const normalizedOptions: DropdownOption[] = Array.isArray(options) ? options : [];
+            const optionLabels = normalizeOptions(normalizedOptions);
+            const optionSelectors = buildOptionSelectorMap(normalizedOptions, dropdown.selector);
             
-            // 4. Sample 2-3 options to test
-            const samplesToTest = this.sampleOptions(options, this.SAMPLES_PER_DROPDOWN);
+            console.log(`📋 Found ${normalizedOptions.length} options: ${optionLabels.slice(0, 5).join(', ')}${normalizedOptions.length > 5 ? '...' : ''}`);
+            
+            // 4. Sample 2-3 options to test (use labels for sampling)
+            const samplesToTest = this.sampleOptions(optionLabels, this.SAMPLES_PER_DROPDOWN);
             console.log(`🎯 Testing samples: ${samplesToTest.join(', ')}`);
             
             const sampleResults = [];
-            for (const option of samplesToTest) {
-                console.log(`🔍 Testing option: ${option}`);
+            for (const optionLabel of samplesToTest) {
+                console.log(`🔍 Testing option: ${optionLabel}`);
                 
-                // Select option
-                await this.selectOption(dropdown.selector, option);
+                // Select option (pass selector if available)
+                const optionSelector = optionSelectors.get(optionLabel);
+                await this.selectOption(dropdown.selector, optionLabel, optionSelector);
                 
                 // Wait for changes
                 await this.waitForStability();
@@ -805,7 +859,8 @@ Example format:
                 elementType: 'dropdown',
                 label: dropdown.label,
                 selector: dropdown.selector,
-                allOptions: options,
+                allOptions: normalizedOptions,
+                optionSelectors: optionSelectors.size > 0 ? optionSelectors : undefined,
                 sampledTests: sampleResults
             };
             
@@ -1216,7 +1271,7 @@ Example format:
         return [];
     }
 
-    private async getDropdownOptions(selector: string): Promise<string[]> {
+    private async getDropdownOptions(selector: string): Promise<string[] | Array<{label: string, selector: string, index: number}>> {
         try {
             // Ensure selector is a string (safety check)
             if (typeof selector !== 'string') {
@@ -1399,9 +1454,9 @@ Example format:
                             
                             if (!expandedContent) return [];
                             
-                            // Find all checkbox labels
+                            // Find all checkbox labels WITH their selectors
                             // Target the actual name div, not count paragraphs
-                            const labels = Array.from(expandedContent.querySelectorAll('input[type="checkbox"]')).map(cb => {
+                            const checkboxData = Array.from(expandedContent.querySelectorAll('input[type="checkbox"]')).map((cb, index) => {
                                 // Find the label text next to the checkbox
                                 const row = cb.closest('div[role="button"]');
                                 if (!row) return null;
@@ -1416,27 +1471,75 @@ Example format:
                                     return null;
                                 }
                                 
-                                return labelText;
-                            }).filter(l => l && l.length > 0);
+                                if (!labelText) return null;
+                                
+                                // Generate selector for this checkbox
+                                // Try multiple strategies for stable selector
+                                let checkboxSelector = null;
+                                
+                                // Strategy 1: Use ID if available
+                                if (cb.id) {
+                                    checkboxSelector = '#' + cb.id;
+                                } else {
+                                    // Strategy 2: Use data attributes if available
+                                    const dataTestId = cb.getAttribute('data-testid');
+                                    if (dataTestId) {
+                                        checkboxSelector = `[data-testid="${dataTestId}"]`;
+                                    } else {
+                                        // Strategy 3: Use aria-label if available
+                                        const ariaLabel = cb.getAttribute('aria-label');
+                                        if (ariaLabel) {
+                                            checkboxSelector = `input[type="checkbox"][aria-label="${ariaLabel}"]`;
+                                        } else {
+                                            // Strategy 4: Use panel selector + nth-of-type (relative to expanded content)
+                                            // Count checkboxes before this one in the expanded content
+                                            const allCheckboxes = Array.from(expandedContent.querySelectorAll('input[type="checkbox"]'));
+                                            const checkboxIndex = allCheckboxes.indexOf(cb);
+                                            const panelId = panel.id || '${selector}';
+                                            checkboxSelector = `${panelId} ~ [role="region"] input[type="checkbox"]:nth-of-type(${checkboxIndex + 1})`;
+                                        }
+                                    }
+                                }
+                                
+                                return {
+                                    label: labelText,
+                                    selector: checkboxSelector,
+                                    index: index
+                                };
+                            }).filter(item => item !== null && item.label && item.label.length > 0);
                             
-                            return labels;
+                            return checkboxData;
                         })()`
                     },
                     id: `get-checkbox-options-${Date.now()}`
                 }]);
                 
-                // Parse checkbox options
-                const checkboxOptions: string[] = [];
+                // Parse checkbox options with selectors
+                const checkboxOptions: Array<{label: string, selector: string, index: number}> = [];
                 if (checkboxResult[0]?.result && Array.isArray(checkboxResult[0].result)) {
                     for (const item of checkboxResult[0].result) {
-                        if (item.type === 'text' && item.text && item.text.startsWith('[')) {
+                        if (item.type === 'text' && item.text && (item.text.startsWith('[') || item.text.startsWith('{'))) {
                             try {
                                 const parsed = JSON.parse(item.text);
                                 if (Array.isArray(parsed)) {
-                                    checkboxOptions.push(...parsed.filter((opt: any) => opt && typeof opt === 'string' && opt.length > 0));
+                                    // Check if it's the new format with objects
+                                    if (parsed.length > 0 && typeof parsed[0] === 'object' && parsed[0].label) {
+                                        checkboxOptions.push(...parsed.filter((opt: any) => opt && opt.label && opt.selector));
+                                    } else {
+                                        // Old format: just strings, convert to new format
+                                        parsed.filter((opt: any) => opt && typeof opt === 'string' && opt.length > 0).forEach((label: string, index: number) => {
+                                            checkboxOptions.push({
+                                                label: label,
+                                                selector: `${selector} ~ [role="region"] input[type="checkbox"]:nth-of-type(${index + 1})`,
+                                                index: index
+                                            });
+                                        });
+                                    }
                                     break;
                                 }
-                            } catch (e) {}
+                            } catch (e) {
+                                console.warn(`⚠️ Failed to parse checkbox options: ${e}`);
+                            }
                         }
                     }
                 }
@@ -1524,7 +1627,7 @@ Example format:
         }
     }
 
-    private async selectOption(selector: string, option: string): Promise<void> {
+    private async selectOption(selector: string, option: string, optionSelector?: string | null): Promise<void> {
         try {
             // Check if this is an expandable filter panel by examining the element's class
             const elementCheck = await this.mcpClient.callTools([{
@@ -1586,68 +1689,95 @@ Example format:
                 }
                 
                 if (!isExpanded) {
-                    // Use JavaScript click instead of playwright_click (more reliable for expandable panels)
+                    // Use MCP playwright_click to expand panel (more reliable)
                     await this.mcpClient.callTools([{
-                        name: 'playwright_evaluate',
-                        parameters: { 
-                            script: `(() => {
-                                const el = document.querySelector('${selector}');
-                                if (el && el.getAttribute('aria-expanded') === 'false') {
-                                    el.click();
-                                }
-                                return { clicked: true };
-                            })()`
-                        },
-                        id: `expand-panel-for-select-js-${Date.now()}`
+                        name: 'playwright_click',
+                        parameters: { selector: selector },
+                        id: `expand-panel-for-select-${Date.now()}`
                     }]);
                     await this.waitForStability();
                 }
                 
-                // Find and click the checkbox with matching label
-                // Pattern: checkbox label is in <p class="filter_by_casesNameUnChecked">OSA04 (000018)</p>
-                const checkboxClick = await this.mcpClient.callTools([{
-                    name: 'playwright_evaluate',
-                    parameters: { 
-                        script: `(() => {
-                            const panel = document.querySelector('${selector}');
-                            if (!panel) return { found: false, selector: null };
-                            const expandedContent = panel.closest('[id]')?.parentElement?.querySelector('[role="region"]') ||
-                                                   panel.parentElement?.querySelector('[role="region"]');
-                            if (!expandedContent) return { found: false, selector: null };
-                            // Find checkbox with matching label text
-                            const checkboxes = expandedContent.querySelectorAll('input[type="checkbox"]');
-                            for (const cb of checkboxes) {
-                                const row = cb.closest('div[role="button"]');
-                                if (!row) continue;
-                                const labelEl = row.querySelector('p.filter_by_casesNameUnChecked, p[class*="filter_by_casesName"]');
-                                if (labelEl && labelEl.textContent?.trim() === '${option}') {
-                                    return { found: true, selector: '#' + cb.id || 'input[type="checkbox"]' };
-                                }
-                            }
-                            return { found: false, selector: null };
-                        })()`
-                    },
-                    id: `find-checkbox-${Date.now()}`
-                }]);
+                // Use provided selector if available, otherwise find by label
+                let checkboxSelector = optionSelector;
                 
-                // Parse result to get checkbox selector
-                let checkboxSelector = null;
-                if (checkboxClick[0]?.result && Array.isArray(checkboxClick[0].result)) {
-                    for (const item of checkboxClick[0].result) {
-                        if (item.type === 'text' && item.text && item.text.startsWith('{')) {
-                            try {
-                                const parsed = JSON.parse(item.text);
-                                if (parsed.found && parsed.selector) {
-                                    checkboxSelector = parsed.selector;
-                                    break;
+                if (!checkboxSelector) {
+                    // Fallback: Find checkbox by label text
+                    // Pattern: checkbox label is in <p class="filter_by_casesNameUnChecked">OSA04 (000018)</p>
+                    const checkboxClick = await this.mcpClient.callTools([{
+                        name: 'playwright_evaluate',
+                        parameters: { 
+                            script: `(() => {
+                                const panel = document.querySelector('${selector}');
+                                if (!panel) return { found: false, selector: null };
+                                const expandedContent = panel.closest('[id]')?.parentElement?.querySelector('[role="region"]') ||
+                                                       panel.parentElement?.querySelector('[role="region"]');
+                                if (!expandedContent) return { found: false, selector: null };
+                                // Find checkbox with matching label text
+                                const checkboxes = expandedContent.querySelectorAll('input[type="checkbox"]');
+                                for (const cb of checkboxes) {
+                                    const row = cb.closest('div[role="button"]');
+                                    if (!row) continue;
+                                    const labelEl = row.querySelector('p.filter_by_casesNameUnChecked, p[class*="filter_by_casesName"]');
+                                    if (labelEl && labelEl.textContent?.trim() === '${option}') {
+                                        return { found: true, selector: cb.id ? '#' + cb.id : null };
+                                    }
                                 }
-                            } catch (e) {}
+                                return { found: false, selector: null };
+                            })()`
+                        },
+                        id: `find-checkbox-${Date.now()}`
+                    }]);
+                    
+                    // Parse result to get checkbox selector
+                    if (checkboxClick[0]?.result && Array.isArray(checkboxClick[0].result)) {
+                        for (const item of checkboxClick[0].result) {
+                            if (item.type === 'text' && item.text && item.text.startsWith('{')) {
+                                try {
+                                    const parsed = JSON.parse(item.text);
+                                    if (parsed.found && parsed.selector) {
+                                        checkboxSelector = parsed.selector;
+                                        break;
+                                    }
+                                } catch (e) {}
+                            }
                         }
                     }
                 }
                 
                 if (checkboxSelector) {
-                    // Click the checkbox
+                    // Check if checkbox is already checked before clicking (prevent toggling)
+                    const checkState = await this.mcpClient.callTools([{
+                        name: 'playwright_evaluate',
+                        parameters: {
+                            script: `(() => {
+                                const cb = document.querySelector('${checkboxSelector}');
+                                if (!cb) return { exists: false, checked: false };
+                                return { exists: true, checked: cb.checked || cb.getAttribute('aria-checked') === 'true' };
+                            })()`
+                        },
+                        id: `check-checkbox-state-${Date.now()}`
+                    }]);
+                    
+                    let isChecked = false;
+                    if (checkState[0]?.result && Array.isArray(checkState[0].result)) {
+                        for (const item of checkState[0].result) {
+                            if (item.type === 'text' && item.text && item.text.startsWith('{')) {
+                                try {
+                                    const parsed = JSON.parse(item.text);
+                                    isChecked = parsed.checked === true;
+                                    break;
+                                } catch (e) {}
+                            }
+                        }
+                    }
+                    
+                    if (isChecked) {
+                        console.log(`ℹ️ Checkbox "${option}" is already checked, skipping click`);
+                        return;
+                    }
+                    
+                    // Click the checkbox using MCP playwright_click
                     await this.mcpClient.callTools([{
                         name: 'playwright_click',
                         parameters: { selector: checkboxSelector },
