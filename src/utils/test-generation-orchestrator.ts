@@ -271,6 +271,10 @@ export class TestGenerationOrchestrator {
             if (step.toLowerCase().includes('navigate') || step.toLowerCase().includes('go to')) {
               // Already navigated, skip
               continue;
+            } else if (step.toLowerCase().includes('apply filter') || step.toLowerCase().includes('apply the filter')) {
+              // Filter already applied via checkbox selection, skip
+              console.log(`    ⏭️ Skipping "Apply filter" step - filter already applied via checkbox selection`);
+              continue;
             } else if (step.toLowerCase().includes('click') || step.toLowerCase().includes('select')) {
               // Find selector for this action
               const selector = this.findSelectorForStep(selectors, step, testCase.dataField);
