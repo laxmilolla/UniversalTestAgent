@@ -755,7 +755,9 @@ export class TestGenerationOrchestrator {
             const screenshotResult = await this.mcpClient.callTools([{
               id: `screenshot-${testCaseId}`,
               name: 'playwright_screenshot',
-              parameters: {}
+              parameters: {
+                fullPage: true  // Capture full page, including content below the fold
+              }
             }]);
             
             if (screenshotResult[0]?.result && Array.isArray(screenshotResult[0].result)) {
@@ -996,11 +998,13 @@ export class TestGenerationOrchestrator {
       // Wait for UI to settle after action
       await new Promise(resolve => setTimeout(resolve, 800));
       
-      // Capture screenshot
+      // Capture screenshot with fullPage option to capture entire page, not just viewport
       const screenshotResult = await this.mcpClient.callTools([{
         id: `screenshot-step-${stepIndex}-${Date.now()}`,
         name: 'playwright_screenshot',
-        parameters: {}
+        parameters: {
+          fullPage: true  // Capture full page, including content below the fold
+        }
       }]);
       
       if (screenshotResult[0]?.result && Array.isArray(screenshotResult[0].result)) {
