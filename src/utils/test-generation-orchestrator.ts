@@ -252,6 +252,9 @@ export class TestGenerationOrchestrator {
           // Wait for page to load
           await new Promise(resolve => setTimeout(resolve, 2000));
           
+          // Dismiss any modals/popups that might block test execution
+          await this.dismissModals();
+          
           // Execute test steps
           const steps = Array.isArray(testCase.steps) ? testCase.steps : [];
           const selectors = testCase.selectors || {};
@@ -357,6 +360,9 @@ export class TestGenerationOrchestrator {
           
           // Validate results
           const validation = await this.validateTestResults(testCase, learningResults);
+          
+          // Dismiss any modals before taking screenshot
+          await this.dismissModals();
           
           // Capture screenshot and convert to base64 data URL
           let screenshot: string | null = null;
@@ -623,6 +629,200 @@ export class TestGenerationOrchestrator {
     } catch (error: any) {
       console.warn('Failed to get actual result count:', error.message);
       return 0;
+    }
+  }
+
+  /**
+   * Dismiss any modals, popups, or banners that might block test execution
+   * Looks for common modal patterns and dismiss buttons (Continue, Go, OK, Close, etc.)
+   */
+  private async dismissModals(): Promise<void> {
+    try {
+      console.log('  🔍 Checking for modals/popups to dismiss...');
+      
+      const maxAttempts = 3;
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        const result = await this.mcpClient.callTools([{
+          id: `dismiss-modals-${Date.now()}`,
+          name: 'playwright_evaluate',
+          parameters: {
+            script: `(() => {
+              // Find modals/popups/banners
+              const modalSelectors = [
+                '[role="dialog"]',
+                '.MuiDialog-root',
+                '.MuiDialog-container',
+                '.modal',
+                '.popup',
+                '[class*="banner"]',
+                '[class*="modal"]',
+                '[class*="dialog"]',
+                '[class*="popup"]'
+              ];
+              
+              let modal = null;
+              for (const selector of modalSelectors) {
+                const elements = document.querySelectorAll(selector);
+                for (const el of elements) {
+                  const style = window.getComputedStyle(el);
+                  const isVisible = style.display !== 'none' && 
+                                   style.visibility !== 'hidden' && 
+                                   style.opacity !== '0' &&
+                                   el.offsetWidth > 0 && 
+                                   el.offsetHeight > 0;
+                  if (isVisible) {
+                    modal = el;
+                    break;
+                  }
+                }
+                if (modal) break;
+              }
+              
+              if (!modal) {
+                return { found: false, dismissed: false, message: 'No modal found' };
+              }
+              
+              // Find dismiss buttons - look for common button texts
+              const dismissTexts = ['Continue', 'Go', 'OK', 'Close', 'Dismiss', 'Got it', 'Got It', 'Got It!', 'I Understand', 'Accept', 'Agree'];
+              const dismissSelectors = [
+                'button',
+                '[role="button"]',
+                'a[role="button"]',
+                '[class*="button"]',
+                '[class*="Button"]'
+              ];
+              
+              let button = null;
+              
+              // First, try to find button by text within modal
+              for (const selector of dismissSelectors) {
+                const buttons = modal.querySelectorAll(selector);
+                for (const btn of buttons) {
+                  const text = (btn.textContent || '').trim();
+                  const ariaLabel = btn.getAttribute('aria-label') || '';
+                  
+                  // Check if button text matches dismiss texts
+                  for (const dismissText of dismissTexts) {
+                    if (text.toLowerCase().includes(dismissText.toLowerCase()) ||
+                        ariaLabel.toLowerCase().includes(dismissText.toLowerCase()) ||
+                        ariaLabel.toLowerCase().includes('close') ||
+                        ariaLabel.toLowerCase().includes('dismiss')) {
+                      button = btn;
+                      break;
+                    }
+                  }
+                  if (button) break;
+                }
+                if (button) break;
+              }
+              
+              // If no button found by text, try aria-label patterns
+              if (!button) {
+                const ariaButtons = modal.querySelectorAll('[aria-label*="close"], [aria-label*="dismiss"], [aria-label*="continue"]');
+                if (ariaButtons.length > 0) {
+                  button = ariaButtons[0];
+                }
+              }
+              
+              // If still no button, try to find close icon (X button)
+              if (!button) {
+                const closeIcons = modal.querySelectorAll('[aria-label*="Close"], [class*="close"], [class*="Close"], [class*="icon-close"]');
+                if (closeIcons.length > 0) {
+                  button = closeIcons[0];
+                }
+              }
+              
+              if (button) {
+                // Click the button using JavaScript (more reliable for modals)
+                try {
+                  button.click();
+                  // Wait a bit for modal to start disappearing
+                  return { found: true, dismissed: true, buttonText: (button.textContent || '').trim(), message: 'Modal dismissed' };
+                } catch (e) {
+                  return { found: true, dismissed: false, error: e.message, message: 'Failed to click button' };
+                }
+              }
+              
+              return { found: true, dismissed: false, message: 'Modal found but no dismiss button found' };
+            })()`
+          }
+        }]);
+        
+        if (result[0]?.result && Array.isArray(result[0].result)) {
+          const evalData = result[0].result.find((r: any) => r.type === 'text');
+          if (evalData?.text) {
+            try {
+              const dismissResult = JSON.parse(evalData.text);
+              if (dismissResult.found && dismissResult.dismissed) {
+                console.log(`  ✅ Modal dismissed (attempt ${attempt}): ${dismissResult.buttonText || 'button clicked'}`);
+                // Wait for modal to disappear
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                // Verify modal is gone
+                const verifyResult = await this.mcpClient.callTools([{
+                  id: `verify-modal-gone-${Date.now()}`,
+                  name: 'playwright_evaluate',
+                  parameters: {
+                    script: `(() => {
+                      const modals = document.querySelectorAll('[role="dialog"], .MuiDialog-root, .modal, [class*="banner"]');
+                      for (const modal of modals) {
+                        const style = window.getComputedStyle(modal);
+                        const isVisible = style.display !== 'none' && 
+                                         style.visibility !== 'hidden' && 
+                                         style.opacity !== '0' &&
+                                         modal.offsetWidth > 0 && 
+                                         modal.offsetHeight > 0;
+                        if (isVisible) {
+                          return { gone: false };
+                        }
+                      }
+                      return { gone: true };
+                    })()`
+                  }
+                }]);
+                
+                if (verifyResult[0]?.result && Array.isArray(verifyResult[0].result)) {
+                  const verifyData = verifyResult[0].result.find((r: any) => r.type === 'text');
+                  if (verifyData?.text) {
+                    const verify = JSON.parse(verifyData.text);
+                    if (verify.gone) {
+                      console.log('  ✅ Modal confirmed gone');
+                      return; // Success - modal dismissed
+                    }
+                  }
+                }
+              } else if (dismissResult.found && !dismissResult.dismissed) {
+                console.log(`  ⚠️ Modal found but could not dismiss (attempt ${attempt}): ${dismissResult.message}`);
+                if (attempt < maxAttempts) {
+                  await new Promise(resolve => setTimeout(resolve, 1000));
+                  continue; // Retry
+                }
+              } else if (!dismissResult.found) {
+                // No modal found - we're done
+                if (attempt === 1) {
+                  console.log('  ✅ No modals found');
+                }
+                return;
+              }
+            } catch (parseError) {
+              // If JSON parse fails, modal might still be there, continue to next attempt
+              if (attempt < maxAttempts) {
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                continue;
+              }
+            }
+          }
+        }
+        
+        // If we've exhausted attempts, break
+        if (attempt >= maxAttempts) {
+          console.log(`  ⚠️ Could not dismiss modal after ${maxAttempts} attempts`);
+          break;
+        }
+      }
+    } catch (error: any) {
+      console.warn(`  ⚠️ Error dismissing modals: ${error.message}`);
+      // Don't throw - continue with test execution even if modal dismissal fails
     }
   }
 }
