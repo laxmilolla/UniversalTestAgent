@@ -146,6 +146,21 @@ export class TestGenerationOrchestrator {
       const testCases: any[] = [];
       let learningResults: any = null;
       
+      // Always try to get learning results first (needed for study filter info)
+      try {
+        // Try multiple ways to access learning results
+        learningResults = (this.playwrightLearningOrchestrator as any).lastLearningResults || 
+                         (this.playwrightLearningOrchestrator as any).getLearningResults?.() ||
+                         (this.playwrightLearningOrchestrator as any).learningResults ||
+                         null;
+        
+        if (learningResults) {
+          console.log('📊 Retrieved learning results for study filter info');
+        }
+      } catch (e) {
+        console.warn('Could not access learning results:', e);
+      }
+      
       // If test cases are provided directly, use them
       if (providedTestCases && Array.isArray(providedTestCases) && providedTestCases.length > 0) {
         console.log(`📋 Using ${providedTestCases.length} provided test cases`);
@@ -169,24 +184,14 @@ export class TestGenerationOrchestrator {
       
       // If no test cases found yet, try to get from learning results
       if (testCases.length === 0) {
-        try {
-          // Try multiple ways to access learning results
-          learningResults = (this.playwrightLearningOrchestrator as any).lastLearningResults || 
-                           (this.playwrightLearningOrchestrator as any).getLearningResults?.() ||
-                           (this.playwrightLearningOrchestrator as any).learningResults ||
-                           null;
-          
-          // Also try to get from vectorRAG if available
-          const vectorRAG = (this.playwrightLearningOrchestrator as any).vectorRAG;
-          if (!learningResults && vectorRAG) {
-            // Try to reconstruct from RAG metadata
-            const tsvMetadata = vectorRAG.getTSVMetadata?.();
-            if (tsvMetadata) {
-              console.log('📊 Found TSV metadata, but no learning results');
-            }
+        // Also try to get from vectorRAG if available
+        const vectorRAG = (this.playwrightLearningOrchestrator as any).vectorRAG;
+        if (!learningResults && vectorRAG) {
+          // Try to reconstruct from RAG metadata
+          const tsvMetadata = vectorRAG.getTSVMetadata?.();
+          if (tsvMetadata) {
+            console.log('📊 Found TSV metadata, but no learning results');
           }
-        } catch (e) {
-          console.warn('Could not access learning results:', e);
         }
         
         if (learningResults?.analysis?.mapping?.testCases) {
