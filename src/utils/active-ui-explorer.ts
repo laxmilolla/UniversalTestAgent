@@ -1495,8 +1495,8 @@ Example format:
                                             // Count checkboxes before this one in the expanded content
                                             const allCheckboxes = Array.from(expandedContent.querySelectorAll('input[type="checkbox"]'));
                                             const checkboxIndex = allCheckboxes.indexOf(cb);
-                                            const panelId = panel.id || '${selector}';
-                                            checkboxSelector = `${panelId} ~ [role="region"] input[type="checkbox"]:nth-of-type(${checkboxIndex + 1})`;
+                                            const panelId = panel.id || ${JSON.stringify(selector)};
+                                            checkboxSelector = panelId + ' ~ [role="region"] input[type="checkbox"]:nth-of-type(' + (checkboxIndex + 1) + ')';
                                         }
                                     }
                                 }
