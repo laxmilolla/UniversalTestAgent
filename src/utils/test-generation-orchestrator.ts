@@ -491,6 +491,22 @@ export class TestGenerationOrchestrator {
                               console.log(`    ✅ Selected checkbox: ${parsedResult.label || valueToSelect}`);
                               await new Promise(resolve => setTimeout(resolve, 1000));
                               
+                              // Use MCP playwright_hover to scroll panel into view before screenshot
+                              // This ensures the checkbox is visible in the screenshot
+                              try {
+                                await this.mcpClient.callTools([{
+                                  id: `hover-panel-${testCaseId}-${stepIndex}`,
+                                  name: 'playwright_hover',
+                                  parameters: { 
+                                    selector: selector  // e.g., "#Diagnosis" - this will scroll it into view
+                                  }
+                                }]);
+                                // Wait for hover/scroll to complete
+                                await new Promise(resolve => setTimeout(resolve, 500));
+                              } catch (error: any) {
+                                console.warn(`    ⚠️ Failed to hover panel for screenshot: ${error.message}`);
+                              }
+                              
                               // Capture screenshot after checkbox click
                               const checkboxScreenshot = await this.captureStepScreenshot(stepIndex, `Selected checkbox: ${parsedResult.label || valueToSelect}`);
                               if (checkboxScreenshot) {
