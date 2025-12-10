@@ -928,16 +928,48 @@ export class TestGenerationOrchestrator {
       const expectedResults = Array.isArray(testCase.expectedResults) ? testCase.expectedResults : [];
       let expectedCount = 0;
       
-      // Parse expected results to find count
+      console.log(`  🔍 Validating test case: ${testCase.name || 'Unknown'}`);
+      console.log(`  📋 ExpectedResults array: ${JSON.stringify(expectedResults)}`);
+      
+      // Parse expected results to find count - try multiple patterns
       for (const result of expectedResults) {
-        const match = result.match(/(\d+)\s+cases\s+should\s+be\s+displayed/);
-        if (match) {
-          expectedCount = parseInt(match[1]);
-          break;
+        if (!result || typeof result !== 'string') continue;
+        
+        // Try multiple regex patterns to extract count
+        const patterns = [
+          /(\d+)\s+cases\s+should\s+be\s+displayed/i,  // "5 cases should be displayed, all with..."
+          /(\d+)\s+cases?\s+should/i,                   // "5 cases should..."
+          /(\d+)\s+cases?/i,                            // "5 cases"
+          /should\s+be\s+(\d+)\s+cases/i,               // "should be 5 cases"
+          /(\d+)\s+results?/i                           // "5 results"
+        ];
+        
+        for (const pattern of patterns) {
+          const match = result.match(pattern);
+          if (match) {
+            expectedCount = parseInt(match[1]);
+            console.log(`  ✅ Extracted expected count: ${expectedCount} from: "${result}"`);
+            break;
+          }
         }
+        
+        if (expectedCount > 0) break;
       }
       
-      if (expectedCount === 0) {
+      // Don't auto-pass if test case has expectedResults but we couldn't extract count
+      if (expectedResults.length > 0 && expectedCount === 0) {
+        console.warn(`  ⚠️ Test case has expectedResults but couldn't extract count. ExpectedResults: ${JSON.stringify(expectedResults)}`);
+        return {
+          passed: false,
+          expectedCount: 0,
+          actualCount: 0,
+          message: `Validation failed: Could not extract expected count from expectedResults: ${expectedResults.join(', ')}`
+        };
+      }
+      
+      // Only skip validation if test case truly has no expectedResults
+      if (expectedResults.length === 0) {
+        console.log(`  ⏭️ No expectedResults specified, validation skipped`);
         return {
           passed: true,
           expectedCount: 0,
@@ -947,7 +979,9 @@ export class TestGenerationOrchestrator {
       }
       
       // Get actual count from UI
+      console.log(`  🔍 Getting actual count from UI...`);
       const actualCount = await this.getActualResultCount();
+      console.log(`  📊 Expected: ${expectedCount}, Actual: ${actualCount}`);
       
       const passed = actualCount === expectedCount;
       
@@ -967,6 +1001,7 @@ export class TestGenerationOrchestrator {
       };
       
     } catch (error: any) {
+      console.error(`  ❌ Validation error: ${error.message}`);
       return {
         passed: false,
         expectedCount: 0,
