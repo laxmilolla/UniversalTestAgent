@@ -298,15 +298,28 @@ export class TestGenerationOrchestrator {
                   let isExpandablePanel = false;
                   let isExpanded = false;
                   if (panelCheck[0]?.result && Array.isArray(panelCheck[0].result)) {
-                    const checkData = panelCheck[0].result.find((r: any) => r.type === 'text');
-                    if (checkData?.text) {
-                      try {
-                        const parsed = JSON.parse(checkData.text);
-                        isExpandablePanel = parsed.isPanel === true;
-                        isExpanded = parsed.isExpanded === true;
-                        console.log(`    🔍 Panel check result: isPanel=${isExpandablePanel}, isExpanded=${isExpanded}`);
-                      } catch (e) {
-                        console.warn(`    ⚠️ Failed to parse panel check result: ${checkData.text}`);
+                    // MCP result format: [{type:"text", text:"Executed JavaScript:"}, {type:"text", text:"<script>"}, {type:"text", text:"Result:"}, {type:"text", text:"<JSON>"}]
+                    // Find the item after "Result:" which contains the actual JSON
+                    let foundResult = false;
+                    for (const item of panelCheck[0].result) {
+                      if (item.type === 'text' && item.text) {
+                        if (item.text === 'Result:') {
+                          foundResult = true;
+                          continue; // Next item should be the actual data
+                        }
+                        if (foundResult || item.text.startsWith('{') || item.text.startsWith('[')) {
+                          // This should be the JSON data
+                          try {
+                            const parsed = JSON.parse(item.text);
+                            isExpandablePanel = parsed.isPanel === true;
+                            isExpanded = parsed.isExpanded === true;
+                            console.log(`    🔍 Panel check result: isPanel=${isExpandablePanel}, isExpanded=${isExpanded}`);
+                            break;
+                          } catch (e) {
+                            // Not valid JSON, continue to next item
+                            console.warn(`    ⚠️ Failed to parse panel check result: ${item.text.substring(0, 100)}`);
+                          }
+                        }
                       }
                     }
                   }
@@ -396,18 +409,30 @@ export class TestGenerationOrchestrator {
                         }]);
                         
                         if (checkboxResult[0]?.result && Array.isArray(checkboxResult[0].result)) {
-                          const checkboxData = checkboxResult[0].result.find((r: any) => r.type === 'text');
-                          if (checkboxData?.text) {
-                            try {
-                              const parsed = JSON.parse(checkboxData.text);
-                              if (parsed.found && parsed.clicked) {
-                                console.log(`    ✅ Selected checkbox: ${parsed.label || valueToSelect}`);
-                                await new Promise(resolve => setTimeout(resolve, 1000));
-                                continue; // Success, move to next step
-                              } else {
-                                console.warn(`    ⚠️ Checkbox not found for value: ${valueToSelect}`);
+                          // MCP result format: find JSON after "Result:"
+                          let foundResult = false;
+                          for (const item of checkboxResult[0].result) {
+                            if (item.type === 'text' && item.text) {
+                              if (item.text === 'Result:') {
+                                foundResult = true;
+                                continue; // Next item should be the actual data
                               }
-                            } catch (e) {}
+                              if (foundResult || item.text.startsWith('{') || item.text.startsWith('[')) {
+                                try {
+                                  const parsed = JSON.parse(item.text);
+                                  if (parsed.found && parsed.clicked) {
+                                    console.log(`    ✅ Selected checkbox: ${parsed.label || valueToSelect}`);
+                                    await new Promise(resolve => setTimeout(resolve, 1000));
+                                    continue; // Success, move to next step
+                                  } else {
+                                    console.warn(`    ⚠️ Checkbox not found for value: ${valueToSelect}`);
+                                  }
+                                  break; // Found and parsed, exit loop
+                                } catch (e) {
+                                  // Not valid JSON, continue to next item
+                                }
+                              }
+                            }
                           }
                         }
                       }
