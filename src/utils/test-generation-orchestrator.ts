@@ -383,24 +383,39 @@ export class TestGenerationOrchestrator {
                           parameters: {
                             script: `(() => {
                               const panel = document.querySelector('${selector}');
-                              if (!panel) return { found: false };
+                              if (!panel) return { found: false, error: 'Panel not found' };
                               
-                              // Find expanded content area
-                              const expandedContent = panel.closest('[id]')?.parentElement?.querySelector('[role="region"]') ||
-                                                     panel.parentElement?.querySelector('[role="region"]');
-                              if (!expandedContent) return { found: false };
+                              // Find expanded content area - try multiple strategies
+                              let expandedContent = panel.closest('[id]')?.parentElement?.querySelector('[role="region"]');
+                              if (!expandedContent) {
+                                expandedContent = panel.parentElement?.querySelector('[role="region"]');
+                              }
+                              if (!expandedContent) {
+                                // Try finding by MUI expansion panel structure
+                                expandedContent = panel.parentElement?.querySelector('.MuiCollapse-root, [class*="Collapse"]');
+                              }
+                              if (!expandedContent) {
+                                // Last resort: look for any expanded content after the panel
+                                const nextSibling = panel.nextElementSibling;
+                                if (nextSibling && (nextSibling.getAttribute('role') === 'region' || nextSibling.className.includes('Collapse'))) {
+                                  expandedContent = nextSibling;
+                                }
+                              }
+                              if (!expandedContent) return { found: false, error: 'Expanded content not found', panelId: panel.id, panelClass: panel.className };
                               
                               // Find checkbox with matching label text
                               const checkboxes = expandedContent.querySelectorAll('input[type="checkbox"]');
                               const searchValue = ${JSON.stringify(valueToSelect)};
+                              const foundLabels = [];
                               
                               for (const cb of checkboxes) {
                                 const row = cb.closest('div[role="button"]');
                                 if (!row) continue;
                                 
                                 // Look for label in p.filter_by_casesNameUnChecked or similar
-                                const labelEl = row.querySelector('p.filter_by_casesNameUnChecked, p[class*="filter_by_casesName"], p[class*="filter_by"]');
+                                const labelEl = row.querySelector('p.filter_by_casesNameUnChecked, p[class*="filter_by_casesName"], p[class*="filter_by"], p');
                                 const labelText = labelEl ? labelEl.textContent?.trim() : '';
+                                if (labelText) foundLabels.push(labelText);
                                 
                                 // Match exact or partial (for values like "Osteosarcoma" matching "Osteosarcoma (123)")
                                 if (labelText && (
@@ -413,7 +428,7 @@ export class TestGenerationOrchestrator {
                                 }
                               }
                               
-                              return { found: false, clicked: false };
+                              return { found: false, clicked: false, checkboxCount: checkboxes.length, foundLabels: foundLabels.slice(0, 5), searchValue: searchValue };
                             })()`
                           }
                         }]);
