@@ -2523,13 +2523,16 @@ Example JSON format:
             });
         }
         
-        // Enhance testData with UI element type information
+        // Enhance testData with UI element type information and sample values
         const enhancedTestData = testData.map((m: any) => {
             const elementType = uiElementTypes[m.uiSelector] || 'filter';
+            // Get sample values for this field (limit to 10 for prompt size)
+            const sampleValues = m.uniqueValues ? (Array.isArray(m.uniqueValues) ? m.uniqueValues.slice(0, 10) : []) : [];
             return {
                 ...m,
                 uiElementType: elementType,
-                uiLabel: m.uiLabel || m.tsvField
+                uiLabel: m.uiLabel || m.tsvField,
+                sampleValues: sampleValues.length > 0 ? sampleValues : undefined
             };
         });
         
@@ -2572,6 +2575,9 @@ Return JSON array of test cases:
 
 CRITICAL RULES: 
 - For each test case, use the "uiSelector" from the corresponding mapping.
+- For each test case, use the "tsvField" from the corresponding mapping as the "dataField".
+- For each test case, use ONLY values from the "sampleValues" array of the corresponding mapping for "testValues".
+- DO NOT use values from one field (e.g., "Male") with a different field (e.g., "initials"). Values must match their field.
 - Match the test case "type" to the mapping's "uiElementType" (filter for dropdown/filter, search for search).
 - For filter type: steps should click the panel and select checkboxes, NOT fill input fields.
 - For search type: steps should fill the search input, NOT click panels.
@@ -2648,7 +2654,40 @@ CRITICAL RULES:
                     };
                 }
                 
-                // Generate expected results for each test value and find option selectors
+                // Validate and filter test values to ensure they match the field
+                let validatedTestValues = testCase.testValues;
+                if (matchingMapping) {
+                    // Get unique values for this field from the mapping's fieldData
+                    const fieldData = await this.vectorRAG.getFieldData(matchingMapping.tsvField).catch(() => null);
+                    if (fieldData && fieldData.uniqueValues && Array.isArray(fieldData.uniqueValues)) {
+                        const validValues = new Set(fieldData.uniqueValues.map((v: any) => String(v).toLowerCase()));
+                        const originalCount = validatedTestValues.length;
+                        validatedTestValues = validatedTestValues.filter((val: string) => {
+                            const valLower = String(val).toLowerCase();
+                            const isValid = validValues.has(valLower);
+                            if (!isValid) {
+                                console.warn(`  ⚠️ Filtering out invalid test value "${val}" for field "${testCase.dataField}" (not in field's unique values)`);
+                            }
+                            return isValid;
+                        });
+                        if (validatedTestValues.length === 0 && originalCount > 0) {
+                            console.warn(`  ⚠️ All test values for "${testCase.dataField}" were invalid. Using first 3 valid values from field data.`);
+                            validatedTestValues = fieldData.uniqueValues.slice(0, 3).map((v: any) => String(v));
+                        }
+                    }
+                }
+                
+                if (validatedTestValues.length === 0) {
+                    console.warn(`  ⚠️ No valid test values for "${testCase.dataField}". Skipping expected result generation.`);
+                    return {
+                        ...testCase,
+                        selectors: correctedSelectors,
+                        testValues: testCase.testValues, // Keep original for reference
+                        expectedResults: [`No valid test values found for ${testCase.dataField}`]
+                    };
+                }
+                
+                // Generate expected results for each validated test value and find option selectors
                 const expectedResults: string[] = [];
                 const optionSelectors: {[value: string]: string} = {};
                 
@@ -2659,7 +2698,7 @@ CRITICAL RULES:
                     dropdownInfo = uiAnalysis.dropdowns.find((d: any) => d.selector === testCaseSelector);
                 }
                 
-                for (const value of testCase.testValues) {
+                for (const value of validatedTestValues) {
                     try {
                         const count = await this.vectorRAG.getValueCount(testCase.dataField, value);
                         const expectedResult = `${count} cases should be displayed, all with ${testCase.dataField}='${value}'`;
@@ -2730,6 +2769,7 @@ CRITICAL RULES:
                 return {
                     ...testCase,
                     type: correctedType,
+                    testValues: validatedTestValues, // Use validated values
                     selectors: correctedSelectors,
                     optionSelectors: Object.keys(optionSelectors).length > 0 ? optionSelectors : undefined,
                     expectedResults: expectedResults.length > 0 ? expectedResults : (testCase.expectedResults || ['Test passes']),
