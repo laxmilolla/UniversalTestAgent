@@ -336,18 +336,17 @@ export class TestGenerationOrchestrator {
                     // Check if step contains "select" or has testValues - this indicates we should find a checkbox
                     const hasValueInStep = testValues.length > 0 || stepLower.includes('select');
                     
-                    if (hasValueInStep && (isExpanded || !isExpanded)) {
-                      // Find the value to select - check testValues first, then try to extract from step
-                      let valueToSelect = testValues[0] || '';
-                      if (!valueToSelect) {
-                        // Try to extract value from step text (e.g., "Select Osteosarcoma" -> "Osteosarcoma")
-                        const selectMatch = step.match(/select\s+(.+)/i);
-                        if (selectMatch) {
-                          valueToSelect = selectMatch[1].trim();
-                        }
+                    // Find the value to select - check testValues first, then try to extract from step
+                    let valueToSelect = testValues[0] || '';
+                    if (!valueToSelect) {
+                      // Try to extract value from step text (e.g., "Select Osteosarcoma" -> "Osteosarcoma")
+                      const selectMatch = step.match(/select\s+(.+)/i);
+                      if (selectMatch) {
+                        valueToSelect = selectMatch[1].trim();
                       }
-                      
-                      if (valueToSelect) {
+                    }
+                    
+                    if (hasValueInStep && valueToSelect) {
                         console.log(`    🔍 Looking for checkbox with value: ${valueToSelect}`);
                         // Find and click the checkbox with matching label
                         const checkboxResult = await this.mcpClient.callTools([{
@@ -407,7 +406,6 @@ export class TestGenerationOrchestrator {
                           }
                         }
                       }
-                    }
                     
                     // If no value to select or checkbox not found, just do a regular click
                     if (!hasValueInStep || !valueToSelect) {
