@@ -2250,10 +2250,28 @@ Return JSON:
                 })) || []
             };
 
+            // Get all TSV metadata directly (more reliable than RAG for field names)
+            const tsvMetadata = this.vectorRAG.getTSVMetadata();
+            const allTSVFields: string[] = [];
+            const tsvFieldTypes: {[field: string]: string} = {};
+            for (const [fileName, metadata] of Object.entries(tsvMetadata)) {
+                const meta = metadata as any;
+                if (meta.headers) {
+                    allTSVFields.push(...meta.headers);
+                    if (meta.fieldTypes) {
+                        Object.assign(tsvFieldTypes, meta.fieldTypes);
+                    }
+                }
+            }
+            const uniqueTSVFields = [...new Set(allTSVFields)];
+            
             const prompt = `You are analyzing a data exploration website.
 
-TSV DATABASE KNOWLEDGE (from RAG):
+TSV DATABASE KNOWLEDGE (from RAG - sample data):
 ${JSON.stringify(tsvKnowledge.slice(0, 10), null, 2)}
+
+ALL TSV FIELD NAMES (complete list from all TSV files):
+${JSON.stringify(uniqueTSVFields, null, 2)}
 
 UI ELEMENTS DISCOVERED (from active exploration):
 ${JSON.stringify(uiElementsSummary, null, 2)}
@@ -2262,20 +2280,22 @@ UI EXPLORATION KNOWLEDGE (from RAG - additional context):
 ${JSON.stringify(uiKnowledge.slice(0, 5), null, 2)}
 
 TASK: Create semantic mappings between UI elements and TSV fields.
-- Match UI labels from "UI ELEMENTS DISCOVERED" to TSV field names
+- Match UI labels from "UI ELEMENTS DISCOVERED" to TSV field names from "ALL TSV FIELD NAMES" list
 - Use the EXACT "selector" from the UI elements discovered section
 - Compare UI result counts with TSV record counts
 - Identify data mismatches
 - Generate test cases
 
 CRITICAL REQUIREMENTS: 
-- You MUST create mappings for ALL dropdowns/filters in "UI ELEMENTS DISCOVERED" that have a matching TSV field.
+- You MUST create mappings for ALL dropdowns/filters in "UI ELEMENTS DISCOVERED" that have a matching TSV field in "ALL TSV FIELD NAMES".
+- Check the "ALL TSV FIELD NAMES" list to find matching fields - do NOT use "unknown" if a matching field exists.
 - You MUST use the exact CSS selectors from "UI ELEMENTS DISCOVERED" section above.
 - Each dropdown/searchBox/checkbox has a "selector" field - use that EXACT value for "uiSelector".
 - Do NOT use "unknown" or invent new selectors.
 - Only create mappings for elements that exist in "UI ELEMENTS DISCOVERED".
 - If a UI element label matches a TSV field name (case-insensitive, partial match OK), you MUST create a mapping for it.
-- Common mappings to look for: Breed→breed, Sex→sex, Diagnosis→disease_term, Study→case.case_id or study.clinical_study_designation
+- Common mappings: Breed→breed (check "ALL TSV FIELD NAMES" for "breed"), Sex→sex (check for "sex"), Diagnosis→disease_term, Study→case.case_id or study.clinical_study_designation
+- IMPORTANT: If you see "breed" or "sex" in "ALL TSV FIELD NAMES", use them - do NOT set tsvField to "unknown"
 
 IMPORTANT: Return ONLY a valid JSON object. No explanatory text before or after the JSON.
 
