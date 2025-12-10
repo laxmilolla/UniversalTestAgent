@@ -1565,9 +1565,37 @@ class TestGenerationUI {
                         <p><strong>Start Time:</strong> ${new Date(result.startTime).toLocaleString()}</p>
                         ${result.error ? `<p><strong>Error:</strong> ${result.error}</p>` : ''}
                         ${validationHTML}
+                        ${result.stepScreenshots && result.stepScreenshots.length > 0 ? `
+                            <div class="step-screenshots">
+                                <h5>📸 Step-by-Step Screenshots:</h5>
+                                ${result.stepScreenshots.map((stepScreenshot, idx) => {
+                                    if (!stepScreenshot.screenshot) return '';
+                                    const isDataUrl = stepScreenshot.screenshot.startsWith('data:image/');
+                                    if (isDataUrl) {
+                                        return `
+                                            <div class="step-screenshot-container">
+                                                <div class="step-description">
+                                                    <strong>Step ${stepScreenshot.step}:</strong> ${stepScreenshot.description}
+                                                </div>
+                                                <img src="${stepScreenshot.screenshot}" alt="Step ${stepScreenshot.step} screenshot" class="step-screenshot">
+                                            </div>
+                                        `;
+                                    } else {
+                                        return `<div class="step-screenshot-container">
+                                            <div class="step-description">
+                                                <strong>Step ${stepScreenshot.step}:</strong> ${stepScreenshot.description}
+                                            </div>
+                                            <div class="screenshot-placeholder">
+                                                <p>Screenshot path: ${stepScreenshot.screenshot}</p>
+                                            </div>
+                                        </div>`;
+                                    }
+                                }).join('')}
+                            </div>
+                        ` : ''}
                         ${result.screenshots && result.screenshots.length > 0 ? `
                             <div class="result-screenshots">
-                                <h5>Screenshots:</h5>
+                                <h5>Final Screenshot:</h5>
                                 ${result.screenshots.map((screenshot, idx) => {
                                     // Check if screenshot is base64 data URL or file path
                                     const isDataUrl = screenshot && screenshot.startsWith('data:image/');

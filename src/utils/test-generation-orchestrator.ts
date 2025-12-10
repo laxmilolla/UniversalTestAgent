@@ -240,6 +240,9 @@ export class TestGenerationOrchestrator {
         const testCaseId = testCaseIds[i] || `test-${i + 1}`;
         const testStartTime = Date.now();
         
+        // Initialize step screenshots array outside try block so it's accessible in catch
+        let stepScreenshots: Array<{step: number, description: string, screenshot: string | null}> = [];
+        
         try {
           console.log(`\n🧪 Executing test case ${i + 1}/${testCases.length}: ${testCase.name || testCaseId}`);
           
@@ -271,6 +274,12 @@ export class TestGenerationOrchestrator {
             console.log(`  🎯 Applying study filter: ${studyFilterInfo.studyName}`);
             await this.applyStudyFilter(studyFilterInfo);
             await new Promise(resolve => setTimeout(resolve, 2000)); // Wait for filter to apply
+            
+            // Capture screenshot after study filter is applied
+            const studyFilterScreenshot = await this.captureStepScreenshot(-1, `Study filter applied: ${studyFilterInfo.studyName}`);
+            if (studyFilterScreenshot) {
+              stepScreenshots.push({ step: 0, description: `Study filter applied: ${studyFilterInfo.studyName}`, screenshot: studyFilterScreenshot });
+            }
           }
           
           // Execute test steps
@@ -481,6 +490,13 @@ export class TestGenerationOrchestrator {
                             if (parsedResult.found && parsedResult.clicked) {
                               console.log(`    ✅ Selected checkbox: ${parsedResult.label || valueToSelect}`);
                               await new Promise(resolve => setTimeout(resolve, 1000));
+                              
+                              // Capture screenshot after checkbox click
+                              const checkboxScreenshot = await this.captureStepScreenshot(stepIndex, `Selected checkbox: ${parsedResult.label || valueToSelect}`);
+                              if (checkboxScreenshot) {
+                                stepScreenshots.push({ step: stepIndex + 1, description: step, screenshot: checkboxScreenshot });
+                              }
+                              
                               continue; // Success, move to next step
                             } else {
                               console.warn(`    ⚠️ Checkbox not found for value: ${valueToSelect}. Result: ${JSON.stringify(parsedResult)}`);
@@ -510,6 +526,12 @@ export class TestGenerationOrchestrator {
                       parameters: { selector: selector }
                     }]);
                     await new Promise(resolve => setTimeout(resolve, 1000));
+                    
+                    // Capture screenshot after click
+                    const clickScreenshot = await this.captureStepScreenshot(stepIndex, step);
+                    if (clickScreenshot) {
+                      stepScreenshots.push({ step: stepIndex + 1, description: step, screenshot: clickScreenshot });
+                    }
                   }
                 } catch (error: any) {
                   console.warn(`    ⚠️ Click failed: ${error.message}`);
@@ -527,6 +549,12 @@ export class TestGenerationOrchestrator {
                     parameters: { selector: selector, value: String(value) }
                   }]);
                   await new Promise(resolve => setTimeout(resolve, 1000));
+                  
+                  // Capture screenshot after fill action
+                  const fillScreenshot = await this.captureStepScreenshot(stepIndex, step);
+                  if (fillScreenshot) {
+                    stepScreenshots.push({ step: stepIndex + 1, description: step, screenshot: fillScreenshot });
+                  }
                 } catch (error: any) {
                   console.warn(`    ⚠️ Fill failed: ${error.message}`);
                 }
@@ -642,6 +670,13 @@ export class TestGenerationOrchestrator {
                             if (parsed.found && parsed.clicked) {
                               console.log(`    ✅ Selected filter value: ${parsed.label || value}`);
                               await new Promise(resolve => setTimeout(resolve, 1000));
+                              
+                              // Capture screenshot after filter selection
+                              const filterScreenshot = await this.captureStepScreenshot(stepIndex, `Selected filter: ${parsed.label || value}`);
+                              if (filterScreenshot) {
+                                stepScreenshots.push({ step: stepIndex + 1, description: step, screenshot: filterScreenshot });
+                              }
+                              
                               break; // Success, move to next value
                             }
                           } catch (e) {}
@@ -794,6 +829,7 @@ export class TestGenerationOrchestrator {
             startTime: new Date(testStartTime).toISOString(),
             validation: validation,
             screenshots: screenshot ? [screenshot] : [],
+            stepScreenshots: stepScreenshots.length > 0 ? stepScreenshots : undefined,
             error: validation.passed ? undefined : validation.message
           });
           
@@ -810,7 +846,8 @@ export class TestGenerationOrchestrator {
             duration: duration,
             startTime: new Date(testStartTime).toISOString(),
             error: error.message,
-            screenshots: []
+            screenshots: [],
+            stepScreenshots: stepScreenshots.length > 0 ? stepScreenshots : undefined
           });
         }
       }
@@ -944,6 +981,71 @@ export class TestGenerationOrchestrator {
       console.log('  📐 Screen maximized for screenshot');
     } catch (error: any) {
       console.warn(`  ⚠️ Failed to maximize screen: ${error.message}`);
+    }
+  }
+
+  /**
+   * Capture a screenshot after a specific step action.
+   * Maximizes screen, waits for UI to settle, captures screenshot, and converts to base64.
+   */
+  private async captureStepScreenshot(stepIndex: number, stepDescription: string): Promise<string | null> {
+    try {
+      // Maximize screen first
+      await this.maximizeScreen();
+      
+      // Wait for UI to settle after action
+      await new Promise(resolve => setTimeout(resolve, 800));
+      
+      // Capture screenshot
+      const screenshotResult = await this.mcpClient.callTools([{
+        id: `screenshot-step-${stepIndex}-${Date.now()}`,
+        name: 'playwright_screenshot',
+        parameters: {}
+      }]);
+      
+      if (screenshotResult[0]?.result && Array.isArray(screenshotResult[0].result)) {
+        const screenshotData = screenshotResult[0].result.find((r: any) => r.type === 'text');
+        const screenshotText = screenshotData?.text || '';
+        
+        const filePathMatch = screenshotText.match(/Screenshot saved to:\s*(.+)/);
+        if (filePathMatch && filePathMatch[1]) {
+          const filePath = filePathMatch[1].trim();
+          
+          // Try multiple path resolution strategies
+          let absolutePath: string | null = null;
+          
+          if (path.isAbsolute(filePath)) {
+            absolutePath = filePath;
+          } else {
+            absolutePath = path.resolve(process.cwd(), filePath);
+            if (!fs.existsSync(absolutePath)) {
+              const homePath = path.resolve(process.env.HOME || process.env.USERPROFILE || '', filePath.replace(/^\.\.\//, ''));
+              if (fs.existsSync(homePath)) {
+                absolutePath = homePath;
+              } else {
+                const projectPath = path.resolve(__dirname, '../../', filePath);
+                if (fs.existsSync(projectPath)) {
+                  absolutePath = projectPath;
+                }
+              }
+            }
+          }
+          
+          if (absolutePath && fs.existsSync(absolutePath)) {
+            const imageBuffer = fs.readFileSync(absolutePath);
+            const base64Image = imageBuffer.toString('base64');
+            const mimeType = 'image/png';
+            const base64DataUrl = `data:${mimeType};base64,${base64Image}`;
+            console.log(`  📸 Step ${stepIndex + 1} screenshot captured: ${stepDescription}`);
+            return base64DataUrl;
+          }
+        }
+      }
+      
+      return null;
+    } catch (error: any) {
+      console.warn(`  ⚠️ Failed to capture step screenshot: ${error.message}`);
+      return null;
     }
   }
 

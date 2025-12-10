@@ -1466,6 +1466,52 @@ body {
     color: #999 !important;
 }
 
+/* Step-by-step screenshots */
+.step-screenshots {
+    margin-top: 20px;
+    padding-top: 15px;
+    border-top: 2px solid #e9ecef;
+}
+
+.step-screenshots h5 {
+    color: #333;
+    margin-bottom: 15px;
+    font-size: 1em;
+    font-weight: 600;
+}
+
+.step-screenshot-container {
+    margin-bottom: 20px;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border: 1px solid #e9ecef;
+}
+
+.step-description {
+    margin-bottom: 10px;
+    padding: 8px 12px;
+    background: white;
+    border-radius: 4px;
+    border-left: 3px solid #667eea;
+    font-size: 0.95em;
+    color: #333;
+}
+
+.step-description strong {
+    color: #667eea;
+}
+
+.step-screenshot {
+    max-width: 100%;
+    height: auto;
+    border-radius: 8px;
+    border: 1px solid #e9ecef;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    display: block;
+    margin: 0 auto;
+}
+
 /* Website URL Section */
 .website-url-section {
     margin-bottom: 30px;
