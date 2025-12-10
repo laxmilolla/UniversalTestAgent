@@ -276,19 +276,68 @@ export class VectorRAGClient {
     }
 
     async getValueCount(fieldName: string, value: string): Promise<number> {
+        // Normalize field name: remove table prefix (e.g., "case.case_id" -> "case_id")
+        const normalizedFieldName = fieldName.includes('.') ? fieldName.split('.').pop() || fieldName : fieldName;
+        const valueStr = String(value).trim();
+        
         // Search all TSV files for the field
         for (const [fileName, metadata] of Object.entries(this.tsvMetadata)) {
             const meta = metadata as any;
+            
+            // Try exact match first
+            let matchedField = null;
             if (meta.headers.includes(fieldName) && meta.valueCounts && meta.valueCounts[fieldName]) {
-                const counts = meta.valueCounts[fieldName];
-                const valueStr = String(value);
+                matchedField = fieldName;
+            } else if (meta.headers.includes(normalizedFieldName) && meta.valueCounts && meta.valueCounts[normalizedFieldName]) {
+                // Try normalized name (without table prefix)
+                matchedField = normalizedFieldName;
+            } else {
+                // Try case-insensitive and partial matches
+                for (const header of meta.headers) {
+                    const headerLower = header.toLowerCase();
+                    const fieldLower = fieldName.toLowerCase();
+                    const normalizedLower = normalizedFieldName.toLowerCase();
+                    
+                    if (headerLower === fieldLower || 
+                        headerLower === normalizedLower ||
+                        headerLower.includes(normalizedLower) ||
+                        normalizedLower.includes(headerLower)) {
+                        if (meta.valueCounts && meta.valueCounts[header]) {
+                            matchedField = header;
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            if (matchedField && meta.valueCounts[matchedField]) {
+                const counts = meta.valueCounts[matchedField];
+                
+                // Try exact value match first
                 if (counts[valueStr] !== undefined) {
-                    console.log(`📊 Found count for ${fieldName}='${value}': ${counts[valueStr]} records in ${fileName}`);
+                    console.log(`📊 Found count for ${fieldName}='${value}' (matched field: ${matchedField}): ${counts[valueStr]} records in ${fileName}`);
                     return counts[valueStr];
+                }
+                
+                // Try case-insensitive match
+                for (const [countValue, count] of Object.entries(counts)) {
+                    if (String(countValue).toLowerCase() === valueStr.toLowerCase()) {
+                        console.log(`📊 Found count for ${fieldName}='${value}' (matched field: ${matchedField}, value: ${countValue}): ${count} records in ${fileName}`);
+                        return count as number;
+                    }
                 }
             }
         }
-        console.warn(`⚠️ No count found for ${fieldName}='${value}'. Returning 0.`);
+        // Log available headers for debugging
+        const availableHeaders: string[] = [];
+        for (const [fileName, metadata] of Object.entries(this.tsvMetadata)) {
+            const meta = metadata as any;
+            if (meta.headers) {
+                availableHeaders.push(...meta.headers);
+            }
+        }
+        const uniqueHeaders = [...new Set(availableHeaders)];
+        console.warn(`⚠️ No count found for ${fieldName}='${value}'. Available TSV headers: ${uniqueHeaders.join(', ')}. Returning 0.`);
         return 0;
     }
 
