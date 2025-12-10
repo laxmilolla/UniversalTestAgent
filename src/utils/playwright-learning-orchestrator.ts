@@ -2627,52 +2627,105 @@ CRITICAL RULES:
                 // First, ensure selector is correct from mappings
                 let correctedSelectors = testCase.selectors || {};
                 let matchingMapping = null;
-                if (testCase.dataField && mappings && mappings.length > 0) {
-                    // Find the mapping that matches this test case's dataField
-                    matchingMapping = mappings.find((m: any) => 
-                        m.tsvField === testCase.dataField || 
-                        m.dbField === testCase.dataField ||
-                        testCase.dataField.includes(m.tsvField) ||
-                        m.tsvField.includes(testCase.dataField)
-                    );
+                let correctedDataField = testCase.dataField;
+                
+                // Find matching mapping by multiple strategies
+                if (mappings && mappings.length > 0) {
+                    // Strategy 1: Match by dataField (if it's not "unknown")
+                    if (testCase.dataField && testCase.dataField !== 'unknown') {
+                        matchingMapping = mappings.find((m: any) => 
+                            m.tsvField === testCase.dataField || 
+                            m.dbField === testCase.dataField ||
+                            testCase.dataField.includes(m.tsvField) ||
+                            m.tsvField.includes(testCase.dataField)
+                        );
+                    }
                     
-                    if (matchingMapping?.uiSelector && matchingMapping.uiSelector !== 'unknown') {
-                        // Use the selector from the mapping
-                        correctedSelectors = {
-                            field: matchingMapping.uiSelector,
-                            ...correctedSelectors
-                        };
-                        console.log(`  ✓ Corrected selector for ${testCase.dataField}: ${matchingMapping.uiSelector}`);
-                    } else if (selectorMap) {
-                        // Fallback: Use selector map directly
+                    // Strategy 2: Match by selector (if dataField is unknown or no match found)
+                    if (!matchingMapping && correctedSelectors.field) {
+                        matchingMapping = mappings.find((m: any) => 
+                            m.uiSelector === correctedSelectors.field ||
+                            m.selector === correctedSelectors.field
+                        );
+                        if (matchingMapping) {
+                            correctedDataField = matchingMapping.tsvField;
+                            console.log(`  ✓ Corrected dataField from "unknown" to "${correctedDataField}" based on selector match`);
+                        }
+                    }
+                    
+                    // Strategy 3: Match by test case name/description to uiLabel (if still no match)
+                    if (!matchingMapping) {
                         const normalize = (str: string) => {
                             if (!str || typeof str !== 'string') return '';
                             return str.toLowerCase().replace(/[^a-z0-9]/g, '');
                         };
-                        const normalizedField = testCase.dataField ? normalize(testCase.dataField) : '';
-                        const fieldSelector = normalizedField ? selectorMap.get(normalizedField) : null;
-                        const fieldWithoutPrefix = testCase.dataField && typeof testCase.dataField === 'string' 
-                            ? testCase.dataField.split('.').pop() || testCase.dataField 
-                            : '';
-                        const fieldSelector2 = fieldWithoutPrefix ? selectorMap.get(normalize(fieldWithoutPrefix)) : null;
+                        const testNameNormalized = normalize(testCase.name || '');
+                        const testDescNormalized = normalize(testCase.description || '');
                         
-                        if (fieldSelector || fieldSelector2) {
-                            correctedSelectors = {
-                                field: fieldSelector || fieldSelector2,
-                                ...correctedSelectors
-                            };
-                            console.log(`  ✓ Found selector from map for ${testCase.dataField}: ${correctedSelectors.field}`);
-                        } else {
-                            console.warn(`  ⚠️ No selector found for dataField: ${testCase.dataField} (test case may not be executable)`);
+                        matchingMapping = mappings.find((m: any) => {
+                            const uiLabelNormalized = normalize(m.uiLabel || '');
+                            return testNameNormalized.includes(uiLabelNormalized) ||
+                                   uiLabelNormalized.includes(testNameNormalized) ||
+                                   testDescNormalized.includes(uiLabelNormalized) ||
+                                   uiLabelNormalized.includes(testDescNormalized);
+                        });
+                        if (matchingMapping) {
+                            correctedDataField = matchingMapping.tsvField;
+                            console.log(`  ✓ Corrected dataField from "${testCase.dataField}" to "${correctedDataField}" based on name/description match`);
                         }
-                    } else {
-                        console.warn(`  ⚠️ No mapping found for dataField: ${testCase.dataField}`);
                     }
                 }
                 
-                if (!testCase.dataField || !Array.isArray(testCase.testValues) || testCase.testValues.length === 0) {
+                // Update testCase.dataField if we found a correction
+                if (correctedDataField && correctedDataField !== testCase.dataField && correctedDataField !== 'unknown') {
+                    testCase.dataField = correctedDataField;
+                }
+                
+                // Use corrected dataField for the rest of the processing
+                const finalDataField = correctedDataField || testCase.dataField;
+                
+                // Now correct selectors using the finalDataField
+                if (matchingMapping?.uiSelector && matchingMapping.uiSelector !== 'unknown') {
+                    // Use the selector from the mapping
+                    correctedSelectors = {
+                        field: matchingMapping.uiSelector,
+                        ...correctedSelectors
+                    };
+                    console.log(`  ✓ Corrected selector for ${finalDataField}: ${matchingMapping.uiSelector}`);
+                } else if (selectorMap) {
+                    // Fallback: Use selector map directly
+                    const normalize = (str: string) => {
+                        if (!str || typeof str !== 'string') return '';
+                        return str.toLowerCase().replace(/[^a-z0-9]/g, '');
+                    };
+                    const normalizedField = finalDataField ? normalize(finalDataField) : '';
+                    const fieldSelector = normalizedField ? selectorMap.get(normalizedField) : null;
+                    const fieldWithoutPrefix = finalDataField && typeof finalDataField === 'string' 
+                        ? finalDataField.split('.').pop() || finalDataField 
+                        : '';
+                    const fieldSelector2 = fieldWithoutPrefix ? selectorMap.get(normalize(fieldWithoutPrefix)) : null;
+                    
+                    if (fieldSelector || fieldSelector2) {
+                        correctedSelectors = {
+                            field: fieldSelector || fieldSelector2,
+                            ...correctedSelectors
+                        };
+                        console.log(`  ✓ Found selector from map for ${finalDataField}: ${correctedSelectors.field}`);
+                    } else {
+                        console.warn(`  ⚠️ No selector found for dataField: ${finalDataField} (test case may not be executable)`);
+                    }
+                }
+                
+                // Use corrected dataField for the rest of the processing
+                const finalDataField = correctedDataField || testCase.dataField;
+                
+                if (!finalDataField || finalDataField === 'unknown' || !Array.isArray(testCase.testValues) || testCase.testValues.length === 0) {
+                    if (finalDataField === 'unknown') {
+                        console.warn(`  ⚠️ Test case "${testCase.name}" has dataField="unknown" and no matching mapping found. Skipping expected result generation.`);
+                    }
                     return {
                         ...testCase,
+                        dataField: finalDataField,
                         selectors: correctedSelectors
                     };
                 }
@@ -2689,12 +2742,12 @@ CRITICAL RULES:
                             const valLower = String(val).toLowerCase();
                             const isValid = validValues.has(valLower);
                             if (!isValid) {
-                                console.warn(`  ⚠️ Filtering out invalid test value "${val}" for field "${testCase.dataField}" (not in field's unique values)`);
+                                console.warn(`  ⚠️ Filtering out invalid test value "${val}" for field "${finalDataField}" (not in field's unique values)`);
                             }
                             return isValid;
                         });
                         if (validatedTestValues.length === 0 && originalCount > 0) {
-                            console.warn(`  ⚠️ All test values for "${testCase.dataField}" were invalid. Using first 3 valid values from field data.`);
+                            console.warn(`  ⚠️ All test values for "${finalDataField}" were invalid. Using first 3 valid values from field data.`);
                             validatedTestValues = fieldData.uniqueValues.slice(0, 3).map((v: any) => String(v));
                         }
                     }
@@ -2763,7 +2816,7 @@ CRITICAL RULES:
                 
                 // Correct test case type based on UI element type
                 let correctedType = testCase.type;
-                const testCaseSelectorForType = correctedSelectors.field || correctedSelectors[testCase.dataField];
+                const testCaseSelectorForType = correctedSelectors.field || correctedSelectors[finalDataField];
                 
                 // Determine correct type from UI analysis
                 if (testCaseSelectorForType) {
@@ -2771,18 +2824,18 @@ CRITICAL RULES:
                     const isSearchBox = uiAnalysis.searchBoxes?.some((s: any) => s.selector === testCaseSelectorForType);
                     
                     if (isDropdown && testCase.type === 'search') {
-                        console.log(`  ⚠️ Correcting test case type from "search" to "filter" for ${testCase.dataField} (selector: ${testCaseSelectorForType} is a dropdown)`);
+                        console.log(`  ⚠️ Correcting test case type from "search" to "filter" for ${finalDataField} (selector: ${testCaseSelectorForType} is a dropdown)`);
                         correctedType = 'filter';
                     } else if (isSearchBox && testCase.type === 'filter') {
-                        console.log(`  ⚠️ Correcting test case type from "filter" to "search" for ${testCase.dataField} (selector: ${testCaseSelectorForType} is a search box)`);
+                        console.log(`  ⚠️ Correcting test case type from "filter" to "search" for ${finalDataField} (selector: ${testCaseSelectorForType} is a search box)`);
                         correctedType = 'search';
                     } else if (matchingMapping && matchingMapping.uiElementType) {
                         // Use uiElementType from mapping if available
                         if (matchingMapping.uiElementType === 'dropdown/filter' && testCase.type !== 'filter') {
-                            console.log(`  ⚠️ Correcting test case type to "filter" based on mapping uiElementType for ${testCase.dataField}`);
+                            console.log(`  ⚠️ Correcting test case type to "filter" based on mapping uiElementType for ${finalDataField}`);
                             correctedType = 'filter';
                         } else if (matchingMapping.uiElementType === 'search' && testCase.type !== 'search') {
-                            console.log(`  ⚠️ Correcting test case type to "search" based on mapping uiElementType for ${testCase.dataField}`);
+                            console.log(`  ⚠️ Correcting test case type to "search" based on mapping uiElementType for ${finalDataField}`);
                             correctedType = 'search';
                         }
                     }
@@ -2791,6 +2844,7 @@ CRITICAL RULES:
                 // Update test case with expected results, corrected selectors, option selectors, and corrected type
                 return {
                     ...testCase,
+                    dataField: finalDataField,
                     type: correctedType,
                     testValues: validatedTestValues, // Use validated values
                     selectors: correctedSelectors,
