@@ -1041,7 +1041,7 @@ Example format:
                     
                     for (const element of elements) {
                         // Skip obvious non-interactive elements
-                        const className = element.className || '';
+                        const className = String(element.className || '');
                         const textContent = element.textContent?.trim() || '';
                         
                         // Skip buttons, tooltips, and action items
@@ -1129,7 +1129,7 @@ Example format:
     }
 
     private isInteractiveDropdown(element: any): boolean {
-        const className = element.className || '';
+        const className = String(element.className || '');
         const tagName = element.tagName?.toLowerCase();
         const role = element.attributes?.role;
         
@@ -1329,7 +1329,7 @@ Example format:
                     script: `(() => {
                         const el = document.querySelector('${selector}');
                         if (!el) return { isExpandable: false };
-                        const className = el.className || '';
+                        const className = String(el.className || '');
                         return { 
                             isExpandable: className.includes('customExpansionPanelSummaryRoot') || 
                                         (el.getAttribute('role') === 'button' && el.getAttribute('aria-expanded') !== null)
@@ -1636,7 +1636,7 @@ Example format:
                     script: `(() => {
                         const el = document.querySelector('${selector}');
                         if (!el) return { isExpandable: false };
-                        const className = el.className || '';
+                        const className = String(el.className || '');
                         return { 
                             isExpandable: className.includes('customExpansionPanelSummaryRoot') || 
                                         (el.getAttribute('role') === 'button' && el.getAttribute('aria-expanded') !== null)
