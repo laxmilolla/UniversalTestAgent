@@ -421,6 +421,7 @@ export class TestGenerationOrchestrator {
                         if (checkboxResult[0]?.result && Array.isArray(checkboxResult[0].result)) {
                           // MCP result format: find JSON after "Result:"
                           let foundResult = false;
+                          let parsedResult = null;
                           for (const item of checkboxResult[0].result) {
                             if (item.type === 'text' && item.text) {
                               if (item.text === 'Result:') {
@@ -429,21 +430,29 @@ export class TestGenerationOrchestrator {
                               }
                               if (foundResult || item.text.startsWith('{') || item.text.startsWith('[')) {
                                 try {
-                                  const parsed = JSON.parse(item.text);
-                                  if (parsed.found && parsed.clicked) {
-                                    console.log(`    ✅ Selected checkbox: ${parsed.label || valueToSelect}`);
-                                    await new Promise(resolve => setTimeout(resolve, 1000));
-                                    continue; // Success, move to next step
-                                  } else {
-                                    console.warn(`    ⚠️ Checkbox not found for value: ${valueToSelect}`);
-                                  }
+                                  parsedResult = JSON.parse(item.text);
                                   break; // Found and parsed, exit loop
                                 } catch (e) {
                                   // Not valid JSON, continue to next item
+                                  console.warn(`    ⚠️ Failed to parse checkbox result JSON: ${item.text.substring(0, 100)}`);
                                 }
                               }
                             }
                           }
+                          
+                          if (parsedResult) {
+                            if (parsedResult.found && parsedResult.clicked) {
+                              console.log(`    ✅ Selected checkbox: ${parsedResult.label || valueToSelect}`);
+                              await new Promise(resolve => setTimeout(resolve, 1000));
+                              continue; // Success, move to next step
+                            } else {
+                              console.warn(`    ⚠️ Checkbox not found for value: ${valueToSelect}. Result: ${JSON.stringify(parsedResult)}`);
+                            }
+                          } else {
+                            console.warn(`    ⚠️ No checkbox result parsed. CheckboxResult structure: ${JSON.stringify(checkboxResult[0]?.result?.slice(0, 3))}`);
+                          }
+                        } else {
+                          console.warn(`    ⚠️ Checkbox result structure invalid: ${JSON.stringify(checkboxResult[0])}`);
                         }
                       }
                     
