@@ -1484,12 +1484,12 @@ Example format:
                                     // Strategy 2: Use data attributes if available
                                     const dataTestId = cb.getAttribute('data-testid');
                                     if (dataTestId) {
-                                        checkboxSelector = `[data-testid="${dataTestId}"]`;
+                                        checkboxSelector = '[data-testid="' + dataTestId + '"]';
                                     } else {
                                         // Strategy 3: Use aria-label if available
                                         const ariaLabel = cb.getAttribute('aria-label');
                                         if (ariaLabel) {
-                                            checkboxSelector = `input[type="checkbox"][aria-label="${ariaLabel}"]`;
+                                            checkboxSelector = 'input[type="checkbox"][aria-label="' + ariaLabel + '"]';
                                         } else {
                                             // Strategy 4: Use panel selector + nth-of-type (relative to expanded content)
                                             // Count checkboxes before this one in the expanded content
