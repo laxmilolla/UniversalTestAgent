@@ -475,9 +475,10 @@ export class ActiveUIExplorer {
             const prioritized = await this.prioritizeWithLLM(matchedFilters.dropdowns, dropdownToTSVMap);
             console.log(`🧠 Phase 2: COMPLETE - Prioritized ${prioritized.length} dropdowns`);
             
-            // Convert matched elements to results format immediately (so they're returned even if Phase 3 times out)
-            // This is NOT a fallback - it's returning what was actually discovered and matched
-            for (const dropdown of matchedFilters.dropdowns) {
+            // Convert ALL discovered elements to results format (not just matched ones)
+            // This ensures UI elements are always shown, even if they don't match TSV columns
+            // Matched elements will be explored in Phase 3, but all discovered elements should be returned
+            for (const dropdown of discoveredDropdowns) {
                 results.push({
                     elementType: 'dropdown',
                     label: dropdown.label,
@@ -486,7 +487,7 @@ export class ActiveUIExplorer {
                     sampledTests: [] // Will be populated in Phase 3 if time permits
                 });
             }
-            for (const searchBox of matchedFilters.searchBoxes) {
+            for (const searchBox of searchBoxes) {
                 results.push({
                     elementType: 'searchBox',
                     label: searchBox.label,
@@ -495,7 +496,7 @@ export class ActiveUIExplorer {
                     sampledTests: []
                 });
             }
-            for (const checkbox of matchedFilters.checkboxes) {
+            for (const checkbox of checkboxes) {
                 results.push({
                     elementType: 'checkbox',
                     label: checkbox.label,
@@ -505,7 +506,7 @@ export class ActiveUIExplorer {
                     states: []
                 });
             }
-            for (const radioGroup of matchedFilters.radioGroups) {
+            for (const radioGroup of radioGroups) {
                 results.push({
                     elementType: 'radio',
                     label: radioGroup.groupName,
@@ -515,7 +516,7 @@ export class ActiveUIExplorer {
                     states: []
                 });
             }
-            console.log(`✅ Converted ${results.length} matched elements to results format`);
+            console.log(`✅ Converted ${results.length} discovered elements to results format (${matchedFilters.dropdowns.length} dropdowns, ${matchedFilters.searchBoxes.length} search boxes matched to TSV)`);
             
             // Phase 3: Deep exploration of top priority only (enhances existing results)
             console.log('🎯 Phase 3: Targeted Exploration - START');
