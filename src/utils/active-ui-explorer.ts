@@ -846,9 +846,9 @@ Example format:
                 // Detect changes
                 const changes = this.stateCapturer.detectChanges(before, after);
                 
-                sampleResults.push({ option, changes });
+                sampleResults.push({ option: optionLabel, changes });
                 
-                console.log(`📊 Option "${option}" changes:`, changes);
+                console.log(`📊 Option "${optionLabel}" changes:`, changes);
                 
                 // Reset filter before next test
                 await this.resetFilters();
