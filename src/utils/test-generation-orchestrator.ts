@@ -149,13 +149,16 @@ export class TestGenerationOrchestrator {
       // Always try to get learning results first (needed for study filter info)
       try {
         // Try multiple ways to access learning results
-        learningResults = (this.playwrightLearningOrchestrator as any).lastLearningResults || 
+        learningResults = (global as any).learningResults || // Check global store first
+                         (this.playwrightLearningOrchestrator as any).lastLearningResults || 
                          (this.playwrightLearningOrchestrator as any).getLearningResults?.() ||
                          (this.playwrightLearningOrchestrator as any).learningResults ||
                          null;
         
         if (learningResults) {
           console.log('📊 Retrieved learning results for study filter info');
+        } else {
+          console.warn('⚠️ No learning results found - study filter may not be applied');
         }
       } catch (e) {
         console.warn('Could not access learning results:', e);
