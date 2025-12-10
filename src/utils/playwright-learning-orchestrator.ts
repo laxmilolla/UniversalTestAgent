@@ -2510,28 +2510,58 @@ Example JSON format:
             })
         );
         
+        // Build UI element type mapping for better test case generation
+        const uiElementTypes: {[selector: string]: string} = {};
+        if (uiAnalysis.dropdowns) {
+            uiAnalysis.dropdowns.forEach((d: any) => {
+                uiElementTypes[d.selector] = 'dropdown/filter';
+            });
+        }
+        if (uiAnalysis.searchBoxes) {
+            uiAnalysis.searchBoxes.forEach((s: any) => {
+                uiElementTypes[s.selector] = 'search';
+            });
+        }
+        
+        // Enhance testData with UI element type information
+        const enhancedTestData = testData.map((m: any) => {
+            const elementType = uiElementTypes[m.uiSelector] || 'filter';
+            return {
+                ...m,
+                uiElementType: elementType,
+                uiLabel: m.uiLabel || m.tsvField
+            };
+        });
+        
         const prompt = `Generate comprehensive test cases based on REAL data mappings.
 
 MAPPINGS WITH ACTUAL DATA (ALL HAVE VALID SELECTORS):
-${JSON.stringify(testData, null, 2)}
+${JSON.stringify(enhancedTestData, null, 2)}
+
+UI ELEMENT TYPES:
+- If "uiElementType" is "dropdown/filter": The element is an expandable filter panel with checkboxes. Use type="filter" and steps should be: ["Click on [uiLabel] filter", "Select '[value]' checkbox", "Verify filtered results"]
+- If "uiElementType" is "search": The element is a search input box. Use type="search" and steps should be: ["Enter '[value]' in the search box", "Press Enter or click search", "Verify search results"]
+- If "uiElementType" is not specified: Default to type="filter" for dropdowns
 
 IMPORTANT: 
 - Each mapping contains a "uiSelector" field with the ACTUAL CSS selector discovered from the UI.
+- Each mapping contains a "uiElementType" field indicating if it's a "dropdown/filter" or "search" element.
 - ALL mappings provided have valid selectors (non-filterable elements have been filtered out).
 - You MUST use these exact selectors in your test cases. Do NOT invent new selectors.
+- You MUST match the test case "type" to the "uiElementType" from the mapping.
 - Generate test cases ONLY for the mappings provided (they are all testable).
 
 Generate test cases using ACTUAL VALUES from the data. Include:
-1. Filter tests with real categorical values
-2. Search tests with real searchable terms  
-3. Sort tests for sortable columns
-4. Data validation against TSV gold standard
+1. Filter tests (type="filter") for dropdown/filter elements - click panel, select checkbox, verify
+2. Search tests (type="search") for search box elements - enter text, search, verify
+3. Sort tests (type="sort") for sortable columns - click header, verify order
+4. Data validation tests (type="validation") - compare UI data with TSV
 
 Return JSON array of test cases:
 [{
   "name": "descriptive_name",
   "description": "what_this_tests",
-  "type": "filter|search|sort",
+  "type": "filter|search|sort|validation",
   "dataField": "tsv_field_name",
   "testValues": ["actual", "data", "values"],
   "steps": ["step1", "step2"],
@@ -2540,8 +2570,11 @@ Return JSON array of test cases:
   "validationCriteria": "how_to_validate"
 }]
 
-CRITICAL: 
+CRITICAL RULES: 
 - For each test case, use the "uiSelector" from the corresponding mapping.
+- Match the test case "type" to the mapping's "uiElementType" (filter for dropdown/filter, search for search).
+- For filter type: steps should click the panel and select checkboxes, NOT fill input fields.
+- For search type: steps should fill the search input, NOT click panels.
 - Do not use placeholder selectors like "#search-input" or "#element".
 - Generate at least one test case per mapping provided.`;
         
@@ -2564,9 +2597,10 @@ CRITICAL:
             testCases.map(async (testCase: any) => {
                 // First, ensure selector is correct from mappings
                 let correctedSelectors = testCase.selectors || {};
+                let matchingMapping = null;
                 if (testCase.dataField && mappings && mappings.length > 0) {
                     // Find the mapping that matches this test case's dataField
-                    const matchingMapping = mappings.find((m: any) => 
+                    matchingMapping = mappings.find((m: any) => 
                         m.tsvField === testCase.dataField || 
                         m.dbField === testCase.dataField ||
                         testCase.dataField.includes(m.tsvField) ||
@@ -2619,10 +2653,10 @@ CRITICAL:
                 const optionSelectors: {[value: string]: string} = {};
                 
                 // Find the dropdown/panel that matches this test case's selector
-                const panelSelector = correctedSelectors.field || correctedSelectors[testCase.dataField];
+                const testCaseSelector = correctedSelectors.field || correctedSelectors[testCase.dataField];
                 let dropdownInfo = null;
-                if (panelSelector && uiAnalysis.dropdowns) {
-                    dropdownInfo = uiAnalysis.dropdowns.find((d: any) => d.selector === panelSelector);
+                if (testCaseSelector && uiAnalysis.dropdowns) {
+                    dropdownInfo = uiAnalysis.dropdowns.find((d: any) => d.selector === testCaseSelector);
                 }
                 
                 for (const value of testCase.testValues) {
@@ -2665,9 +2699,37 @@ CRITICAL:
                     }
                 }
                 
-                // Update test case with expected results, corrected selectors, and option selectors
+                // Correct test case type based on UI element type
+                let correctedType = testCase.type;
+                const testCaseSelectorForType = correctedSelectors.field || correctedSelectors[testCase.dataField];
+                
+                // Determine correct type from UI analysis
+                if (testCaseSelectorForType) {
+                    const isDropdown = uiAnalysis.dropdowns?.some((d: any) => d.selector === testCaseSelectorForType);
+                    const isSearchBox = uiAnalysis.searchBoxes?.some((s: any) => s.selector === testCaseSelectorForType);
+                    
+                    if (isDropdown && testCase.type === 'search') {
+                        console.log(`  ⚠️ Correcting test case type from "search" to "filter" for ${testCase.dataField} (selector: ${testCaseSelectorForType} is a dropdown)`);
+                        correctedType = 'filter';
+                    } else if (isSearchBox && testCase.type === 'filter') {
+                        console.log(`  ⚠️ Correcting test case type from "filter" to "search" for ${testCase.dataField} (selector: ${testCaseSelectorForType} is a search box)`);
+                        correctedType = 'search';
+                    } else if (matchingMapping && matchingMapping.uiElementType) {
+                        // Use uiElementType from mapping if available
+                        if (matchingMapping.uiElementType === 'dropdown/filter' && testCase.type !== 'filter') {
+                            console.log(`  ⚠️ Correcting test case type to "filter" based on mapping uiElementType for ${testCase.dataField}`);
+                            correctedType = 'filter';
+                        } else if (matchingMapping.uiElementType === 'search' && testCase.type !== 'search') {
+                            console.log(`  ⚠️ Correcting test case type to "search" based on mapping uiElementType for ${testCase.dataField}`);
+                            correctedType = 'search';
+                        }
+                    }
+                }
+                
+                // Update test case with expected results, corrected selectors, option selectors, and corrected type
                 return {
                     ...testCase,
+                    type: correctedType,
                     selectors: correctedSelectors,
                     optionSelectors: Object.keys(optionSelectors).length > 0 ? optionSelectors : undefined,
                     expectedResults: expectedResults.length > 0 ? expectedResults : (testCase.expectedResults || ['Test passes']),
