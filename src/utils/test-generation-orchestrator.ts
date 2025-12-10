@@ -303,52 +303,169 @@ export class TestGenerationOrchestrator {
                 }
               }
             } else if (step.toLowerCase().includes('filter') && testValues.length > 0) {
-              // Filter action - try to find dropdown or filter element
+              // Filter action - handle expandable panels and dropdowns
               const selector = this.findSelectorForStep(selectors, step, testCase.dataField);
               if (selector) {
-                // Try to select value from dropdown
                 for (const value of testValues) {
                   try {
-                    await this.mcpClient.callTools([{
-                      id: `select-${testCaseId}-${stepIndex}`,
-                      name: 'playwright_select',
-                      parameters: { selector: selector, value: String(value) }
+                    // First, check if it's an expandable panel
+                    const panelCheck = await this.mcpClient.callTools([{
+                      id: `check-panel-${testCaseId}-${stepIndex}`,
+                      name: 'playwright_evaluate',
+                      parameters: {
+                        script: `(() => {
+                          const el = document.querySelector('${selector}');
+                          if (!el) return { isPanel: false, isExpanded: false };
+                          const isPanel = el.getAttribute('aria-expanded') !== null || 
+                                         el.className.includes('ExpansionPanel') ||
+                                         el.className.includes('expansion');
+                          return { 
+                            isPanel: isPanel, 
+                            isExpanded: el.getAttribute('aria-expanded') === 'true' 
+                          };
+                        })()`
+                      }
                     }]);
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                    break; // Use first value
-                  } catch (error: any) {
-                    // Try click and evaluate as fallback
-                    try {
-                      await this.mcpClient.callTools([{
-                        id: `click-filter-${testCaseId}-${stepIndex}`,
-                        name: 'playwright_click',
-                        parameters: { selector: selector }
-                      }]);
-                      await new Promise(resolve => setTimeout(resolve, 500));
-                      // Try to find and click the value option
-                      await this.mcpClient.callTools([{
-                        id: `select-value-${testCaseId}-${stepIndex}`,
+                    
+                    let isExpandablePanel = false;
+                    let isExpanded = false;
+                    if (panelCheck[0]?.result && Array.isArray(panelCheck[0].result)) {
+                      const checkData = panelCheck[0].result.find((r: any) => r.type === 'text');
+                      if (checkData?.text) {
+                        try {
+                          const parsed = JSON.parse(checkData.text);
+                          isExpandablePanel = parsed.isPanel === true;
+                          isExpanded = parsed.isExpanded === true;
+                        } catch (e) {}
+                      }
+                    }
+                    
+                    if (isExpandablePanel) {
+                      // Handle expandable panel (like Diagnosis filter)
+                      console.log(`    🔍 Handling expandable panel filter: ${selector}`);
+                      
+                      // Expand panel if not already expanded
+                      if (!isExpanded) {
+                        await this.mcpClient.callTools([{
+                          id: `expand-panel-${testCaseId}-${stepIndex}`,
+                          name: 'playwright_evaluate',
+                          parameters: {
+                            script: `(() => {
+                              const el = document.querySelector('${selector}');
+                              if (el && el.getAttribute('aria-expanded') === 'false') {
+                                el.click();
+                                return { expanded: true };
+                              }
+                              return { expanded: false };
+                            })()`
+                          }
+                        }]);
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                      }
+                      
+                      // Find and click the checkbox with matching label
+                      const checkboxResult = await this.mcpClient.callTools([{
+                        id: `find-checkbox-${testCaseId}-${stepIndex}`,
                         name: 'playwright_evaluate',
                         parameters: {
                           script: `(() => {
-                            const text = document.body.textContent || '';
-                            const value = ${JSON.stringify(value)};
-                            // Try to find element containing the value
-                            const elements = Array.from(document.querySelectorAll('*'));
-                            for (const el of elements) {
-                              if (el.textContent && el.textContent.includes(value) && el.click) {
-                                el.click();
-                                return { clicked: true, value: value };
+                            const panel = document.querySelector('${selector}');
+                            if (!panel) return { found: false };
+                            
+                            // Find expanded content area
+                            const expandedContent = panel.closest('[id]')?.parentElement?.querySelector('[role="region"]') ||
+                                                   panel.parentElement?.querySelector('[role="region"]');
+                            if (!expandedContent) return { found: false };
+                            
+                            // Find checkbox with matching label text
+                            const checkboxes = expandedContent.querySelectorAll('input[type="checkbox"]');
+                            const searchValue = ${JSON.stringify(value)};
+                            
+                            for (const cb of checkboxes) {
+                              const row = cb.closest('div[role="button"]');
+                              if (!row) continue;
+                              
+                              // Look for label in p.filter_by_casesNameUnChecked or similar
+                              const labelEl = row.querySelector('p.filter_by_casesNameUnChecked, p[class*="filter_by_casesName"], p[class*="filter_by"]');
+                              const labelText = labelEl ? labelEl.textContent?.trim() : '';
+                              
+                              // Match exact or partial (for values like "Osteosarcoma" matching "Osteosarcoma (123)")
+                              if (labelText && (
+                                labelText === searchValue || 
+                                labelText.includes(searchValue) ||
+                                searchValue.includes(labelText.split('(')[0].trim())
+                              )) {
+                                cb.click();
+                                return { found: true, clicked: true, label: labelText };
                               }
                             }
-                            return { clicked: false, value: value };
+                            
+                            return { found: false, clicked: false };
                           })()`
                         }
                       }]);
-                      await new Promise(resolve => setTimeout(resolve, 1000));
-                    } catch (e: any) {
-                      console.warn(`    ⚠️ Filter selection failed: ${e.message}`);
+                      
+                      if (checkboxResult[0]?.result && Array.isArray(checkboxResult[0].result)) {
+                        const checkboxData = checkboxResult[0].result.find((r: any) => r.type === 'text');
+                        if (checkboxData?.text) {
+                          try {
+                            const parsed = JSON.parse(checkboxData.text);
+                            if (parsed.found && parsed.clicked) {
+                              console.log(`    ✅ Selected filter value: ${parsed.label || value}`);
+                              await new Promise(resolve => setTimeout(resolve, 1000));
+                              break; // Success, move to next value
+                            }
+                          } catch (e) {}
+                        }
+                      }
+                      
+                      console.warn(`    ⚠️ Could not find checkbox for value: ${value}`);
+                    } else {
+                      // Try standard dropdown selection
+                      try {
+                        await this.mcpClient.callTools([{
+                          id: `select-${testCaseId}-${stepIndex}`,
+                          name: 'playwright_select',
+                          parameters: { selector: selector, value: String(value) }
+                        }]);
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                        break; // Use first value
+                      } catch (error: any) {
+                        // Fallback: try simple click and text search
+                        try {
+                          await this.mcpClient.callTools([{
+                            id: `click-filter-${testCaseId}-${stepIndex}`,
+                            name: 'playwright_click',
+                            parameters: { selector: selector }
+                          }]);
+                          await new Promise(resolve => setTimeout(resolve, 500));
+                          
+                          // Try to find and click the value option
+                          await this.mcpClient.callTools([{
+                            id: `select-value-${testCaseId}-${stepIndex}`,
+                            name: 'playwright_evaluate',
+                            parameters: {
+                              script: `(() => {
+                                const value = ${JSON.stringify(value)};
+                                const elements = Array.from(document.querySelectorAll('*'));
+                                for (const el of elements) {
+                                  if (el.textContent && el.textContent.includes(value) && el.click) {
+                                    el.click();
+                                    return { clicked: true, value: value };
+                                  }
+                                }
+                                return { clicked: false, value: value };
+                              })()`
+                            }
+                          }]);
+                          await new Promise(resolve => setTimeout(resolve, 1000));
+                        } catch (e: any) {
+                          console.warn(`    ⚠️ Filter selection failed: ${e.message}`);
+                        }
+                      }
                     }
+                  } catch (error: any) {
+                    console.warn(`    ⚠️ Filter action failed: ${error.message}`);
                   }
                 }
               }
