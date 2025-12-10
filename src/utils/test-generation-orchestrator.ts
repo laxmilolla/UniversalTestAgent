@@ -304,7 +304,10 @@ export class TestGenerationOrchestrator {
                         const parsed = JSON.parse(checkData.text);
                         isExpandablePanel = parsed.isPanel === true;
                         isExpanded = parsed.isExpanded === true;
-                      } catch (e) {}
+                        console.log(`    🔍 Panel check result: isPanel=${isExpandablePanel}, isExpanded=${isExpanded}`);
+                      } catch (e) {
+                        console.warn(`    ⚠️ Failed to parse panel check result: ${checkData.text}`);
+                      }
                     }
                   }
                   
@@ -345,6 +348,8 @@ export class TestGenerationOrchestrator {
                         valueToSelect = selectMatch[1].trim();
                       }
                     }
+                    
+                    console.log(`    🔍 Panel check: hasValueInStep=${hasValueInStep}, valueToSelect="${valueToSelect}", testValues.length=${testValues.length}, step="${step}"`);
                     
                     if (hasValueInStep && valueToSelect) {
                         console.log(`    🔍 Looking for checkbox with value: ${valueToSelect}`);
