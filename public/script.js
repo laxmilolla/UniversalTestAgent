@@ -307,60 +307,17 @@ class LearningPhaseUI {
     }
 
     restoreLearningResults() {
+        // Clear localStorage on page refresh to start fresh
+        // Results are only persisted during the same session, not across page refreshes
         try {
-            const savedResults = localStorage.getItem('learningResults');
-            if (savedResults) {
-                const parsed = JSON.parse(savedResults);
-                // Check if results are recent (less than 24 hours old)
-                const timestamp = parsed.timestamp ? new Date(parsed.timestamp) : null;
-                const isRecent = timestamp && (Date.now() - timestamp.getTime()) < 24 * 60 * 60 * 1000;
-                
-                if (isRecent || !timestamp) {
-                    window.learningResults = parsed;
-                    console.log('Restored learning results from localStorage:', window.learningResults);
-                    
-                    // Restore UI state if we're on the learning phase
-                    if (this.learningResults && window.learningResults.success) {
-                        const results = window.learningResults.results || {};
-                        const analysis = window.learningResults.analysis || {};
-                        
-                        // Update result cards
-                        if (this.uiElementsCount) this.uiElementsCount.textContent = results.uiElements || 0;
-                        if (this.dbFieldsCount) this.dbFieldsCount.textContent = results.dbFields || 0;
-                        if (this.testCasesCount) this.testCasesCount.textContent = results.testCases || 0;
-                        if (this.mappingsCount) this.mappingsCount.textContent = results.mappings || 0;
-                        
-                        // Show results section
-                        if (this.learningResults) {
-                            this.learningResults.style.display = 'block';
-                        }
-                        
-                        // Show detailed analysis
-                        if (analysis) {
-                            this.showDetailedAnalysis(analysis);
-                        }
-                        
-                        // Enable learn button
-                        if (this.learnBtn) {
-                            this.learnBtn.disabled = false;
-                        }
-                        
-                        console.log('✅ Learning results UI restored from localStorage');
-                    }
-                } else {
-                    console.log('Learning results are too old, clearing localStorage');
-                    localStorage.removeItem('learningResults');
-                }
-            }
+            localStorage.removeItem('learningResults');
+            console.log('Cleared learning results from localStorage on page load');
         } catch (e) {
-            console.warn('Failed to restore learning results from localStorage:', e);
-            // Clear corrupted data
-            try {
-                localStorage.removeItem('learningResults');
-            } catch (clearError) {
-                console.error('Failed to clear corrupted localStorage:', clearError);
-            }
+            console.warn('Failed to clear learning results from localStorage:', e);
         }
+        
+        // Reset window.learningResults to ensure clean state
+        window.learningResults = null;
     }
 
     initializeElements() {
