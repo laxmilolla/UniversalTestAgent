@@ -942,6 +942,20 @@ export class TestGenerationOrchestrator {
       
       console.log(`\n📊 Test execution complete: ${passed} passed, ${failed} failed in ${totalDuration}ms`);
       
+      const runId = `run-${Date.now()}`;
+      
+      // Generate and save summary report
+      try {
+        await this.generateSummaryReport(runId, testResults, {
+          total: testResults.length,
+          passed: passed,
+          failed: failed,
+          duration: totalDuration
+        });
+      } catch (reportError: any) {
+        console.warn(`⚠️ Failed to generate summary report: ${reportError.message}`);
+      }
+      
       return {
         success: true,
         results: testResults, // Return as array
@@ -950,7 +964,7 @@ export class TestGenerationOrchestrator {
           passed: passed,
           failed: failed,
           duration: totalDuration,
-          runId: `run-${Date.now()}`
+          runId: runId
         }
       };
       
@@ -1539,6 +1553,234 @@ export class TestGenerationOrchestrator {
     } catch (error: any) {
       console.warn(`  ⚠️ Error dismissing modals: ${error.message}`);
       // Don't throw - continue with test execution even if modal dismissal fails
+    }
+  }
+
+  private async generateSummaryReport(runId: string, testResults: any[], statistics: any): Promise<void> {
+    try {
+      const reportsDir = '/home/ubuntu/playwright-chatbot/test-reports';
+      const runDir = path.join(reportsDir, runId);
+      
+      // Create directories if they don't exist
+      if (!fs.existsSync(reportsDir)) {
+        fs.mkdirSync(reportsDir, { recursive: true });
+      }
+      if (!fs.existsSync(runDir)) {
+        fs.mkdirSync(runDir, { recursive: true });
+      }
+      
+      // Generate HTML report
+      const htmlContent = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Execution Summary - ${runId}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+            color: #333;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 30px;
+        }
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 10px;
+        }
+        .summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin: 30px 0;
+        }
+        .summary-card {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            border-left: 4px solid #3498db;
+        }
+        .summary-card.passed { border-left-color: #28a745; }
+        .summary-card.failed { border-left-color: #dc3545; }
+        .summary-card h3 {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+        }
+        .summary-card .value {
+            font-size: 36px;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        .summary-card.passed .value { color: #28a745; }
+        .summary-card.failed .value { color: #dc3545; }
+        .test-results {
+            margin-top: 30px;
+        }
+        .test-item {
+            background: #f8f9fa;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 6px;
+            border-left: 4px solid #ddd;
+        }
+        .test-item.passed { border-left-color: #28a745; }
+        .test-item.failed { border-left-color: #dc3545; }
+        .test-item.error { border-left-color: #ffc107; }
+        .test-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .test-name {
+            font-weight: 600;
+            font-size: 16px;
+        }
+        .test-status {
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .test-status.passed {
+            background: #d4edda;
+            color: #155724;
+        }
+        .test-status.failed {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .test-status.error {
+            background: #fff3cd;
+            color: #856404;
+        }
+        .test-details {
+            font-size: 14px;
+            color: #666;
+            margin-top: 10px;
+        }
+        .test-details p {
+            margin: 5px 0;
+        }
+        .validation-info {
+            background: white;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+        .validation-info strong {
+            color: #2c3e50;
+        }
+        .timestamp {
+            color: #999;
+            font-size: 12px;
+            margin-top: 20px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 Test Execution Summary Report</h1>
+        <p style="color: #666; margin-bottom: 20px;">Run ID: <strong>${runId}</strong></p>
+        
+        <div class="summary">
+            <div class="summary-card">
+                <h3>Total Tests</h3>
+                <div class="value">${statistics.total}</div>
+            </div>
+            <div class="summary-card passed">
+                <h3>Passed</h3>
+                <div class="value">${statistics.passed}</div>
+            </div>
+            <div class="summary-card failed">
+                <h3>Failed</h3>
+                <div class="value">${statistics.failed}</div>
+            </div>
+            <div class="summary-card">
+                <h3>Duration</h3>
+                <div class="value">${(statistics.duration / 1000).toFixed(1)}s</div>
+            </div>
+        </div>
+        
+        <div class="test-results">
+            <h2 style="margin-bottom: 20px; color: #2c3e50;">Test Results</h2>
+            ${testResults.map((result, index) => {
+                const statusClass = result.status === 'passed' ? 'passed' : (result.status === 'error' ? 'error' : 'failed');
+                const validationInfo = result.validation ? `
+                    <div class="validation-info">
+                        <p><strong>Expected Count:</strong> ${result.validation.expectedCount}</p>
+                        <p><strong>Actual Count:</strong> ${result.validation.actualCount}</p>
+                        <p><strong>Message:</strong> ${result.validation.message}</p>
+                    </div>
+                ` : '';
+                const errorInfo = result.error ? `
+                    <div class="validation-info" style="background: #f8d7da; color: #721c24;">
+                        <p><strong>Error:</strong> ${result.error}</p>
+                    </div>
+                ` : '';
+                return `
+                <div class="test-item ${statusClass}">
+                    <div class="test-header">
+                        <div class="test-name">${index + 1}. ${result.testCaseName || 'Unnamed Test'}</div>
+                        <span class="test-status ${statusClass}">${result.status}</span>
+                    </div>
+                    <div class="test-details">
+                        <p><strong>Duration:</strong> ${result.duration}ms</p>
+                        <p><strong>Start Time:</strong> ${new Date(result.startTime).toLocaleString()}</p>
+                        ${validationInfo}
+                        ${errorInfo}
+                        ${result.screenshots && result.screenshots.length > 0 ? `
+                            <p><strong>Screenshots:</strong> ${result.screenshots.length} captured</p>
+                        ` : ''}
+                    </div>
+                </div>
+                `;
+            }).join('')}
+        </div>
+        
+        <div class="timestamp">
+            Generated on ${new Date().toLocaleString()}
+        </div>
+    </div>
+</body>
+</html>`;
+      
+      // Save HTML report
+      const reportPath = path.join(runDir, 'summary-report.html');
+      fs.writeFileSync(reportPath, htmlContent, 'utf8');
+      
+      // Save metadata JSON
+      const metadataPath = path.join(runDir, 'run-metadata.json');
+      const metadata = {
+        runId: runId,
+        timestamp: new Date().toISOString(),
+        totalTests: statistics.total,
+        passed: statistics.passed,
+        failed: statistics.failed,
+        error: testResults.filter(r => r.status === 'error').length,
+        duration: statistics.duration
+      };
+      fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2), 'utf8');
+      
+      console.log(`📊 Summary report generated: ${reportPath}`);
+    } catch (error: any) {
+      console.error(`❌ Failed to generate summary report: ${error.message}`);
+      throw error;
     }
   }
 }
