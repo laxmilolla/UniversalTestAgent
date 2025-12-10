@@ -355,9 +355,17 @@ export class TestGenerationOrchestrator {
                     // Find the value to select - try to extract from step text first, then fall back to testValues
                     let valueToSelect = '';
                     // Try to extract value from step text first (e.g., "Select Osteosarcoma" -> "Osteosarcoma")
-                    const selectMatch = step.match(/select\s+([^and]+?)(?:\s+and|\s*$)/i);
+                    // Match "Select <value>" - capture word(s) after "select" until "and" or end
+                    // First try: match single word (most common case like "Select Male")
+                    let selectMatch = step.match(/select\s+(\w+)/i);
                     if (selectMatch) {
                       valueToSelect = selectMatch[1].trim();
+                    } else {
+                      // Fallback: match multiple words until "and" or end
+                      selectMatch = step.match(/select\s+([^and]+?)(?:\s+and|$)/i);
+                      if (selectMatch) {
+                        valueToSelect = selectMatch[1].trim();
+                      }
                     }
                     // If no match from step text, use first testValue as fallback
                     if (!valueToSelect && testValues.length > 0) {
