@@ -2716,9 +2716,6 @@ CRITICAL RULES:
                     }
                 }
                 
-                // Use corrected dataField for the rest of the processing
-                const finalDataField = correctedDataField || testCase.dataField;
-                
                 if (!finalDataField || finalDataField === 'unknown' || !Array.isArray(testCase.testValues) || testCase.testValues.length === 0) {
                     if (finalDataField === 'unknown') {
                         console.warn(`  ⚠️ Test case "${testCase.name}" has dataField="unknown" and no matching mapping found. Skipping expected result generation.`);
@@ -2754,12 +2751,13 @@ CRITICAL RULES:
                 }
                 
                 if (validatedTestValues.length === 0) {
-                    console.warn(`  ⚠️ No valid test values for "${testCase.dataField}". Skipping expected result generation.`);
+                    console.warn(`  ⚠️ No valid test values for "${finalDataField}". Skipping expected result generation.`);
                     return {
                         ...testCase,
+                        dataField: finalDataField,
                         selectors: correctedSelectors,
                         testValues: testCase.testValues, // Keep original for reference
-                        expectedResults: [`No valid test values found for ${testCase.dataField}`]
+                        expectedResults: [`No valid test values found for ${finalDataField}`]
                     };
                 }
                 
@@ -2768,7 +2766,7 @@ CRITICAL RULES:
                 const optionSelectors: {[value: string]: string} = {};
                 
                 // Find the dropdown/panel that matches this test case's selector
-                const testCaseSelector = correctedSelectors.field || correctedSelectors[testCase.dataField];
+                const testCaseSelector = correctedSelectors.field || correctedSelectors[finalDataField];
                 let dropdownInfo = null;
                 if (testCaseSelector && uiAnalysis.dropdowns) {
                     dropdownInfo = uiAnalysis.dropdowns.find((d: any) => d.selector === testCaseSelector);
@@ -2776,14 +2774,14 @@ CRITICAL RULES:
                 
                 for (const value of validatedTestValues) {
                     try {
-                        const count = await this.vectorRAG.getValueCount(testCase.dataField, value);
-                        const expectedResult = `${count} cases should be displayed, all with ${testCase.dataField}='${value}'`;
+                        const count = await this.vectorRAG.getValueCount(finalDataField, value);
+                        const expectedResult = `${count} cases should be displayed, all with ${finalDataField}='${value}'`;
                         expectedResults.push(expectedResult);
                         console.log(`  ✓ Generated expected result: ${expectedResult}`);
                     } catch (error: any) {
-                        console.warn(`  ⚠️ Failed to get count for ${testCase.dataField}='${value}': ${error.message}`);
+                        console.warn(`  ⚠️ Failed to get count for ${finalDataField}='${value}': ${error.message}`);
                         // Fallback: still include the value but without count
-                        expectedResults.push(`Cases should be displayed with ${testCase.dataField}='${value}'`);
+                        expectedResults.push(`Cases should be displayed with ${finalDataField}='${value}'`);
                     }
                     
                     // Find option selector for this value
