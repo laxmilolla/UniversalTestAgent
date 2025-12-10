@@ -2268,11 +2268,14 @@ TASK: Create semantic mappings between UI elements and TSV fields.
 - Identify data mismatches
 - Generate test cases
 
-CRITICAL: 
+CRITICAL REQUIREMENTS: 
+- You MUST create mappings for ALL dropdowns/filters in "UI ELEMENTS DISCOVERED" that have a matching TSV field.
 - You MUST use the exact CSS selectors from "UI ELEMENTS DISCOVERED" section above.
 - Each dropdown/searchBox/checkbox has a "selector" field - use that EXACT value for "uiSelector".
 - Do NOT use "unknown" or invent new selectors.
 - Only create mappings for elements that exist in "UI ELEMENTS DISCOVERED".
+- If a UI element label matches a TSV field name (case-insensitive, partial match OK), you MUST create a mapping for it.
+- Common mappings to look for: Breed→breed, Sex→sex, Diagnosis→disease_term, Study→case.case_id or study.clinical_study_designation
 
 IMPORTANT: Return ONLY a valid JSON object. No explanatory text before or after the JSON.
 
