@@ -36,6 +36,14 @@ export class VectorRAGClient {
         console.log('🔍 RAG: STARTING VECTOR EMBEDDING CREATION (Pure AI Mode)');
         console.log('='.repeat(80));
         
+        // Clear vector store and metadata before indexing new data
+        // This ensures old data (e.g., OSA04) doesn't persist when new data is uploaded
+        console.log('🧹 Clearing existing vector store and metadata for fresh indexing...');
+        const previousSize = this.vectorStore.size;
+        this.vectorStore.clear();
+        this.tsvMetadata = {};
+        console.log(`  ✓ Cleared ${previousSize} previous entries from vector store`);
+        
         console.log('🔍 DEBUG: indexTSVData called with', tsvFiles.length, 'files');
         console.log('🔍 DEBUG: First file name:', tsvFiles[0]?.name);
         console.log('🔍 DEBUG: First file content length:', tsvFiles[0]?.content?.length);
