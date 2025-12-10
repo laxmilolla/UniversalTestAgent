@@ -352,14 +352,16 @@ export class TestGenerationOrchestrator {
                     // Check if step contains "select" or has testValues - this indicates we should find a checkbox
                     const hasValueInStep = testValues.length > 0 || stepLower.includes('select');
                     
-                    // Find the value to select - check testValues first, then try to extract from step
-                    let valueToSelect = testValues[0] || '';
-                    if (!valueToSelect) {
-                      // Try to extract value from step text (e.g., "Select Osteosarcoma" -> "Osteosarcoma")
-                      const selectMatch = step.match(/select\s+(.+)/i);
-                      if (selectMatch) {
-                        valueToSelect = selectMatch[1].trim();
-                      }
+                    // Find the value to select - try to extract from step text first, then fall back to testValues
+                    let valueToSelect = '';
+                    // Try to extract value from step text first (e.g., "Select Osteosarcoma" -> "Osteosarcoma")
+                    const selectMatch = step.match(/select\s+([^and]+?)(?:\s+and|\s*$)/i);
+                    if (selectMatch) {
+                      valueToSelect = selectMatch[1].trim();
+                    }
+                    // If no match from step text, use first testValue as fallback
+                    if (!valueToSelect && testValues.length > 0) {
+                      valueToSelect = testValues[0];
                     }
                     
                     console.log(`    🔍 Panel check: hasValueInStep=${hasValueInStep}, valueToSelect="${valueToSelect}", testValues.length=${testValues.length}, step="${step}"`);
